@@ -13,16 +13,15 @@ module Ludwig
     """
     f0(E::Float64, T::Float64) = 1 / (exp(E/T) + 1)
 
-    # import StaticArrays: SVector, MVector
-    # using LinearAlgebra
-    # using ForwardDiff
-    # import DataStructures: OrderedDict
-    # using ProgressBars
-    # using Interpolations
-    # using IterativeSolvers
+    import StaticArrays: SVector, MVector
+    using LinearAlgebra
+    using ForwardDiff
+    import DataStructures: OrderedDict
+    using ProgressBars
+    using Interpolations
 
-    # include("./mesh/marching_squares.jl")
-    # include("./mesh/mesh.jl")
-    # include("./integration.jl")
+    include("./mesh/marching_squares.jl")
+    include("./mesh/mesh.jl")
+    include("./integration.jl")
 
 end # module Ludwig
