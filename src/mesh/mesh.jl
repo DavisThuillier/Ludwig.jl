@@ -16,8 +16,6 @@ struct Mesh
     corners::Vector{SVector{2, Float64}}
 end
 
-energy_threshold(T::Real, threshold::Real) = 2 * T * acosh(1 / (2 * sqrt(threshold)))
-
 function angular_slice(iso::Isoline, n::Int)
     θ = LinRange(0.0, pi/2, n)
 
@@ -33,7 +31,6 @@ function angular_slice(iso::Isoline, n::Int)
         while j < jmax && angles[j] < θ[i]
             j += 1
         end
-        j == 1 && @show curve[j]
 
         push!(grid, curve[j-1] + (curve[j] - curve[j - 1]) * (θ[i] - angles[j-1]) / (angles[j] - angles[j-1]))
     end
@@ -62,28 +59,6 @@ function get_angle(k)
     end
 end
 
-function ∂θ∂x(k::AbstractVector)
-    if abs(k[2]) < 0.5 - abs(k[1])
-        return - k[2] / norm(k)^2
-    else
-        g = (0.5 .- abs.(k))
-        return - sign(k[2]) * g[1] / norm(g)^2
-    end
-end
-
-function ∂θ∂y(k::AbstractVector)
-    if abs(k[2]) < 0.5 - abs(k[1])
-        return k[1] / norm(k)^2
-    else
-        g = (0.5 .- abs.(k))
-        return sign(k[1]) * g[2] / norm(g)^2
-    end
-end
-
-function ∂θ∂k(k::AbstractVector)
-    return SVector{2, Float64}([∂θ∂x(k), ∂θ∂y(k)])
-end
-
 function generate_mesh(h::Function, T::Real, n_levels::Int, n_angles::Int, N::Int = 1001, α::Real = 6.0)
     n_levels = max(3, n_levels) # Enforce minimum of 1 patches in the energy direction
     n_angles = max(3, n_angles) # Enforce minimum of 2 patches in angular direction
@@ -106,7 +81,6 @@ function generate_mesh(h::Function, T::Real, n_levels::Int, n_angles::Int, N::In
     # end
 
     c = contours(x, x, E, energies)
-    @show length(c[1].isolines)
     
     # Slice contours to generate patch corners
     corners = Matrix{SVector{2,Float64}}(undef, n_levels, n_angles)
@@ -168,13 +142,12 @@ function generate_mesh(h::Function, T::Real, n_levels::Int, n_angles::Int, N::In
             A[2,2] = (k[i,j2][2] - k1[2]) / Δϕ   # ∂ky/∂θ |ε
 
             # Use forward differentiation to better calculate energy derivatives
-            # J[1,1] = 2 * v[i,j][1] / Δε # ∂ε/∂kx |ky
-            # J[1,2] = 2 * v[i,j][2] / Δε # ∂ε/∂ky |kx
             J[1,1] = 2 * v[i,j][1] / ΔE # ∂ε/∂kx |ky
             J[1,2] = 2 * v[i,j][2] / ΔE # ∂ε/∂ky |kx
             J[2,1] = - 2 * A[1,2] / det(A) / Δθ   # ∂θ/∂kx |ky
             J[2,2] = 2 * A[1,1] / det(A) / Δθ # ∂θ/∂ky |kx
 
+            @show get_patch_area(corners, i, j)
             patches[i, j] = Patch(
                 k[i,j], 
                 h(k[i,j]),
