@@ -12,9 +12,20 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
     sitps = Vector{ScaledInterpolation}(undef, length(bands))
     Δε = 0
     for (i, h) in enumerate(bands)
-        mesh, Δε = Ludwig.generate_mesh(h, T, n_ε, n_θ, 2000, 1.0)
-        grid = vcat(grid, mesh.patches)
+        mesh, Δε = Ludwig.generate_mesh(h, T, n_ε, n_θ, 2000)
+        grid = vcat(grid, map(x -> Patch(
+                                    x.momentum, 
+                                    x.energy,
+                                    x.v,
+                                    x.dV,
+                                    x.de,
+                                    x.jinv, 
+                                    x.djinv,
+                                    x.corners .+ length(corners)
+                                ), mesh.patches)
+        )
         corners = vcat(corners, mesh.corners)
+
 
         E = Matrix{Float64}(undef, N, N)
         for kx in 1:N
@@ -25,21 +36,22 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
         itp = interpolate(E, BSpline(Cubic(Line(OnGrid()))))
         sitps[i] = scale(itp, -0.5:1/(N-1):0.5, -0.5:1/(N-1):0.5)
     end
-
-    dVs = map(x -> x.dV, grid)
+    return nothing
     ℓ = length(grid)
 
     h5open(outfile, "cw") do fid
-        g = create_group(fid, "data") # In units of t0
+        g = create_group(fid, "data")
         write_attribute(g, "n_e", n_ε)
         write_attribute(g, "n_theta", n_θ)
         g["corners"] = copy(transpose(reduce(hcat, corners)))
         g["momenta"] = copy(transpose(reduce(hcat, map(x -> x.momentum, grid))))
-        g["dVs"] = dVs
+        g["velocities"] = copy(transpose(reduce(hcat, map(x -> x.v, grid))))
+        g["energies"] = map(x -> x.energy, grid) 
+        g["dVs"] = map(x -> x.dV, grid)
         g["corner_ids"] = copy(transpose(reduce(hcat, map(x -> x.corners, grid))))
     end 
 
-    Γ = zeros(Float64, ℓ, ℓ) # Scattering operator to be iterated
+    Γ = zeros(Float64, ℓ, ℓ) # Scattering operator
     Ludwig.electron_electron!(Γ, grid, Δε, T, sitps)
 
     # Write scattering operator out to file
@@ -60,5 +72,5 @@ end
 
 T, n_ε, n_θ, band_file, dir = argument_handling()
 include(joinpath(@__DIR__, band_file))
-outfile = joinpath(@__DIR__, dir, "$(mat)_$(T)_$(n_ε)x$(n_θ).h5")
+outfile = joinpath(@__DIR__, dir, "$(material)_$(T)_$(n_ε)x$(n_θ).h5")
 main(T, n_ε, n_θ, outfile)
