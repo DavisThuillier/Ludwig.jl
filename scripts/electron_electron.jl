@@ -36,7 +36,7 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
         itp = interpolate(E, BSpline(Cubic(Line(OnGrid()))))
         sitps[i] = scale(itp, -0.5:1/(N-1):0.5, -0.5:1/(N-1):0.5)
     end
-    return nothing
+
     ℓ = length(grid)
 
     h5open(outfile, "cw") do fid
@@ -72,5 +72,6 @@ end
 
 T, n_ε, n_θ, band_file, dir = argument_handling()
 include(joinpath(@__DIR__, band_file))
-outfile = joinpath(@__DIR__, dir, "$(material)_$(T)_$(n_ε)x$(n_θ).h5")
+bands = [bands[3], bands[3]]
+outfile = joinpath(@__DIR__, dir, "$(material)_γγ_$(T)_$(n_ε)x$(n_θ).h5")
 main(T, n_ε, n_θ, outfile)

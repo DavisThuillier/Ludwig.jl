@@ -12,5 +12,5 @@ function conductivity(Γ, v, E, dV, T::Real)
     σ[2,1] = dot(last.(v) .* w .* dV, ϕx)
     σ[2,2] = dot(last.(v) .* w .* dV, ϕy)
 
-    return (G0 / π) * (σ / T) 
+    return (G0 / (2π)) * (σ / T) 
 end

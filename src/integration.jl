@@ -37,7 +37,7 @@ function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Real, 
 
             r5::Float64 = (ρ - δ^2 / dot(u,u) )^(5/2)
 
-            int += vol * a.djinv * b.djinv * c.djinv * r5 * (1 - f0(εabc + dot(ζ, xpara), T)) / norm(u)
+            int += r5 * (1 - f0(εabc + dot(ζ, xpara), T)) / norm(u)
         end
     end
     return vol * a.djinv * b.djinv * c.djinv * int
