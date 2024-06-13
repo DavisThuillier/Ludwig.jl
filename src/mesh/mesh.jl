@@ -138,7 +138,7 @@ function generate_mesh(h::Function, T::Real, n_levels::Int, n_angles::Int, N::In
                 k1 = k[i, j1]
             end 
             
-            A[2,1] = (k[i,j2][1] - k1[1]) / Δϕ   # ∂ky/∂θ |ε
+            A[2,1] = (k[i,j2][1] - k1[1]) / Δϕ   # ∂kx/∂θ |ε
             A[2,2] = (k[i,j2][2] - k1[2]) / Δϕ   # ∂ky/∂θ |ε
 
             # Use forward differentiation to better calculate energy derivatives
@@ -147,7 +147,6 @@ function generate_mesh(h::Function, T::Real, n_levels::Int, n_angles::Int, N::In
             J[2,1] = - 2 * A[1,2] / det(A) / Δθ   # ∂θ/∂kx |ky
             J[2,2] = 2 * A[1,1] / det(A) / Δθ # ∂θ/∂ky |kx
 
-            @show get_patch_area(corners, i, j)
             patches[i, j] = Patch(
                 k[i,j], 
                 h(k[i,j]),
@@ -161,29 +160,35 @@ function generate_mesh(h::Function, T::Real, n_levels::Int, n_angles::Int, N::In
         end
     end
 
-    # patches = hcat(patches,
-    #     map(x -> rotate_patch(x, 1, length(corners)), patches),
-    #     map(x -> rotate_patch(x, 2, 2*length(corners)), patches),
-    #     map(x -> rotate_patch(x, 3, 3*length(corners)), patches)
-    # )
-
     Mx = [1 0; 0 -1] # Mirror across the x-axis
     My = [-1 0; 0 1] # Mirror across the y-axis
     R = [0 -1; 1 0] # Rotation matrix for pi / 2
 
     patches = hcat(patches,
-        map(x -> patch_op(x, My, mirror_perm, n_angles, n_levels, length(corners)), reverse(patches; dims = 2))
-    )
-    patches = hcat(patches,
-        map(x -> patch_op(x, Mx, mirror_perm, 2*n_angles, n_levels, 2*length(corners)), reverse(patches; dims = 2))
+        map(x -> rotate_patch(x, 1, length(corners)), patches),
+        map(x -> rotate_patch(x, 2, 2*length(corners)), patches),
+        map(x -> rotate_patch(x, 3, 3*length(corners)), patches)
     )
 
-    corners = hcat(corners, 
-        map(x -> My * x, reverse(corners; dims = 2))
+    corners = hcat(corners,
+        map(x -> R * x, corners),
+        map(x -> R^2 * x, corners),
+        map(x -> R^3 * x, corners)
     )
-    corners = hcat(corners, 
-        map(x -> Mx * x, reverse(corners; dims = (2)))
-    )
+
+    # patches = hcat(patches,
+    #     map(x -> patch_op(x, My, mirror_perm, n_angles, n_levels, length(corners)), reverse(patches; dims = 2))
+    # )
+    # patches = hcat(patches,
+    #     map(x -> patch_op(x, Mx, mirror_perm, 2*n_angles, n_levels, 2*length(corners)), reverse(patches; dims = 2))
+    # )
+
+    # corners = hcat(corners, 
+    #     map(x -> My * x, reverse(corners; dims = 2))
+    # )
+    # corners = hcat(corners, 
+    #     map(x -> Mx * x, reverse(corners; dims = (2)))
+    # )
 
     return Mesh(vec(patches), vec(corners)), Δε
 end
@@ -198,6 +203,20 @@ function patch_op(x::Patch, M::Matrix, corner_perm::Function, n_col::Int, n_row:
         M * x.jinv, 
         x.djinv,
         corner_perm.(x.corners, n_col, n_row) .+ corner_shift
+    )
+end
+
+function rotate_patch(p, n, shift)
+    R = [0 -1; 1 0]^n
+    return Patch(
+        SVector{2}(R * p.momentum),
+        p.energy,
+        SVector{2}(R * p.v),
+        p.dV,
+        p.de,
+        R * p.jinv,
+        p.djinv,
+        p.corners .+ shift
     )
 end
 

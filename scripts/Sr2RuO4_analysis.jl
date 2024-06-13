@@ -48,7 +48,7 @@ function modes(file, T, bands)
     colors = Vector{RGB{Float64}}(undef, length(eigenvalues))
     for i in eachindex(eigenvalues)
         # println("λ_$(i) = ", eigenvalues[i])
-        weights = Ludwig.band_weight(eigenvectors[:, i], bands)
+        weights = vcat([0.0], Ludwig.band_weight(eigenvectors[:, i], length(bands)))
         # for j in eachindex(bands)
             # println("   ", bands[j], ": ", weights[j])
         # end
@@ -64,7 +64,7 @@ function modes(file, T, bands)
         # end
     end
 
-    N = 1600
+    N = length(eigenvalues)
     f = Figure(size = (2000, 1000), fontsize = 42)
     ax  = Axis(f[1,1], 
                aspect = 2.4,
@@ -72,8 +72,7 @@ function modes(file, T, bands)
                ylabel = L"\gamma (\mathrm{ps}^{-1})",
                xlabel = "Mode"
     )
-    scatter!(ax, real.(eigenvalues)[1:N], color = colors[1:N], markersize = 4)
-
+    scatter!(ax, real.(eigenvalues)[1:N] / 8, color = colors[1:N], markersize = 4)
 
     α = MarkerElement(color = RGB(1,0,0), marker = :circle, markersize = 15)
     β = MarkerElement(color = RGB(0,1,0), marker = :circle, markersize = 15)
@@ -81,60 +80,71 @@ function modes(file, T, bands)
     axislegend(ax, [α, β, γ], [L"\alpha", L"\beta", L"\gamma"], valign = :bottom)
     display(f)
 
-    # outfile = joinpath(@__DIR__, "..", "plots", "Sr2RuO4_spectrum.png")
+    # outfile = joinpath(@__DIR__, "..", "plots", "Sr2RuO4_spectrum_αβγ.png")
     # save(outfile, f)
 end
 
 function convergence()
     ρ = [1870 1870 1880 1885 1887;
          1883 1887 1891 1890 1898;
-         1903 1906 1911 1912 1912]
+         1903 1906 1911 1912 1912;
+         1914 1917 1923 1919 1926;
+         1922 1926 1931 1930 1931;
+         1929 1932 1938 1936 1937]
 
-    n_ε = [32, 34, 36, 38, 40]
-    n_θ = [7, 8, 9]
+    n_θ = [32, 34, 36, 38, 40]
+    n_ε = [7, 8, 9, 10, 11, 12]
 
     f = Figure()
     ax = Axis(f[1,1])
     m(t, p) = p[1] .+ p[2] * t
     domain = 0.0:0.01:0.15
     for i in 1:size(ρ)[2]
-        fit = curve_fit(m, 1 ./ n_θ, ρ[:, i], [1900, -0.2])
-        scatter!(ax, 1 ./ n_θ, ρ[:, i], label = "$(n_ε[i])")
+        fit = curve_fit(m, 1 ./ n_ε[end-3:end], ρ[end-3:end, i], [1930, -0.2])
+        scatter!(ax, 1 ./ n_ε, ρ[:, i], label = "$(n_θ[i])")
         lines!(ax, domain, m(domain, fit.param))
+        @show fit.param[1]
     end
     axislegend(ax, title = L"n_\theta")
     display(f)
 
 end
 
-function main(T, n_ε, n_θ, bands)
-    file = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "Sr2RuO4_$(T)_$(n_ε)x$(n_θ).h5")
-    T = kb * T
-
-    for band in bands
-        @show 1 / (2pi)^2 / Ludwig.get_n(band)
-    end
-    # convergence()
-    return nothing
-
+function display_heatmap(file, T)
     Γ, k, v, E, dV, corners, corner_ids = load(file)
     fd = f0.(E, T) # Fermi dirac on grid points
 
-    # w = fd .* (1 .- fd) # Energy derivative of FD on grid points
-    # M = diagm(sqrt.(w .* dV)) * Γ * (diagm(1 ./ sqrt.(w .* dV)))
-    # ℓ = size(Γ)[1]
-    # f = Figure(size = (4000, 4000))
-    # ax = Axis(f[1,1], aspect = 1.0)
-    # h = heatmap!(ax, -M, colorrange = (-0.002, 0.002), colormap = :lisbon)
-    # # Colorbar(f[1,2], h)
-    # display(f)
+    w = fd .* (1 .- fd) # Energy derivative of FD on grid points
+    M = diagm(sqrt.(w .* dV)) * Γ * (diagm(1 ./ sqrt.(w .* dV)))
+    ℓ = size(Γ)[1]
+    f = Figure(size = (1000, 1000))
+    ax = Axis(f[1,1], aspect = 1.0)
+    h = heatmap!(ax, -M, colorrange = (-0.002, 0.002), colormap = :lisbon)
+    # Colorbar(f[1,2], h)
+    display(f)
+    # save(joinpath(@__DIR__,"..", "plots","Sr2RuO4_interband_heatmap.png"), f)
+end
 
+function main(T, n_ε, n_θ, bands)
+    file = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "Sr2RuO4_$(T)_$(n_ε)x$(n_θ).h5")
+    # file = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "Sr2RuO4_$(T)_$(n_ε)x$(n_θ).h5")
+    T = kb * T
+
+    # for band in bands
+    #     @show 1 / (2pi)^2 / Ludwig.get_n(band)
+    # end
+    # convergence()
+    # return nothing
+
+    display_heatmap(file, T)
+    Γ, k, v, E, dV, corners, corner_ids = load(file)
+    Γ *= 0.04^2
     σ = Ludwig.conductivity(Γ, v, E, dV, T)
-    @show 1 / σ[1,1]
+    @show c / σ[1,1] * 10^11 
     # modes(file, T, bands)
 end
 
 T = 12.0
-n_ε = 10
-n_θ = 36
+n_ε = 4
+n_θ = 20
 main(T, n_ε, n_θ, bands)
