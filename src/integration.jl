@@ -133,7 +133,7 @@ function electron_electron!(Γ::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δ
     end
 end
 
-function electron_impurity!(Γ::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, V_squared::Function)
+function electron_impurity!(Γ::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, V_squared)
     for i in ProgressBar(eachindex(grid))        
         for j in eachindex(grid)
             i == j && continue
