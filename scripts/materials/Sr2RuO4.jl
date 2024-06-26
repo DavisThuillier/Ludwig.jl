@@ -13,6 +13,21 @@ function ham_γ(k)
     return - 2.0 * tγ * (cos(2pi*k[1]) + cos(2pi*k[2])) - 4*tpγ*cos(2pi*k[1]) * cos(2pi*k[2]) - μγ
 end
 
+const alph::Float64 = 7.604
+const alph_p::Float64 = 7.604
+
+function dxx(k::SVector{2,Float64})
+    return 2 * alph * tγ * cos(2pi*k[1]) + 2 * alph_p * tpγ * cos(2pi*k[1]) * cos(2pi*k[2])
+end
+
+function dyy(k::SVector{2,Float64})
+    return 2 * alph * tγ * cos(2pi*k[2]) + 2 * alph_p * tpγ * cos(2pi*k[1]) * cos(2pi*k[2]) 
+end
+
+function dxy(k::SVector{2,Float64})
+    return - 2 * alph_p * tpγ * sin(2pi*k[1]) * sin(2pi*k[2])
+end
+
 ###############
 ### α and β ###
 ###############
