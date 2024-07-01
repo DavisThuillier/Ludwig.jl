@@ -3,7 +3,8 @@ module Ludwig
     const G0::Float64 = 7.748091729e-5 # Conductance quantum in Siemens
     const kb::Float64 = 8.6173e-5 # Boltzmann constant in eV / K
     const hbar::Float64 = 6.582119569e-16 # In eV.s 
-    export G0, kb, hbar
+    const e_charge::Float64 = 1.60218e-19 # C
+    export G0, kb, hbar, e_charge
 
     export f0
     """

@@ -41,7 +41,17 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
 
     Γ = zeros(Float64, ℓ, ℓ) # Scattering operator
     V_squared(k) = 1.0
-    Ludwig.electron_impurity!(Γ, grid, Δε, (x,y) -> 1.0)
+    # Ludwig.electron_impurity!(Γ, grid, Δε, (x,y) -> 1.0)
+
+    V_squared = Matrix{Float64}(undef, 3, 3)
+    Vs = [133.12, 42.209, 8.1114]
+    for i in 1:3
+        for j in 1:3
+            V_squared[i,j] = sqrt(Vs[i] * Vs[j]) # Geometric mean
+        end
+    end
+
+    Ludwig.electron_impurity!(Γ, grid, Δε, V_squared)
 
     # Write scattering operator out to file
     h5open(outfile, "cw") do fid
@@ -66,6 +76,6 @@ n_ε = 12
 n_θ = 38
 for T in 2.0:0.5:14.0
     @show T
-    outfile = joinpath(@__DIR__, dir, "$(material)_imp_$(T)_$(n_ε)x$(n_θ).h5")
+    outfile = joinpath(@__DIR__, dir, "$(material)_unitary_imp_$(T)_$(n_ε)x$(n_θ).h5")
     main(T, n_ε, n_θ, outfile)
 end 
