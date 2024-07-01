@@ -144,3 +144,16 @@ function electron_impurity!(Γ::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δ
     end
     return nothing
 end
+
+function electron_impurity!(Γ::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, V_squared::Matrix)
+    ℓ = size(Γ)[1] ÷ 3
+    for i in ProgressBar(eachindex(grid))        
+        for j in eachindex(grid)
+            i == j && continue
+            @inbounds Γ[i,j] -= Iab(grid[i], grid[j], Δε, (x,y) -> V_squared[(i-1)÷ℓ + 1, (j-1)÷ℓ + 1])
+        end
+
+        Γ[i, :] /= grid[i].dV
+    end
+    return nothing
+end
