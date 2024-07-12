@@ -95,7 +95,7 @@ function Iab(a::Patch, b::Patch, Δε::Float64, V_squared::Function)
     end
 end
 
-function electron_electron!(Γ::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, T::Real, hams::Vector{Function})
+function electron_electron!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, T::Real, hams::Vector{Function})
     f0s  = map(x -> f0(x.energy, T), grid) # Fermi-Dirac Grid
 
     ζ = MVector{6, Float64}(undef)
@@ -107,15 +107,15 @@ function electron_electron!(Γ::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δ
         
         for j in eachindex(grid)
             i == j && continue
-            @inbounds Γ[i,j] += dot(Iibc[j,:], (1 .- f0s)) * f0s[j] / (1 - f0(grid[i].energy, T)) 
-            @inbounds Γ[i,j] -= 2 * dot(Iibc[:,j], f0s) * (1 - f0s[j]) / (1 - f0(grid[i].energy, T))
+            @inbounds L[i,j] += dot(Iibc[j,:], (1 .- f0s)) * f0s[j] / (1 - f0(grid[i].energy, T)) 
+            @inbounds L[i,j] -= 2 * dot(Iibc[:,j], f0s) * (1 - f0s[j]) / (1 - f0(grid[i].energy, T))
         end
 
-        Γ[i, :] /= grid[i].dV
+        L[i, :] /= grid[i].dV
     end
 end
 
-function electron_electron!(Γ::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, T::Real, itps::Vector{ScaledInterpolation})
+function electron_electron!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, T::Real, itps::Vector{ScaledInterpolation})
     f0s  = map(x -> f0(x.energy, T), grid)
 
     ζ = MVector{6, Float64}(undef)
@@ -127,15 +127,15 @@ function electron_electron!(Γ::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δ
         
         for j in eachindex(grid)
             i == j && continue
-            @inbounds Γ[i,j] += dot(Iibc[j,:], (1 .- f0s)) * f0s[j] / (1 - f0(grid[i].energy, T)) 
-            @inbounds Γ[i,j] -= 2 * dot(Iibc[:,j], f0s) * (1 - f0s[j]) / (1 - f0(grid[i].energy, T))
+            @inbounds L[i,j] += dot(Iibc[j,:], (1 .- f0s)) * f0s[j] / (1 - f0(grid[i].energy, T)) 
+            @inbounds L[i,j] -= 2 * dot(Iibc[:,j], f0s) * (1 - f0s[j]) / (1 - f0(grid[i].energy, T))
         end
 
-        Γ[i, :] /= grid[i].dV
+        L[i, :] /= grid[i].dV
     end
 end
 
-function electron_electron!(Γ::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, T::Real, H::Function, N::Int)
+function electron_electron!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, T::Real, H::Function, N::Int)
     itps = Ludwig.get_bands(H, N)
 
     f0s  = map(x -> f0(x.energy, T), grid) # Fermi-Dirac Grid
@@ -157,55 +157,51 @@ function electron_electron!(Γ::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δ
             for m in eachindex(grid)
                 Pm = grid[m]
 
+                ### ki + kj --> km + k4 ###
                 Fmi = dot(Pm.w, Pi.w)
                 if Fmi != 0
                     k1 = map_to_first_bz(Pi.momentum + Pj.momentum - Pm.momentum)
                     W1 = eigvecs(H(k1))
 
-                    
+                    F1j = W1 * conj.(Pj.w) # Vector of weights for each band 
+                    @inbounds L[i,j] += f0s[j] * (1 - f0s[m]) * abs2(Fmi) * dot(abs2.(F1j), Ki[j, m])
                 end
 
-
-                
+                ### Depopulation Events ###
                 k2 = map_to_first_bz(Pi.momentum + Pm.momentum - Pj.momentum)
-                
-
-
-
-                # Depopulation ##
                 W2 = eigvecs(H(k2))
 
-            end
+                F2mi_squared =  abs2.(W2 * conj.(Pi.w) * dot(Pj.w, Pm.momentum)) + abs2.(W2 * conj.(Pm.w) * Fji)
 
-            # @inbounds Γ[i,j] += dot(Iibc[j,:], (1 .- f0s)) * f0s[j] / (1 - f0(grid[i].energy, T)) 
-            # @inbounds Γ[i,j] -= 2 * dot(Iibc[:,j], f0s) * (1 - f0s[j]) / (1 - f0(grid[i].energy, T))
+                @inbounds L[i,j] -= f0s[m] * (1 - f0s[j]) * dot(F2mi_squared, Ki[m, j])
+            end
         end
 
-        Γ[i, :] /= grid[i].dV
+        Γ[i, :] /= (grid[i].dV * (1 - f0(grid[i].energy, T)) )
     end
 end
 
-function electron_impurity!(Γ::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, V_squared)
+function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, V_squared)
     for i in ProgressBar(eachindex(grid))        
         for j in eachindex(grid)
             i == j && continue
-            @inbounds Γ[i,j] -= Iab(grid[i], grid[j], Δε, V_squared)
+            @inbounds L[i,j] -= Iab(grid[i], grid[j], Δε, V_squared)
         end
 
-        Γ[i, :] /= grid[i].dV
+        L[i, :] /= grid[i].dV
     end
     return nothing
 end
 
-function electron_impurity!(Γ::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, V_squared::Matrix)
+function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, V_squared::Matrix)
     ℓ = size(Γ)[1] ÷ 3
     for i in ProgressBar(eachindex(grid))        
         for j in eachindex(grid)
             i == j && continue
-            @inbounds Γ[i,j] -= Iab(grid[i], grid[j], Δε, (x,y) -> V_squared[(i-1)÷ℓ + 1, (j-1)÷ℓ + 1])
+            @inbounds L[i,j] -= Iab(grid[i], grid[j], Δε, (x,y) -> V_squared[(i-1)÷ℓ + 1, (j-1)÷ℓ + 1])
         end
 
-        Γ[i, :] /= grid[i].dV
+        L[i, :] /= grid[i].dV
     end
     return nothing
 end
