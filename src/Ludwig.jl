@@ -27,24 +27,6 @@ module Ludwig
     include("./integration.jl")
     include("./properties.jl")
 
-    function get_n(h::Function, N::Int = 2000)
-        x = LinRange(0.0, 0.5, N)
-        E = map(x -> h([x[1], x[2]]), collect(Iterators.product(x, x)))
-
-        dn = 0.0
-        c = find_contour(x, x, E, 0.0)
-        for isoline in c.isolines
-            for i in eachindex(isoline.points)
-                i == length(isoline.points) && continue
-                ds = norm(isoline.points[i + 1] - isoline.points[i])
-                k = (isoline.points[i + 1] + isoline.points[i]) / 2
-                dn += ds / norm(ForwardDiff.gradient(h, k))
-            end
-        end
-
-        return 4 * dn
-    end
-
     function band_weight(v, n)
         weights = Vector{Float64}(undef, n)
         ℓ = length(v) ÷ n
@@ -53,6 +35,23 @@ module Ludwig
         end
     
         return weights / sum(weights) # Normalize the weights
+    end
+
+    function get_bands(H::Function, N::Int)
+        n_bands = size(H([0.0, 0.0]))[1] # Number of bands
+        E = Array{Float64}(undef, N, N, n_bands)
+        x = LinRange(-0.5, 0.5, N)
+        for i in 1:N, j in 1:N
+            E[i, j, :] .= eigvals(H([x[i], x[j]]))# Get eigenvalues (bands) of each k-point
+        end
+    
+        sitps = Vector{ScaledInterpolation}(undef, length(bands))
+        for i in 1:n_bands
+            itp = interpolate(E[:,:,i], BSpline(Cubic(Line(OnGrid()))))
+            sitps[i] = scale(itp, -0.5:1/(N-1):0.5, -0.5:1/(N-1):0.5)
+        end
+    
+        return sitps
     end
 
 end # module Ludwig

@@ -4,14 +4,16 @@ const η::SVector{6, Float64} = [1.0, 0.0, 1.0, 0.0, -1.0, 0.0]
 const ρ::Float64 = 4*6^(1/3)/pi
 const vol::Float64 = (8 * pi^2 / 15) # Volume of 5-dimensional unit sphere
 
+map_to_first_bz(k) = SVector(mod.(k .+ 0.5, 1.0) .- 0.5)
+
 # e-e scattering
 function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Real, Δε::Real, hams::Vector{Function})
     d::MVector{2,Float64} = a.momentum + b.momentum - c.momentum
     d[1] = mod(d[1] + 0.5, 1.0) - 0.5
     d[2] = mod(d[2] + 0.5, 1.0) - 0.5
 
-    int = 0.0
-    for h in hams
+    integral = Vector{Float64}(undef, length(itps))
+    for (i, h) in enumerate(hams)
         @inline εabc = h(d) # Energy from momentum conservation
         δ = a.energy + b.energy - c.energy - εabc # Energy conservation violations
 
@@ -28,7 +30,7 @@ function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Real, 
         ζ[6] = - (v[1] * c.jinv[1,2] + v[2] * c.jinv[2,2])
         u::SVector{6, Float64} = (Δε / 2) * η - ζ
         if abs(δ) < Δε * 1e-4
-            int += ρ^(5/2) * (1 - f0(εabc, T)) / norm(u)
+            integral[i] = ρ^(5/2) * (1 - f0(εabc, T)) / norm(u)
         else
             # εabc ≈ ε0 + ζ . x
             ρ < δ^2 / dot(u,u) && continue # Check for intersection of energy conserving 5-plane with coordinate space
@@ -37,10 +39,10 @@ function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Real, 
 
             r5::Float64 = (ρ - δ^2 / dot(u,u) )^(5/2)
 
-            int += r5 * (1 - f0(εabc + dot(ζ, xpara), T)) / norm(u)
+            integral[i] = r5 * (1 - f0(εabc + dot(ζ, xpara), T)) / norm(u)
         end
     end
-    return vol * a.djinv * b.djinv * c.djinv * int
+    return vol * a.djinv * b.djinv * c.djinv * integral
 end
 
 Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Float64, Δε::Real, h::Function) = Γabc!(ζ, a, b, c, T, Δε, [h])
@@ -50,8 +52,8 @@ function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Float6
     d[1] = mod(d[1] + 0.5, 1.0) - 0.5
     d[2] = mod(d[2] + 0.5, 1.0) - 0.5
 
-    int = 0.0
-    for itp in itps
+    integral = SVector{length(itps), Float64}(undef)
+    for (i, itp) in enumerate(itps)
         @inbounds εabc = itp(d[1], d[2])  # Energies from momentum conservation
         δ = a.energy + b.energy - c.energy - εabc # Energy conservation violations
 
@@ -68,7 +70,7 @@ function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Float6
         ζ[6] = - (v[1] * c.jinv[1,2] + v[2] * c.jinv[2,2])
         u::SVector{6, Float64} = (Δε / 2) * η - ζ
         if abs(δ) < Δε * 1e-4
-            int += ρ^(5/2) * (1 - f0(εabc, T)) / norm(u)
+            integral[i] = ρ^(5/2) * (1 - f0(εabc, T)) / norm(u)
         else
             # εabc ≈ ε0 + ζ . x
             ρ < δ^2 / dot(u,u) && continue # Check for intersection of energy conserving 5-plane with coordinate space
@@ -77,10 +79,10 @@ function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Float6
 
             r5::Float64 = (ρ - δ^2 / dot(u,u) )^(5/2)
 
-            int += r5 * (1 - f0(εabc + dot(ζ, xpara), T)) / norm(u)
+            integral[i] = r5 * (1 - f0(εabc + dot(ζ, xpara), T)) / norm(u)
         end
     end
-    return vol * a.djinv * b.djinv * c.djinv * int
+    return vol * a.djinv * b.djinv * c.djinv * integral
 end
 
 Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Float64, Δε::Real, itp::ScaledInterpolation) = Γabc!(ζ, a, b, c, T, Δε, [itp])
@@ -100,7 +102,7 @@ function electron_electron!(Γ::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δ
     Iibc = zeros(Float64, length(grid), length(grid))
     for i in ProgressBar(eachindex(grid))
         for j in eachindex(grid)
-            @inbounds Iibc[j, :] .= Γabc!.(Ref(ζ), Ref(grid[i]), Ref(grid[j]), grid, Ref(T), Ref(Δε), Ref(hams))
+            @inbounds Iibc[j, :] .= sum.(Γabc!.(Ref(ζ), Ref(grid[i]), Ref(grid[j]), grid, Ref(T), Ref(Δε), Ref(hams)))
         end
         
         for j in eachindex(grid)
@@ -120,13 +122,63 @@ function electron_electron!(Γ::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δ
     Iibc = zeros(Float64, length(grid), length(grid))
     for i in ProgressBar(eachindex(grid))
         for j in eachindex(grid)
-            @inbounds Iibc[j, :] .= Γabc!.(Ref(ζ), Ref(grid[i]), Ref(grid[j]), grid, Ref(T), Ref(Δε), Ref(itps))
+            @inbounds Iibc[j, :] .= sum.(Γabc!.(Ref(ζ), Ref(grid[i]), Ref(grid[j]), grid, Ref(T), Ref(Δε), Ref(itps)))
         end
         
         for j in eachindex(grid)
             i == j && continue
             @inbounds Γ[i,j] += dot(Iibc[j,:], (1 .- f0s)) * f0s[j] / (1 - f0(grid[i].energy, T)) 
             @inbounds Γ[i,j] -= 2 * dot(Iibc[:,j], f0s) * (1 - f0s[j]) / (1 - f0(grid[i].energy, T))
+        end
+
+        Γ[i, :] /= grid[i].dV
+    end
+end
+
+function electron_electron!(Γ::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, T::Real, H::Function, N::Int)
+    itps = Ludwig.get_bands(H, N)
+
+    f0s  = map(x -> f0(x.energy, T), grid) # Fermi-Dirac Grid
+
+    ζ = MVector{6, Float64}(undef)
+    Ki = Matrix{SVector{3, Float64}}(undef, length(grid), length(grid))
+    for i in ProgressBar(eachindex(grid))
+        Pi = grid[i] 
+
+        for j in eachindex(grid)
+            @inbounds Ki[j, :] .= Γabc!.(Ref(ζ), Ref(grid[i]), Ref(grid[j]), grid, Ref(T), Ref(Δε), Ref(itps))
+        end
+        
+        for j in eachindex(grid)
+            i == j && continue
+            Pj = grid[j]
+
+            Fji = dot(Pj.w, Pi.w)
+            for m in eachindex(grid)
+                Pm = grid[m]
+
+                Fmi = dot(Pm.w, Pi.w)
+                if Fmi != 0
+                    k1 = map_to_first_bz(Pi.momentum + Pj.momentum - Pm.momentum)
+                    W1 = eigvecs(H(k1))
+
+                    
+                end
+
+
+                
+                k2 = map_to_first_bz(Pi.momentum + Pm.momentum - Pj.momentum)
+                
+
+
+
+                # Depopulation ##
+                W2 = eigvecs(H(k2))
+
+            end
+
+            # @inbounds Γ[i,j] += dot(Iibc[j,:], (1 .- f0s)) * f0s[j] / (1 - f0(grid[i].energy, T)) 
+            # @inbounds Γ[i,j] -= 2 * dot(Iibc[:,j], f0s) * (1 - f0s[j]) / (1 - f0(grid[i].energy, T))
         end
 
         Γ[i, :] /= grid[i].dV

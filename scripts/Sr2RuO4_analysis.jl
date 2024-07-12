@@ -100,17 +100,21 @@ function get_property(prop::String, T::Float64, n_ε::Int, n_θ::Int, Uee::Real,
     if prop == "σ"
         σ = Ludwig.conductivity(Γ, v, E, dV, T)
         return σ[1,1] / c
-    elseif prop == "η"
+    elseif prop == "ηB1g"
         Dxx = zeros(Float64, ℓ)
         Dyy = zeros(Float64, ℓ)
-        Dxy = zeros(Float64, ℓ)
-        for i in 2*(ℓ÷3)+1:ℓ
-            Dxx[i] = dxx(k[i])
-            Dyy[i] = dyy(k[i])
-            Dxy[i] = dxy(k[i])
+        for i in 1:ℓ
+            μ = (i-1)÷(ℓ÷3) + 1 # Band index
+            if μ < 3 # α and β bands
+                Dxx[i] = dii_μ(k[i], 1, μ)
+                Dyy[i] = dii_μ(k[i], 2, μ)
+            else
+                Dxx[i] = dxx_γ(k[i])
+                Dyy[i] = dyy_γ(k[i])
+            end
         end
 
-        return Ludwig.viscosity(Γ, E, dV, Dxx, Dyy, Dxy, T) ./ (a^2 * c)
+        return Ludwig.ηB1g(Γ, E, dV, Dxx, Dyy, T) ./ (a^2 * c)
     elseif prop == "τ_eff"
         # Effective lifetime as calculated from the conductivity
         τ = Ludwig.σ_lifetime(Γ, v, E, dV, T)
@@ -362,32 +366,30 @@ function plot_ρ(n_ε, n_θ, Uee, Vimp)
 end
 
 function plot_η()
-    data_file = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "viscosity.dat")
+    data_file = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "viscosity_unitary.dat")
 
     T = Float64[]
     ηB1g = Float64[]
-    ηB2g = Float64[]
     open(data_file, "r") do file
         for line in readlines(file)
             startswith(line, "#") && continue
-            t, η1, η2 = split(line, " ")
+            t, η1 = split(line, " ")
             push!(T, parse(Float64, t))
             push!(ηB1g, parse(Float64, η1))
-            push!(ηB2g, parse(Float64, η2))
         end
     end
 
     # Fit to Brad's data
     visc_file = joinpath(@__DIR__, "..", "data", "Sr2RuO4","B1gViscvT_new.dat")
     data = readdlm(visc_file)
-    rmodel(t, p) = p[1] .+ 1 ./ (p[2] .+ p[3] * t.^2.0)
-    rfit = curve_fit(rmodel, data[1:341, 1], data[1:341, 2], [0.1866, 1.2, 0.1])
+    rmodel(t, p) = p[1] .+ 1 ./ (p[2] .+ p[3] * t.^p[4])
+    rfit = curve_fit(rmodel, data[1:341, 1], data[1:341, 2], [0.1866, 1.2, 0.1, 2.0])
     @show rfit.param
     @show rfit.param[2] / rfit.param[3]
     data[:, 2] .-= rfit.param[1] # Subtract off systematic offset
 
 
-    model(t, p) = 1 ./ (p[1] .+ p[2] * t.^2.0)
+    model(t, p) = 1 ./ (p[1] .+ p[2] * t.^p[3])
     fit = curve_fit(model, T, ηB1g, [1.0, 0.1, 2.0])
     @show fit.param
     @show fit.param[1] / fit.param[2]
@@ -404,13 +406,21 @@ function plot_η()
     ylims!(ax, 0.0, 40)
     xlims!(ax, 0.0, 14^2)
     
+    domain = 0.0:0.1:14.0
     scatter!(ax, data[:, 1].^2, 1 ./ data[:, 2],color = :black)
-    # lines!(ax, data[:, 1].^2, 1 ./ (model(data[:, 1], rfit.param) .- rfit.param[1]))
-    lines!(ax, data[:, 1].^2, 1 ./ (model(data[:, 1], fit.param)), color = :red)
+    lines!(ax, domain.^2, 1 ./ (rmodel(domain, rfit.param) .- rfit.param[1]))
+    lines!(ax, domain.^2, 1 ./ (model(domain, fit.param)), color = :red)
     scatter!(ax, T.^2, 1 ./ ηB1g)
-    display(f)
+    
+    ax2 = Axis(f[1,2],
+        aspect = 1.0,
+        ylabel = L"\eta_\text{exp} / \eta_\text{theory} ",
+            xlabel = L"T(\mathrm{K})",
+    )
+    lines!(ax2, domain, (rfit.param[3]/fit.param[2]) * (rmodel(domain, rfit.param) .- rfit.param[1]) ./ (model(domain, fit.param)))
 
-    outfile = joinpath(@__DIR__, "..", "plots", "η_constant_Vimp.png")
+    display(f)
+    outfile = joinpath(@__DIR__, "..", "plots", "η_unitary.png")
     save(outfile, f)
 
     return nothing
@@ -482,31 +492,25 @@ function plot_spectrum(n_ε, n_θ, Uee, Vimp)
     save(outfile, f)
 end
 
-
-
 function main(n_ε, n_θ)    
     # Unitary
     Uee = 0.03295629587089841
     Vimp = 7.560563025815616e-5
-
-    plot_ρ(n_ε, n_θ, Uee, Vimp)
 
     # τ_eff(n_ε, n_θ, Uee, Vimp)
     # plot_spectrum(n_ε, n_θ, Uee, Vimp)
 
     # modes(12.0, n_ε, n_θ, Uee, bands)
 
-    # plot_η()
-    # open(joinpath(@__DIR__, "..", "data", "viscosity_unitary.dat"), "w") do file
-    #     write(filedd, "#Uee = $(Uee) eV")
-    #     write(file, "\n#√n * Vimp = $(Vimp) eV m^{-3/2}")
-    #     write(file, "\n#T(K) ηB1g(Pa-s) ηB2g(Pa-s)")
+    plot_η()
+    # open(joinpath(data_dir, "viscosity_unitary.dat"), "w") do file
+    #     write(file, "#Uee = $(Uee) eV")
+    #     write(file, "\n#√n = $(Vimp) m^{-3/2}")
+    #     write(file, "\n#T(K) ηB1g(Pa-s)")
     #     for T in 2.0:0.5:14.0
-    T = 12.0
-            ηB1g, ηB2g = real.(get_property("η", T, n_ε, n_θ, Uee, Vimp))
-            @show ηB1g, ηB2g
-            #         write(file, "\n$(T) $(ηB1g) $(ηB2g)")
-    #         @show ηB1g, ηB2g
+    #         ηB1g = get_property("ηB1g", T, n_ε, n_θ, Uee, Vimp)
+    #         @show ηB1g
+    #         write(file, "\n$(T) $(ηB1g)")
     #     end
     # end
 
