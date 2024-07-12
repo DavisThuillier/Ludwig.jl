@@ -2,57 +2,31 @@ using Ludwig
 using HDF5
 using Interpolations
 using StaticArrays
+import LinearAlgebra: eigvals
 
 function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
     T = kb * T # Convert K to eV
-    N = 1001 # Interpolation dimension
 
-    grid    = Vector{Patch}(undef, 0)
-    corners = Vector{SVector{2, Float64}}(undef, 0)
-    sitps = Vector{ScaledInterpolation}(undef, length(bands))
-    Δε = 0
-    for (i, h) in enumerate(bands)
-        mesh, Δε = Ludwig.generate_mesh(h, T, n_ε, n_θ, 2000)
-        grid = vcat(grid, map(x -> Patch(
-                                    x.momentum, 
-                                    x.energy,
-                                    x.v,
-                                    x.dV,
-                                    x.de,
-                                    x.jinv, 
-                                    x.djinv,
-                                    x.corners .+ length(corners)
-                                ), mesh.patches)
-        )
-        corners = vcat(corners, mesh.corners)
+    mesh, Δε = Ludwig.multiband_mesh(hamiltonian, T, n_ε, n_θ)
 
-
-        E = Matrix{Float64}(undef, N, N)
-        for kx in 1:N
-            for ky in 1:N
-                E[kx, ky] = h([-0.5 + (kx-1)/(N-1), -0.5 + (ky-1)/(N-1)])
-            end
-        end
-        itp = interpolate(E, BSpline(Cubic(Line(OnGrid()))))
-        sitps[i] = scale(itp, -0.5:1/(N-1):0.5, -0.5:1/(N-1):0.5)
-    end
-
-    ℓ = length(grid)
+    ℓ = length(mesh.patches)
 
     h5open(outfile, "cw") do fid
         g = create_group(fid, "data")
         write_attribute(g, "n_e", n_ε)
         write_attribute(g, "n_theta", n_θ)
-        g["corners"] = copy(transpose(reduce(hcat, corners)))
-        g["momenta"] = copy(transpose(reduce(hcat, map(x -> x.momentum, grid))))
-        g["velocities"] = copy(transpose(reduce(hcat, map(x -> x.v, grid))))
-        g["energies"] = map(x -> x.energy, grid) 
-        g["dVs"] = map(x -> x.dV, grid)
-        g["corner_ids"] = copy(transpose(reduce(hcat, map(x -> x.corners, grid))))
+        g["corners"] = copy(transpose(reduce(hcat, mesh.corners)))
+        g["momenta"] = copy(transpose(reduce(hcat, map(x -> x.momentum, mesh.patches))))
+        g["velocities"] = copy(transpose(reduce(hcat, map(x -> x.v, mesh.patches))))
+        g["energies"] = map(x -> x.energy, mesh.patches) 
+        g["dVs"] = map(x -> x.dV, mesh.patches)
+        g["corner_ids"] = copy(transpose(reduce(hcat, map(x -> x.corners, mesh.patches))))
     end 
 
     Γ = zeros(Float64, ℓ, ℓ) # Scattering operator
-    Ludwig.electron_electron!(Γ, grid, Δε, T, sitps)
+
+    N = 1001 # Interpolation dimension for energies
+    Ludwig.electron_electron!(Γ, mesh.patches, Δε, T, hamiltonian, N)
 
     # Write scattering operator out to file
     h5open(outfile, "cw") do fid
@@ -72,6 +46,5 @@ end
 
 T, n_ε, n_θ, band_file, dir = argument_handling()
 include(joinpath(@__DIR__, band_file))
-bands = [bands[3], bands[3]]
-outfile = joinpath(@__DIR__, dir, "$(material)_γγ_$(T)_$(n_ε)x$(n_θ).h5")
+outfile = joinpath(@__DIR__, dir, "$(material)_$(T)_$(n_ε)x$(n_θ).h5")
 main(T, n_ε, n_θ, outfile)

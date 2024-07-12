@@ -16,15 +16,15 @@ end
 const alph::Float64 = 7.604
 const alph_p::Float64 = 7.604
 
-function dxx(k::SVector{2,Float64})
+function dxx_γ(k)
     return 2 * alph * tγ * cos(2pi*k[1]) + 2 * alph_p * tpγ * cos(2pi*k[1]) * cos(2pi*k[2])
 end
 
-function dyy(k::SVector{2,Float64})
+function dyy_γ(k)
     return 2 * alph * tγ * cos(2pi*k[2]) + 2 * alph_p * tpγ * cos(2pi*k[1]) * cos(2pi*k[2]) 
 end
 
-function dxy(k::SVector{2,Float64})
+function dxy_γ(k)
     return - 2 * alph_p * tpγ * sin(2pi*k[1]) * sin(2pi*k[2])
 end
 
@@ -53,6 +53,36 @@ function ham_β(k)
     x = exz(k)
     y = eyz(k)
     return 0.5 * ( (x + y) + sqrt( (x - y)^2 + 4 * V(k)^2 ) ) * tβ
+end
+
+# Computes the xx or yy deformation potential for the α band. μ is a band index where 1 is α and 2 is β
+function dii_μ(k, i::Int, μ::Int)
+    if μ == 1 || μ == 2
+        x = exz(k)
+        y = eyz(k)
+        Δ = sqrt( 0.25 * (x - y)^2 + V(k)^2 ) # Twice the band gap between α and β
+
+        # d = alph * (1 + t3) * cos(2pi*k[i]) + (-1)^(μ+1) * (alph * (1 - t3)^2 * cos(2pi*k[i])^2 + 2 * t5 * alph_p * sin(2pi*k[1]) * sin(2pi*k[2])) / Δ
+        d = alph * (1 + t3) * cos(2pi*k[i]) + (-1)^(μ+1) * (alph * (1 - t3)^2 * cos(2pi*k[i])^2) / Δ
+        return d * tα
+    elseif μ == 2
+        return d * tβ
+    elseif μ == 3 # γ band
+        return 2 * alph * tγ * cos(2pi*k[i]) + 2 * alph_p * tpγ * cos(2pi*k[1]) * cos(2pi*k[2])
+    else
+        return 0 # Invalid band index
+    end
+end
+
+function hamiltonian(k)
+    h = zeros(Float64, length(bands), length(bands))
+    h[1,1] = exz(k)
+    h[1,2] = V(k)
+    h[2,2] = eyz(k)
+    h[2,1] = h[1,2]
+    h[1:2,1:2] *= sqrt(tα*tβ)
+    h[3,3] = ham_γ(k)
+    return h
 end
 
 bands = [ham_α, ham_β, ham_γ]
