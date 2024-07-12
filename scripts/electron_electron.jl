@@ -23,15 +23,15 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
         g["corner_ids"] = copy(transpose(reduce(hcat, map(x -> x.corners, mesh.patches))))
     end 
 
-    Γ = zeros(Float64, ℓ, ℓ) # Scattering operator
+    L = zeros(Float64, ℓ, ℓ) # Scattering operator
 
     N = 1001 # Interpolation dimension for energies
-    Ludwig.electron_electron!(Γ, mesh.patches, Δε, T, hamiltonian, N)
+    Ludwig.electron_electron!(L, mesh.patches, Δε, T, hamiltonian, N)
 
     # Write scattering operator out to file
     h5open(outfile, "cw") do fid
         g = fid["data"]
-        g["Γ"] = Γ 
+        g["L"] = L 
     end
 end
 
