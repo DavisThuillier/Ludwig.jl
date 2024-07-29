@@ -11,10 +11,12 @@ module Ludwig
         f0(E, T)
 
     Return the value of the Fermi-Dirac distribution for energy E and temperature T.
+    
+    ``f^{(0)}(\\varepsilon) = \\frac{1}{1 + e^{\\varepsilon/k_B T}}``
     """
     f0(E::Float64, T::Float64) = 1 / (exp(E/T) + 1)
 
-    import StaticArrays: SVector, MVector
+    import StaticArrays: SVector, MVector, MMatrix
     using LinearAlgebra
     using ForwardDiff
     import DataStructures: OrderedDict
@@ -45,7 +47,7 @@ module Ludwig
             E[i, j, :] .= eigvals(H([x[i], x[j]]))# Get eigenvalues (bands) of each k-point
         end
     
-        sitps = Vector{ScaledInterpolation}(undef, length(bands))
+        sitps = Vector{ScaledInterpolation}(undef, n_bands)
         for i in 1:n_bands
             itp = interpolate(E[:,:,i], BSpline(Cubic(Line(OnGrid()))))
             sitps[i] = scale(itp, -0.5:1/(N-1):0.5, -0.5:1/(N-1):0.5)

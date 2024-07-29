@@ -8,14 +8,16 @@ using DelimitedFiles
 using ProgressBars
 
 include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
-data_dir = joinpath(@__DIR__, "..", "data", "Sr2RuO4")
+data_dir = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "model_1")
 plot_dir = joinpath(@__DIR__, "..", "plots", "Sr2RuO4")
+exp_dir  = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "experiment")
 
 function load(file)
     h5open(file, "r") do fid
         g = fid["data"]
 
-        Γ = 2pi * read(g, "Γ") 
+        # Γ = 2pi * read(g, "Γ")
+        Γ = 2pi * read(g, "L") 
         k = reinterpret(SVector{2,Float64}, vec(transpose(read(g, "momenta"))))
         v = reinterpret(SVector{2,Float64}, vec(transpose(read(g, "velocities"))))
         E = read(g, "energies")
@@ -82,8 +84,8 @@ function convergence()
     # save(outfile, f)
 end
 
-function get_property(prop::String, T::Float64, n_ε::Int, n_θ::Int, Uee::Real, Vimp::Real; include_impurity::Bool = true)
-    eefile = joinpath(data_dir, "Sr2RuO4_$(T)_$(n_ε)x$(n_θ).h5")
+function get_property(prop::String, T, n_ε::Int, n_θ::Int, Uee::Real, Vimp::Real; include_impurity::Bool = true)
+    eefile = joinpath(data_dir, "Sr2RuO4_$(Float64(T))_$(n_ε)x$(n_θ).h5")
     
     Γ, k, v, E, dV, _, _= load(eefile)
     Γ *= Uee^2
@@ -127,10 +129,11 @@ function get_property(prop::String, T::Float64, n_ε::Int, n_θ::Int, Uee::Real,
 end
 
 function spectrum(n_ε, n_θ, Uee, Vimp)
-    T = 2.0:0.5:14.0
+    # T = 2.0:0.5:14.0
+    T = 12.0:0.5:12.0
     ℓ = 12 * (n_ε - 1) * (n_θ - 1) # Dimension of matrix
 
-    info_file = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "spectrum.aux")
+    info_file = joinpath(data_dir, "spectrum.aux")
     open(info_file, "w") do file
         write(file, "#About spectrum.csv")
         write(file, "\n#Uee = $(Uee) eV")
@@ -139,14 +142,14 @@ function spectrum(n_ε, n_θ, Uee, Vimp)
         writedlm(file, T', ",")
     end
 
-    return nothing
+    # return nothing
 
     spectrum = Matrix{Float64}(undef, length(T), ℓ)
     for i in ProgressBar(eachindex(T))
-        spectrum[i, :] .= real.(get_property("spectrum", T[i], n_ε, n_θ, Uee, Vimp))
+        spectrum[i, :] .= real.(get_property("spectrum", T[i], n_ε, n_θ, Uee, Vimp; include_impurity = false))
     end
 
-    file = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "spectrum.csv")
+    file = joinpath(data_dir, "spectrum.csv")
     writedlm(file, spectrum, ",")
 
 end
@@ -154,7 +157,7 @@ end
 function τ_eff(n_ε, n_θ, Uee, Vimp)
     T = 2.0:0.5:14.0
 
-    file = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "τ_eff.dat")
+    file = joinpath(data_dir, "τ_eff.dat")
     open(file, "w") do f
         write(f, "#τ_eff from conductivity")
         write(f, "\n#n_ε = $(n_ε), n_θ = $(n_θ)")
@@ -173,12 +176,16 @@ function display_heatmap(file, T)
     fd = f0.(E, T) # Fermi dirac on grid points
 
     w = fd .* (1 .- fd) # Energy derivative of FD on grid points
-    M = diagm(sqrt.(w .* dV)) * Γ * (diagm(1 ./ sqrt.(w .* dV)))
+    # M = diagm(sqrt.(w .* dV)) * Γ * (diagm(1 ./ sqrt.(w .* dV)))
+    M = diagm(w .* dV) * Γ
+
     ℓ = size(Γ)[1]
     f = Figure(size = (1000, 1000))
     ax = Axis(f[1,1], aspect = 1.0)
-    h = heatmap!(ax, -M, colorrange = (-0.002, 0.002), colormap = :lisbon)
-    # Colorbar(f[1,2], h)
+    b = 5e-10
+    h = heatmap!(ax, -M, colormap = :viridis, colorrange = (-b, b))
+    # h = heatmap!(ax, abs.(M-M') / norm(M), colormap = :lisbon) #, colorrange = (-b, b))
+    Colorbar(f[1,2], h)
     display(f)
     # save(joinpath(@__DIR__,"..", "plots","Sr2RuO4_interband_heatmap.png"), f)
 end
@@ -246,7 +253,7 @@ function modes(T, n_ε, n_θ, Uee, bands)
 end
 
 function ρ_matthiesen_fit()
-    data_file = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "rho_ee.dat")
+    data_file = joinpath(data_dir, "rho_ee.dat")
 
     Ts = Float64[]
     ρs = Float64[]
@@ -264,7 +271,7 @@ function ρ_matthiesen_fit()
     @show fit.param[2]
 
     # Fit to Lupien's data
-    lupien_file = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "rhovT_Lupien_digitized.dat")
+    lupien_file = joinpath(exp_dir, "rhovT_Lupien_digitized.dat")
     lupien_data = readdlm(lupien_file)
     
     lupien_T = lupien_data[11:60,1]
@@ -294,7 +301,7 @@ end
 
 function ρ_fit_with_impurities(n_ε, n_θ)
     # Fit to Lupien's data
-    lupien_file = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "rhovT_Lupien_digitized.dat")
+    lupien_file = joinpath(exp_dir, "rhovT_Lupien_digitized.dat")
     lupien_data = readdlm(lupien_file)
     
     lupien_T = lupien_data[11:60,1]
@@ -341,7 +348,7 @@ function plot_ρ(n_ε, n_θ, Uee, Vimp)
     # ρ = 10^8  ./ σ # Convert to μΩ-cm
     # @show ρ
 
-    ρ = [0.1150196207561388, 0.12451619211769277, 0.1375536322369924, 0.151331465720305, 0.16678337503360013, 0.18390660051654195, 0.20259655450950417, 0.22294204160296502, 0.24481574576635556, 0.26880111695227943, 0.2943530798780751, 0.3221427793466389, 0.35144701512387355, 0.3830058933824082, 0.41646153824899235, 0.4516984084562476, 0.4888882328571111, 0.5280041011251837, 0.5690052123933946, 0.6120857271933049, 0.6576240047597802, 0.7049349407316307, 0.7544758877211121, 0.8067026603183666, 0.8604543201283871]
+    # ρ = [0.1150196207561388, 0.12451619211769277, 0.1375536322369924, 0.151331465720305, 0.16678337503360013, 0.18390660051654195, 0.20259655450950417, 0.22294204160296502, 0.24481574576635556, 0.26880111695227943, 0.2943530798780751, 0.3221427793466389, 0.35144701512387355, 0.3830058933824082, 0.41646153824899235, 0.4516984084562476, 0.4888882328571111, 0.5280041011251837, 0.5690052123933946, 0.6120857271933049, 0.6576240047597802, 0.7049349407316307, 0.7544758877211121, 0.8067026603183666, 0.8604543201283871]
 
     model(t, p) = p[1] .+ p[2] * t.^p[3]
     fit = curve_fit(model, t, ρ, [0.12, 0.1, 2.0], lower = [0.0, 0.0, 0.0])
@@ -366,7 +373,7 @@ function plot_ρ(n_ε, n_θ, Uee, Vimp)
 end
 
 function plot_η()
-    data_file = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "viscosity_unitary.dat")
+    data_file = joinpath(data_dir, "viscosity_unitary.dat")
 
     T = Float64[]
     ηB1g = Float64[]
@@ -380,7 +387,7 @@ function plot_η()
     end
 
     # Fit to Brad's data
-    visc_file = joinpath(@__DIR__, "..", "data", "Sr2RuO4","B1gViscvT_new.dat")
+    visc_file = joinpath(exp_dir,"B1gViscvT_new.dat")
     data = readdlm(visc_file)
     rmodel(t, p) = p[1] .+ 1 ./ (p[2] .+ p[3] * t.^p[4])
     rfit = curve_fit(rmodel, data[1:341, 1], data[1:341, 2], [0.1866, 1.2, 0.1, 2.0])
@@ -445,22 +452,22 @@ function plot_η()
 end
 
 function plot_spectrum(n_ε, n_θ, Uee, Vimp)
-    τ_eff_file = joinpath(data_dir, "τ_eff.dat")
+    # τ_eff_file = joinpath(data_dir, "τ_eff.dat")
    
-    T = Float64[]
-    τ_eff = Float64[]
-    open(τ_eff_file, "r") do file
-        for line in readlines(file)
-            startswith(line, "#") && continue
-            t, τ = split(line, " ")
-            push!(T, parse(Float64, t))
-            push!(τ_eff, parse(Float64, τ))
-        end
-    end
+    # T = Float64[]
+    # τ_eff = Float64[]
+    # open(τ_eff_file, "r") do file
+    #     for line in readlines(file)
+    #         startswith(line, "#") && continue
+    #         t, τ = split(line, " ")
+    #         push!(T, parse(Float64, t))
+    #         push!(τ_eff, parse(Float64, τ))
+    #     end
+    # end
 
     model(t,p) = p[1] .+ p[2] * t.^p[3]
-    fit = curve_fit(model, T, τ_eff.^-1, [0.0, 1.0, 2.0], lower = [0.0, 0.0, 1.0])
-    @show fit.param
+    # fit = curve_fit(model, T, τ_eff.^-1, [0.0, 1.0, 2.0], lower = [0.0, 0.0, 1.0])
+    # @show fit.param
 
     f = Figure(fontsize = 20)
     ax = Axis(f[1,1], 
@@ -474,22 +481,22 @@ function plot_spectrum(n_ε, n_θ, Uee, Vimp)
     aux_file = joinpath(data_dir, "spectrum.aux")
     spectrum_T = vec(readdlm(aux_file, ',', Float64, comments = true, comment_char = '#'))
 
-    N = 4000
+    N = 324
     spectrum_file = joinpath(data_dir, "spectrum.csv")
     spectrum = readdlm(spectrum_file, ',', Float64)[:, 1:N]
 
     for i in 1:N
         scatter!(ax, spectrum_T.^2, 1e-12 * spectrum[:, i], color = :black)
-        mode_fit = curve_fit(model, spectrum_T, 1e-12 * spectrum[:, i], [0.0, 1e-3, 2.0], lower = [0.0, 0.0, 0.0])
-        @show mode_fit.param
+        # mode_fit = curve_fit(model, spectrum_T, 1e-12 * spectrum[:, i], [0.0, 1e-3, 2.0], lower = [0.0, 0.0, 0.0])
+        # @show mode_fit.param
     end
 
-    lines!(ax, domain.^2, model(domain, fit.param), color = :red)
+    # lines!(ax, domain.^2, model(domain, fit.param), color = :red)
     display(f)
    
 
-    outfile = joinpath(plot_dir, "τ_eff.png")
-    save(outfile, f)
+    # outfile = joinpath(plot_dir, "τ_eff.png")
+    # save(outfile, f)
 end
 
 function main(n_ε, n_θ)    
@@ -502,27 +509,26 @@ function main(n_ε, n_θ)
 
     # modes(12.0, n_ε, n_θ, Uee, bands)
 
-    plot_η()
+    # plot_η()
     # open(joinpath(data_dir, "viscosity_unitary.dat"), "w") do file
     #     write(file, "#Uee = $(Uee) eV")
     #     write(file, "\n#√n = $(Vimp) m^{-3/2}")
     #     write(file, "\n#T(K) ηB1g(Pa-s)")
-    #     for T in 2.0:0.5:14.0
-    #         ηB1g = get_property("ηB1g", T, n_ε, n_θ, Uee, Vimp)
-    #         @show ηB1g
-    #         write(file, "\n$(T) $(ηB1g)")
-    #     end
+        for T in 2.0:0.5:14.0
+            ηB1g = get_property("ηB1g", T, n_ε, n_θ, Uee, Vimp)
+            @show ηB1g
+            # write(file, "\n$(T) $(ηB1g)")
+        end
     # end
 
 end
 
-main(12, 38)
+
+# main(12, 38)
+
+σ = get_property("σ", 12, 6, 16, 0.05, 0.0; include_impurity = false)
+ρ = 1e8 / σ
+@show ρ
 
 
-# open(joinpath(@__DIR__, "..", "data", "rho_ee.dat"), "w") do file
-#     write(file, "#T(K) ρ(μΩ-cm)")
-#     for T in 2.0:0.5:14.0
-#         ρ = real(main(T, n_ε, n_θ, bands))
-#         write(file, "\n$(T) $(ρ)")
-#     end
-# end
+display_heatmap(joinpath(data_dir, "Sr2RuO4_12.0_6x16.h5"), 12*kb)

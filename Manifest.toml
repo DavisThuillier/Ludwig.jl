@@ -6,9 +6,9 @@ project_hash = "3600bc6d854c6b09aa7d933cf9c51ac84617d45b"
 
 [[deps.Adapt]]
 deps = ["LinearAlgebra", "Requires"]
-git-tree-sha1 = "6a55b747d1812e699320963ffde36f1ebdda4099"
+git-tree-sha1 = "cde29ddf7e5726c9fb511f340244ea3481267608"
 uuid = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
-version = "4.0.4"
+version = "3.7.2"
 
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
@@ -28,9 +28,9 @@ uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 
 [[deps.ChainRulesCore]]
 deps = ["Compat", "LinearAlgebra", "SparseArrays"]
-git-tree-sha1 = "575cd02e080939a33b6df6c5853d14924c08e35b"
+git-tree-sha1 = "71acdbf594aab5bbb2cec89b208c41b4c411e49f"
 uuid = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
-version = "1.23.0"
+version = "1.24.0"
 
 [[deps.ChangesOfVariables]]
 deps = ["InverseFunctions", "LinearAlgebra", "Test"]
@@ -162,9 +162,9 @@ uuid = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 
 [[deps.LogExpFunctions]]
 deps = ["ChainRulesCore", "ChangesOfVariables", "DocStringExtensions", "InverseFunctions", "IrrationalConstants", "LinearAlgebra"]
-git-tree-sha1 = "18144f3e9cbe9b15b070288eef858f71b291ce37"
+git-tree-sha1 = "a2d09619db4e765091ee5c6ffe8872849de0feea"
 uuid = "2ab3a3ac-af41-5b50-aa03-7779005ae688"
-version = "0.3.27"
+version = "0.3.28"
 
 [[deps.Logging]]
 uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
@@ -203,9 +203,9 @@ version = "1.2.0"
 
 [[deps.OffsetArrays]]
 deps = ["Adapt"]
-git-tree-sha1 = "e64b4f5ea6b7389f6f046d13d4896a8f9c1ba71e"
+git-tree-sha1 = "1a27764e945a152f7ca7efa04de513d473e9542e"
 uuid = "6fe1bfb0-de20-5000-8ca7-80f57d26f881"
-version = "1.14.0"
+version = "1.14.1"
 
 [[deps.OpenBLAS_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl"]
@@ -312,9 +312,9 @@ uuid = "90137ffa-7385-5640-81b9-e52037218182"
 version = "1.9.4"
 
 [[deps.StaticArraysCore]]
-git-tree-sha1 = "36b3d696ce6366023a0ea192b4cd442268995a0d"
+git-tree-sha1 = "192954ef1208c7019899fbf8049e717f92959682"
 uuid = "1e83bf80-4336-4d27-bf5d-d5a4f845583c"
-version = "1.4.2"
+version = "1.4.3"
 
 [[deps.Statistics]]
 deps = ["LinearAlgebra", "SparseArrays"]

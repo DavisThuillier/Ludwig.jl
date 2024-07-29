@@ -1,16 +1,18 @@
 export generate_mesh, Patch
 
-struct Patch
+struct Patch{D}
     momentum::SVector{2,Float64} # Momentum in 1st BZ
-    energy::Float64 # Energy associated to band index and momentum
+    energies::SVector{D, Float64} # Energy associated to band index and momentum
+    band_index::Int 
     v::SVector{2,Float64} # Group velocity
     dV::Float64 # Patch area
     jinv::Matrix{Float64} # Jacobian of transformation from (kx, ky) --> (E, θ)
     djinv::Float64 # Inverse jacobian determinant
+    w::SVector{D, Float64} # Weight vector of overlap with orbitals
     corners::Vector{Int} # Coordinates of corners for plotting
-    band_index::Int 
-    w::Vector{<:Number} # Weight vector of overlap with orbitals
 end
+
+energy(p::Patch) = p.energies[p.band_index]
 
 struct Mesh
     patches::Vector{Patch}
@@ -61,7 +63,6 @@ function get_angle(k)
     end
 end
 
-
 function multiband_mesh(H::Function, T::Real, n_levels::Int, n_angles::Int, N::Int = 1001, α::Real = 6.0)
     # Generate grid of 1st quadrant 
     x = LinRange(0.0, 0.5, N)
@@ -81,7 +82,7 @@ function multiband_mesh(H::Function, T::Real, n_levels::Int, n_angles::Int, N::I
         mesh, Δε = generate_mesh(E[:,:,i], H, i, T, n_levels, n_angles, α)
         grid = vcat(grid, map(x -> Patch(
                                     x.momentum, 
-                                    x.energy,
+                                    x.energies,
                                     x.v,
                                     x.dV,
                                     x.jinv, 
@@ -100,6 +101,8 @@ end
 
 # Generate mesh for a single band given an array of values for the energy (output of diagonalizing hamiltonian)
 function generate_mesh(E::AbstractArray{<:Real, 2}, H::Function, band_index::Int, T::Real, n_levels::Int, n_angles::Int, α::Real = 6.0)
+    n_bands = size(H([0.0, 0.0]))[1] # Number of bands
+
     itp = interpolate(E, BSpline(Cubic(Line(OnGrid()))))
     x = LinRange(0.0, 0.5, size(E)[1])
     itp = scale(itp, x, x)
@@ -185,11 +188,12 @@ function generate_mesh(E::AbstractArray{<:Real, 2}, H::Function, band_index::Int
             J[2,2] = 2 * A[1,1] / det(A) / Δθ # ∂θ/∂ky |kx
 
             ## Get weights from transformation matrix ##
-            w = eigvecs(H(k[i,j]))[band_index, :]
+            w::SVector{n_bands, Float64} = eigvecs(H(k[i,j]))[:, band_index]
+            e::SVector{n_bands, Float64} = eigvals(H(k[i,j]))
 
             patches[i, j] = Patch(
                 k[i,j], 
-                itp(k[i,j][1], k[i,j][2]),
+                e,
                 Interpolations.gradient(itp, k[i,j][1], k[i,j][2]),
                 get_patch_area(corners, i, j),
                 inv(J),
@@ -232,7 +236,7 @@ function generate_mesh(E::AbstractArray{<:Real, 2}, H::Function, band_index::Int
     map(x -> R^3 * x, corners)
     )
 
-    n_bands = size(H([0.0, 0.0]))[1] # Number of bands
+    
     return Mesh(vec(patches), vec(corners), n_bands), Δε
 end
 
