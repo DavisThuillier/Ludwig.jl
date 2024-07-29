@@ -391,6 +391,11 @@ function mirror_perm(i::Int, n_col::Int, n_row::Int)
     return Int( (n_col - ceil(i / n_row)) * n_row + mod(i - 1, n_row) + 1 )
 end
 
+"""
+    get_patch_area(A, i, j)
+
+Determine the area of the quadrilateral bounded by `A[i,j]`, `A[i + 1, j]`, `A[i + 1, j + 1]`, and `A[i, j+1]`.
+"""
 function get_patch_area(A::Matrix, i::Int, j::Int)
     m = size(A)[2]
     if j != m
