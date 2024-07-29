@@ -2,9 +2,6 @@ using Documenter
 using Ludwig
 
 makedocs(
-    sitename="Ludwig Documentation"
-)
-
-deploydocs(
-    repo = "github.com/davisthuillier/Ludwig.git",
+    sitename="Ludwig Documentation",
+    # format = Documenter.LaTeX(platform = "none")
 )

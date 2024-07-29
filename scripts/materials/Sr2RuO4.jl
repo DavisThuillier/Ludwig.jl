@@ -62,11 +62,8 @@ function dii_μ(k, i::Int, μ::Int)
         y = eyz(k)
         Δ = sqrt( 0.25 * (x - y)^2 + V(k)^2 ) # Twice the band gap between α and β
 
-        # d = alph * (1 + t3) * cos(2pi*k[i]) + (-1)^(μ+1) * (alph * (1 - t3)^2 * cos(2pi*k[i])^2 + 2 * t5 * alph_p * sin(2pi*k[1]) * sin(2pi*k[2])) / Δ
-        d = alph * (1 + t3) * cos(2pi*k[i]) + (-1)^(μ+1) * (alph * (1 - t3)^2 * cos(2pi*k[i])^2) / Δ
-        return d * tα
-    elseif μ == 2
-        return d * tβ
+        d = alph * (1 + t3) * cos(2pi*k[i]) + (-1)^(μ+i) * (alph * (1 - t3)^2 * cos(2pi*k[i]) * (cos(2pi*k[1]) - cos(2pi*k[2])) ) / Δ
+        (μ == 1) ? (return d*tα) : return (d*tβ) 
     elseif μ == 3 # γ band
         return 2 * alph * tγ * cos(2pi*k[i]) + 2 * alph_p * tpγ * cos(2pi*k[1]) * cos(2pi*k[2])
     else
@@ -83,6 +80,19 @@ function hamiltonian(k)
     h[1:2,1:2] *= sqrt(tα*tβ)
     h[3,3] = ham_γ(k)
     return h
+end
+
+# Closed form eigenvectors for Sr2RuO4
+function eigenvecs!(W::MMatrix{3, 3, Float64}, k)
+    W[1,2] = (exz(k) - eyz(k)) / (2 * V(k)) # Store in cell of W which will be set to 0 later
+    W[2,2] = sqrt(1.0 + W[1,2]^2) # Eigenvectors for α,β are of the form (W[1,1] ∓ W[1,2], 1)
+    W[3,1] = sqrt(1.0 + (W[1,2] - W[2,2])^2) # Norm of first eigenvector
+    W[3,3] = sqrt(1.0 + (W[1,2] + W[2,2])^2) # Norm of first eigenvector
+
+    W[1,1] = (W[1,2] - W[2,2]) / W[3,1]; W[2,1] = 1.0 / W[3,1]; W[3,1] = 0.0
+    W[1,3] = (W[1,2] + W[2,2]) / W[3,3]; W[2,3] = 1.0 / W[3,3]; W[3,3] = 0.0
+    W[1,2] = 0.0; W[2,2] = 0.0; W[3,2] = 1.0
+    return nothing
 end
 
 bands = [ham_α, ham_β, ham_γ]

@@ -11,6 +11,7 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
 
     ℓ = length(mesh.patches)
 
+    # Initialize file - will error if
     h5open(outfile, "cw") do fid
         g = create_group(fid, "data")
         write_attribute(g, "n_e", n_ε)
@@ -26,12 +27,12 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
     L = zeros(Float64, ℓ, ℓ) # Scattering operator
 
     N = 1001 # Interpolation dimension for energies
-    Ludwig.electron_electron!(L, mesh.patches, Δε, T, hamiltonian, N)
+    Ludwig.electron_electron!(L, mesh.patches, Δε, T, hamiltonian, N, eigenvecs!)
 
     # Write scattering operator out to file
     h5open(outfile, "cw") do fid
         g = fid["data"]
-        g["L"] = L 
+        g["L"] = L
     end
 end
 
