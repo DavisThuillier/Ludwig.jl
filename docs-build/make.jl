@@ -2,10 +2,14 @@ using Documenter
 using Ludwig
 
 makedocs(
-    sitename="Ludwig Documentation",
+    sitename="Ludwig",
     build = "../docs/",
     pages = Any[
         "Home" => "index.md",
-        "Mesh" => "mesh.md"
+        "Installation" => "install.md",
+        "Mesh" => ["Marching Squares" => "mesh/marching_squares.md",
+        "Single Band Mesh" => "mesh/mesh_sb.md",
+        "Multiband Meshes"=> "mesh/mesh_mb.md",
+        ]
     ]
 )

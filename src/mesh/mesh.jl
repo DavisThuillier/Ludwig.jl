@@ -1,5 +1,18 @@
-export generate_mesh, Patch
+export multiband_mesh, generate_mesh, Patch
 
+"""
+Representation of a patch in momentum space to be integrated over when calculating the collision integral kernel.
+
+# Fields
+- `momentum`: Momentum in 1st BZ scaled by ``2\\pi / a``
+- `energies`: Eigenvalues of Hamiltonian evaluated at `momentum`
+- `band_index`: Index of the Fermi surface from which the patch was generated
+- `v`: The group velocity at `momentum` taking `energies[band_index]` as the dispersion
+- `dV`: Area of the patch in units of ``(2\\pi/a)^2``
+- `jinv`: Jacobian of transformation from ``(k_x, k_y) \\mapsto (\\varepsilon, \\theta)``, the local patch coordinates
+- `w`: The weights of the original orbital basis corresponding to the `band_index`th eigenvalue
+- `corners`: Indices of coordinates in parent `Mesh` struct of corners for plotting
+"""
 struct Patch{D}
     momentum::SVector{2,Float64} # Momentum in 1st BZ
     energies::SVector{D, Float64} # Energy associated to band index and momentum
@@ -11,6 +24,7 @@ struct Patch{D}
     w::SVector{D, Float64} # Weight vector of overlap with orbitals
     corners::Vector{Int} # Coordinates of corners for plotting
 end
+
 
 energy(p::Patch) = p.energies[p.band_index]
 
