@@ -1,5 +1,9 @@
 # Ludwig.jl Documentation
 
 ```@docs
-fd(E, T)
+f0
+```
+
+```@docs
+Ludwig.get_bands
 ```
