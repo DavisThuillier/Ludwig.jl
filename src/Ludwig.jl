@@ -4,13 +4,14 @@ module Ludwig
     const kb::Float64 = 8.6173e-5 # Boltzmann constant in eV / K
     const hbar::Float64 = 6.582119569e-16 # In eV.s 
     const e_charge::Float64 = 1.60218e-19 # C
+
     export G0, kb, hbar, e_charge
 
     export f0
     """
         f0(E, T)
 
-    Return the value of the Fermi-Dirac distribution for energy E and temperature T.
+    Return the value of the Fermi-Dirac distribution for energy `E` and temperature `T`.
     
     ``f^{(0)}(\\varepsilon) = \\frac{1}{1 + e^{\\varepsilon/k_B T}}``
     """
@@ -39,6 +40,14 @@ module Ludwig
         return weights / sum(weights) # Normalize the weights
     end
 
+    """
+        get_bands(H, N)
+
+    Return an interpolation of the eigenvalues of `H` on a square grid [-0.5, 0.5].
+
+    It is assumed that `H` is a function of a vector of length 2 and returns a square matrix.
+    `N` is the number of points between -0.5 and 0.5 used for interpolation.
+    """
     function get_bands(H::Function, N::Int)
         n_bands = size(H([0.0, 0.0]))[1] # Number of bands
         E = Array{Float64}(undef, N, N, n_bands)
