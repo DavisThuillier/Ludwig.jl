@@ -1,9 +1,24 @@
+"""
+Representation of a contour as an ordered set of discrete points
+
+# Fields
+- `points`: Vector of points in contour
+- `isclosed`: Boolean which is `true` if the contour returned to the starting point when being generated
+- `arclength`: Length of the contour
+"""
 struct Isoline
     points::Vector{SVector{2,Float64}}
     isclosed::Bool
     arclength::Real
 end
 
+"""
+Collection of contours generated from a matrix.
+
+# Fields
+- `isolines`: Vector of Isolines
+- `level`: Constant value along contours in `isolines`
+"""
 struct IsolineBundle
     isolines::Vector{Isoline}
     level::Float64

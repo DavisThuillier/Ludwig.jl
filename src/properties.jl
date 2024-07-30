@@ -21,12 +21,12 @@ end
 """
     ηB1g(L, E, dVs, Dxx, Dyy, T)
 """
-function ηB1g(Γ, E, dVs, Dxx, Dyy, T)
+function ηB1g(L, E, dV, Dxx, Dyy, T)
     fd = f0.(E, T) # Fermi dirac on grid points
     w = fd .* (1 .- fd) # Energy derivative of FD on grid points
 
-    Winv = diagm(1 ./ (w .* dVs)) 
-    G = Γ * Winv # G is a symmetric matrix
+    Winv = diagm(1 ./ (w .* dV)) 
+    G = L * Winv # G is a symmetric matrix
     geigvecs = eigvecs(G)
     τ = 1 ./ eigvals(G) # Lifetimes of modes
     τ[1] = 0.0 # Enforce that overlap with the particle-conserving mode is null
@@ -47,14 +47,17 @@ function ηB1g(Γ, E, dVs, Dxx, Dyy, T)
     return real(η) * prefactor
 end
 
-function σ_lifetime(Γ, v, E, dVs, T)
+"""
+    σ_lifetime(Γ, v, E, dV, T)
+"""
+function σ_lifetime(Γ, v, E, dV, T)
     fd = f0.(E, T) # Fermi dirac on grid points
     w = fd .* (1 .- fd) # Energy derivative of FD on grid points
     vx = first.(v)
 
     norm = 0.0
     for i in eachindex(vx)
-        norm += w[i] * dVs[i] * vx[i]^2
+        norm += w[i] * dV[i] * vx[i]^2
     end
     ϕx = bicgstabl(Γ, vx)
     σ = dot(vx .* w .* dVs, ϕx)

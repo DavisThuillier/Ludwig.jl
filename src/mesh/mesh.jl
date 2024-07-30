@@ -25,15 +25,32 @@ struct Patch{D}
     corners::Vector{Int} # Coordinates of corners for plotting
 end
 
+"""
+    energy(p::Patch)
 
+Return the energy corresponding to the band for which `p` was generated.
+"""
 energy(p::Patch) = p.energies[p.band_index]
 
+"""
+Container struct for patches over which to integrate.
+
+# Fields
+- `patches`: Vector of patches
+- `corners`: Vector of points on patch corners for plotting mesh
+- `n_bands`: Dimension of the generating Hamiltonian
+"""
 struct Mesh
     patches::Vector{Patch}
     corners::Vector{SVector{2, Float64}} # Corners of patches for plotting
     n_bands::Int
 end
 
+"""
+    angular_slice(iso, n)
+
+Generate a vector of `n` points equally distributed in angle along `iso`. 
+"""
 function angular_slice(iso::Isoline, n::Int)
     θ = LinRange(0.0, pi/2, n)
 
@@ -56,6 +73,11 @@ function angular_slice(iso::Isoline, n::Int)
     return grid
 end
 
+"""
+    get_angle(k)
+
+Return the angle defined with respect to ``(0,0)`` if `k` is within the umklapp surface and with respect to ``(\\pi/2, \\pi/2)`` otherwise.
+"""
 function get_angle(k)
     if abs(k[2]) < 0.5 - abs(k[1])
         return mod(atan(k[2], k[1]), 2pi)
@@ -77,6 +99,13 @@ function get_angle(k)
     end
 end
 
+"""
+    multiband_mesh(H, T, n_levels, n_angles[, N, α])
+
+Generate a Mesh of (`n_angles` - 1) x (`n_levels` - 1) patches per quadrant per band centered on each band's thermally broadened Fermi surface at temperature `T`.
+
+It is assumed that `H` is a square-matrix-valued function whose eigenvalues are the single-electron band energies. `N` determines the number of points in ``k_x`` and ``k_y`` in the first quadrant of the Brillouin Zone for evaluating `H` and generating energy contours. The width of the Fermi tube at each surface is ``\\pm`` `α T`. 
+"""
 function multiband_mesh(H::Function, T::Real, n_levels::Int, n_angles::Int, N::Int = 1001, α::Real = 6.0)
     # Generate grid of 1st quadrant 
     x = LinRange(0.0, 0.5, N)
@@ -113,7 +142,11 @@ function multiband_mesh(H::Function, T::Real, n_levels::Int, n_angles::Int, N::I
 
 end
 
-# Generate mesh for a single band given an array of values for the energy (output of diagonalizing hamiltonian)
+"""
+    generate_mesh(E::AbstractArray{<:Real, 2}, H, band_index, T, n_levels, n_angles[, α])
+
+Generate a Mesh of (`n_angles` - 1) x (`n_levels` - 1) patches per quadrant by using marching squares to find energy contours of `E`, the energy eigenvalues of `H` corresponding to `band_index` evaluated on a regular grid of ``\\mathbf{k} \\in [0.0, 0.5]\\times[0.0, 0.5]``. 
+"""
 function generate_mesh(E::AbstractArray{<:Real, 2}, H::Function, band_index::Int, T::Real, n_levels::Int, n_angles::Int, α::Real = 6.0)
     n_bands = size(H([0.0, 0.0]))[1] # Number of bands
 
@@ -254,7 +287,11 @@ function generate_mesh(E::AbstractArray{<:Real, 2}, H::Function, band_index::Int
     return Mesh(vec(patches), vec(corners), n_bands), Δε
 end
 
-# Generates mesh for a single band given a functional form of the dispersion
+"""
+    generate_mesh(h::Function, T, n_levels, n_angles[, N, α])
+
+Generate a single band mesh given a functional form `h` for the dispersion.
+"""
 function generate_mesh(h::Function, T::Real, n_levels::Int, n_angles::Int, N::Int = 1001, α::Real = 6.0)
     n_levels = max(3, n_levels) # Enforce minimum of 1 patches in the energy direction
     n_angles = max(3, n_angles) # Enforce minimum of 2 patches in angular direction

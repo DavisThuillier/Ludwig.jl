@@ -7,11 +7,12 @@ makedocs(
     pages = Any[
         "Home" => "index.md",
         "Installation" => "install.md",
-        "Mesh" => ["Marching Squares" => "mesh/marching_squares.md",
+        "Mesh" => ["mesh/mesh.md",
+        "Marching Squares" => "mesh/marching_squares.md",
         "Single Band Mesh" => "mesh/mesh_sb.md",
         "Multiband Meshes"=> "mesh/mesh_mb.md",
         ],
         "Collision Operator" => "collision_operator.md",
-        "Reading Output" => "read.md"
+        "Example" => "example.md"
     ]
 )

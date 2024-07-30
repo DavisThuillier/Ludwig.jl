@@ -5,12 +5,6 @@ const ρ::Float64 = 4*6^(1/3)/pi
 const vol::Float64 = (8 * pi^2 / 15)
 
 """
-    map_to_first_bz(k)
-Map a vector `k` to the ``d``-dimensional centered unit cube where ``d`` is the dimension of `k`. 
-"""
-map_to_first_bz(k) = SVector(mod.(k .+ 0.5, 1.0) .- 0.5)
-
-"""
     Γabc!(ζ, a, b, c, T, Δε, hams::Vector{Function})
 
 Compute the integral
