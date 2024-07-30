@@ -3,7 +3,7 @@
 ## Single Band and Naïve Multiband
 For a single band with a momentum independent scattering potential ``V(\mathbf{q}) = V``,
 ```math
-    \mathbf{L}_{ij} = \frac{1}{\d A_i} \frac{2\pi}{1 - f^{(0)}_i} |V|^2 \frac{1}{(2\pi)^6} \sum_{m} (f^{(0)}_j (1 - f^{(0)}_m) \mathcal{K}_{ijm} - 2f^{(0)}_m (1 - f^{(0)}_j)\mathcal{K}_{imj}) 
+    \mathbf{L}_{ij} = \frac{1}{d A_i} \frac{2\pi}{1 - f^{(0)}_i} |V|^2 \frac{1}{(2\pi)^6} \sum_{m} (f^{(0)}_j (1 - f^{(0)}_m) \mathcal{K}_{ijm} - 2f^{(0)}_m (1 - f^{(0)}_j)\mathcal{K}_{imj}) 
 ```
 where
 ```math
