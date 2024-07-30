@@ -1,10 +1,29 @@
-# const η::SVector{6, Float64} = [1.0, 0.0, 1.0, 0.0, -1.0, 0.0]
-const ρ::Float64 = 4*6^(1/3)/pi
-const vol::Float64 = (8 * pi^2 / 15) # Volume of 5-dimensional unit sphere
 
+const ρ::Float64 = 4*6^(1/3)/pi
+
+"Volume of the 5-dimensional unit sphere"
+const vol::Float64 = (8 * pi^2 / 15)
+
+"""
+    map_to_first_bz(k)
+Map a vector `k` to the ``d``-dimensional centered unit cube where ``d`` is the dimension of `k`. 
+"""
 map_to_first_bz(k) = SVector(mod.(k .+ 0.5, 1.0) .- 0.5)
 
-# e-e scattering
+"""
+    Γabc!(ζ, a, b, c, T, Δε, hams::Vector{Function})
+
+Compute the integral
+```math
+    \\Gamma_{abc} \\equiv \\sum_{\\mu} \\int_a \\int_b \\int_c (1 - f^{(0)}(\\mathbf{k}_a + \\mathbf{k}_b + \\mathbf{k}_c)) \\delta(\\varepsilon_a + \\varepsilon_b - \\varepsilon_c - \\varepsilon^\\mu(\\mathbf{k}_a + \\mathbf{k}_b - \\mathbf{k}_c)) 
+```
+where ``\\mu`` denotes the band index of the dispersion in `hams` and 
+```math
+    \\int_i \\equiv \\frac{1}{a^2} \\int_{\\mathbf{k} \\in \\mathcal{P}_i} d^2\\mathbf{k}
+```
+is an integral over momenta in patch ``\\mathcal{P}_i``. 
+
+"""
 function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Real, Δε::Real, hams::Vector{Function})
     d::MVector{2,Float64} = a.momentum + b.momentum - c.momentum
     d[1] = mod(d[1] + 0.5, 1.0) - 0.5
@@ -43,8 +62,18 @@ function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Real, 
     return vol * a.djinv * b.djinv * c.djinv * integral
 end
 
+"""
+    Γabc!(ζ, a, b, c, T, Δε, h::Function)
+
+When only a single band `h` is provided, compute the integration kernel without summing over bands. 
+"""
 Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Float64, Δε::Real, h::Function) = Γabc!(ζ, a, b, c, T, Δε, [h])
 
+"""
+    Γabc!(ζ, a, b, c, T, Δε, itps::Vector{ScaledInterpolation})
+
+The same integral where energies are evaluated by interpolation of the bands over the 1st Brillouin Zone
+"""
 function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Float64, Δε::Real, itps::Vector{ScaledInterpolation})
     d = map_to_first_bz(a.momentum + b.momentum - c.momentum)
     integral = MVector{length(itps), Float64}(undef)

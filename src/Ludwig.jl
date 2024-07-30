@@ -12,9 +12,17 @@ module Ludwig
     "Electron charge in C"
     const e_charge::Float64 = 1.602176634e-19 
 
-    export G0, kb, hbar, e_charge
-
+    export G0, kb, hbar, e_charge # Physical constants
     export f0
+
+    import StaticArrays: SVector, MVector, MMatrix
+    using LinearAlgebra
+    using ForwardDiff
+    import DataStructures: OrderedDict
+    using ProgressBars
+    using Interpolations
+    using IterativeSolvers
+
     """
         f0(E, T)
 
@@ -26,13 +34,11 @@ module Ludwig
     """
     f0(E::Float64, T::Float64) = 1 / (exp(E/T) + 1)
 
-    import StaticArrays: SVector, MVector, MMatrix
-    using LinearAlgebra
-    using ForwardDiff
-    import DataStructures: OrderedDict
-    using ProgressBars
-    using Interpolations
-    using IterativeSolvers
+    """
+        map_to_first_bz(k)
+    Map a vector `k` to the ``d``-dimensional centered unit cube where ``d`` is the dimension of `k`. 
+    """
+    map_to_first_bz(k) = SVector(mod.(k .+ 0.5, 1.0) .- 0.5)
 
     include("./mesh/marching_squares.jl")
     include("./mesh/mesh.jl")
