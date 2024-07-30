@@ -42,7 +42,7 @@ using the Born approximation, we need to evaluate this interaction term in the e
 ```
 From the above, we can define the *interband connection* as
 ```math
-    F_{\mathbf{k}_1, \mathbf{k}_2}^{\mu\nu} \equiv \sum_a left(W_{\mathbf{k}_1}^{a \mu}right)^* W_{\mathbf{k}_2}^{a \nu} = \sum_a \left(W^\dagger_{\mathbf{k}_1}\right)^{\mu a} W_{\mathbf{k}_2}^{a \nu}  = \left(W^\dagger_{\mathbf{k}_1} W_{\mathbf{k}_2} \right)^{\mu \nu } 
+    F_{\mathbf{k}_1, \mathbf{k}_2}^{\mu\nu} \equiv \sum_a \left(W_{\mathbf{k}_1}^{a \mu} \right)^* W_{\mathbf{k}_2}^{a \nu} = \sum_a \left(W^\dagger_{\mathbf{k}_1}\right)^{\mu a} W_{\mathbf{k}_2}^{a \nu}  = \left(W^\dagger_{\mathbf{k}_1} W_{\mathbf{k}_2} \right)^{\mu \nu } 
 ```
 so the interaction term becomes
 ```math
