@@ -126,13 +126,13 @@ function multiband_mesh(H::Function, T::Real, n_levels::Int, n_angles::Int, N::I
         grid = vcat(grid, map(x -> Patch(
                                     x.momentum, 
                                     x.energies,
+                                    x.band_index,
                                     x.v,
                                     x.dV,
                                     x.jinv, 
                                     x.djinv,
-                                    x.corners .+ length(corners),
-                                    x.band_index,
-                                    x.w
+                                    x.w,
+                                    x.corners .+ length(corners)
                                 ), mesh.patches)
         )
         corners = vcat(corners, mesh.corners)
@@ -145,7 +145,9 @@ end
 """
     generate_mesh(E::AbstractArray{<:Real, 2}, H, band_index, T, n_levels, n_angles[, α])
 
-Generate a Mesh of (`n_angles` - 1) x (`n_levels` - 1) patches per quadrant by using marching squares to find energy contours of `E`, the energy eigenvalues of `H` corresponding to `band_index` evaluated on a regular grid of ``\\mathbf{k} \\in [0.0, 0.5]\\times[0.0, 0.5]``. 
+Generate a `Mesh` of (`n_angles` - 1) x (`n_levels` - 1) patches per quadrant using marching squares to find energy contours of `E`, the energy eigenvalues of `H` corresponding to `band_index` evaluated on a regular grid of ``\\mathbf{k} \\in [0.0, 0.5]\\times[0.0, 0.5]``. 
+
+The width of the Fermi tube is ``\\pm`` `α T`. 
 """
 function generate_mesh(E::AbstractArray{<:Real, 2}, H::Function, band_index::Int, T::Real, n_levels::Int, n_angles::Int, α::Real = 6.0)
     n_bands = size(H([0.0, 0.0]))[1] # Number of bands
@@ -241,13 +243,13 @@ function generate_mesh(E::AbstractArray{<:Real, 2}, H::Function, band_index::Int
             patches[i, j] = Patch(
                 k[i,j], 
                 e,
+                band_index,
                 Interpolations.gradient(itp, k[i,j][1], k[i,j][2]),
                 get_patch_area(corners, i, j),
                 inv(J),
                 1/det(J),
-                [(j-1)*(n_levels) + i, (j-1)*(n_levels) + i+1, j*(n_levels) + i+1, j*(n_levels) + i],
-                band_index,
-                w
+                w,
+                [(j-1)*(n_levels) + i, (j-1)*(n_levels) + i+1, j*(n_levels) + i+1, j*(n_levels) + i]
             )
         end
     end
@@ -255,19 +257,6 @@ function generate_mesh(E::AbstractArray{<:Real, 2}, H::Function, band_index::Int
     Mx = [1 0; 0 -1] # Mirror across the x-axis
     My = [-1 0; 0 1] # Mirror across the y-axis
     R = [0 -1; 1 0] # Rotation matrix for pi / 2
-
-    # patches = hcat(patches,
-    #     map(x -> rotate_patch(x, 1, length(corners)), patches),
-    #     map(x -> rotate_patch(x, 2, 2*length(corners)), patches),
-    #     map(x -> rotate_patch(x, 3, 3*length(corners)), patches)
-    # )
-
-    # corners = hcat(corners,
-    # map(x -> R * x, corners),
-    # map(x -> R^2 * x, corners),
-    # map(x -> R^3 * x, corners)
-    # )
-
 
     patches = vcat(patches,
         map(x -> patch_op(x, My, mirror_perm, n_angles, n_levels, length(corners)), patches)
@@ -412,14 +401,14 @@ end
 function patch_op(p::Patch, M::Matrix, corner_perm::Function, n_col::Int, n_row::Int, corner_shift::Int)
     return Patch(
         SVector{2}(M * p.momentum), 
-        p.energy,
+        p.energies,
+        p.band_index,
         SVector{2}(M * p.v),
         p.dV,
         M * p.jinv, 
         p.djinv,
+        p.w,
         corner_perm.(p.corners, n_col, n_row) .+ corner_shift,
-        p.band_index,
-        p.w
     )
 end
 

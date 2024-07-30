@@ -9,7 +9,7 @@ const vol::Float64 = (8 * pi^2 / 15)
 
 Compute the integral
 ```math
-    \\Gamma_{abc} \\equiv \\sum_{\\mu} \\int_a \\int_b \\int_c (1 - f^{(0)}(\\mathbf{k}_a + \\mathbf{k}_b + \\mathbf{k}_c)) \\delta(\\varepsilon_a + \\varepsilon_b - \\varepsilon_c - \\varepsilon^\\mu(\\mathbf{k}_a + \\mathbf{k}_b - \\mathbf{k}_c)) 
+    \\mathcal{K}^\\mu_{abc} \\equiv \\sum_{\\mu} \\int_a \\int_b \\int_c (1 - f^{(0)}(\\mathbf{k}_a + \\mathbf{k}_b + \\mathbf{k}_c)) \\delta(\\varepsilon_a + \\varepsilon_b - \\varepsilon_c - \\varepsilon^\\mu(\\mathbf{k}_a + \\mathbf{k}_b - \\mathbf{k}_c)) 
 ```
 where ``\\mu`` denotes the band index of the dispersion in `hams` and 
 ```math
@@ -111,6 +111,13 @@ end
 
 Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Float64, Δε::Real, itp::ScaledInterpolation) = Γabc!(ζ, a, b, c, T, Δε, [itp])
 
+"""
+    ee_kernel!(K, grid, i, T, Δε, itps, f0s)
+
+Populate the preallocated array `K` with the values of ``\\mathcal{K}^\\mu_{ijm}`` for the row `i` of the collision operator.
+
+Energies are calculated from `itps`, the interpolation of each band and `f0s` is a vector of the Fermi-Dirac distribution evaluated for the energy of each patch in `grid` at temperature `T`.
+"""
 function ee_kernel!(K, grid::Vector{Patch}, i::Int, T, Δε, itps, f0s)
     # Preallocation
     k12 = MVector{2,Float64}(undef)
@@ -184,6 +191,11 @@ function Iab(a::Patch, b::Patch, Δε::Float64, V_squared::Function)
     end
 end
 
+"""
+    electron_electron!(L, grid, Δε, T, hams::Vector{Function})
+
+Populate the collision matrix `L` defined on patches in `grid` assuming equal weight for interband scattering given explicit functions for each band in `hams`.
+"""
 function electron_electron!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, T::Real, hams::Vector{Function})
     f0s  = map(x -> f0(x.energy, T), grid) # Fermi-Dirac Grid
 
@@ -204,6 +216,11 @@ function electron_electron!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δ�
     end
 end
 
+"""
+    electron_electron!(L, grid, Δε, T, itps::Vector{ScaledInterpolation})
+
+Populate the collision matrix `L` defined on patches in `grid` assuming equal weight for interband scattering given gridded interpolations of bands in `itps`.
+"""
 function electron_electron!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, T::Real, itps::Vector{ScaledInterpolation})
     f0s  = map(x -> f0(x.energy, T), grid)
 
@@ -224,182 +241,96 @@ function electron_electron!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δ�
     end
 end
 
-# function electron_electron!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, T::Real, H::Function, N::Int)
-#     itps = Ludwig.get_bands(H, N)
-#     n_bands = length(itps) 
+"""
+    electron_electron!(L, grid, Δε, T, H, N, cf_eigvecs!)
 
-#     f0s  = SVector{length(grid), Float64}(map(x -> f0(x.energy, T), grid)) # Fermi-Dirac Grid
-#     cfs  = 1 .- f0s # Complement distribution
+Populate the collision matrix `L` defined on patches in `grid` for a scattering perturbation to the Hamiltonian of the form
+```
+V = \\frac{U}{N} \\sum_{a,b} \\sum_{\\mathbf{k}_1, \\mathbf{k}_2, \\mathbf{q}} \\sum_{\\mu\\nu\\sigma\\tau} c^\\dagger_{\\mathbf{k}_1 - \\mathbf{q},\\sigma} \\left( W_{\\mathbf{k}_1 - \\mathbf{q}}^{a \\sigma}\\right)^* W_{\\mathbf{k}_1}^{a \\mu} c_{\\mathbf{k}_1, \\mu} c^\\dagger_{\\mathbf{k}_2 + \\mathbf{q},\\tau} \\left( W_{\\mathbf{k}_2 + \\mathbf{q}}^{b \\tau}\\right)^* W_{\\mathbf{k}_2}^{b \\nu} c_{\\mathbf{k}_2, \\nu}
+```
+The field `w` of the type `Patch` gives the column of ``W_\\mathbf{k}`` corresponding to the field `band_index` evaluated at the field `band_index`.
 
-#     # Preallocation of loop variables
-#     ζ = MVector{6, Float64}(undef)
-#     # integral = MVector{n_bands, Float64}(undef)
-#     Ki = Matrix{SVector{n_bands, Float64}}(undef, length(grid), length(grid))
-#     W = MMatrix{n_bands, n_bands, ComplexF64}(undef)
-#     k1 = Matrix{SVector{2,Float64}}(undef, length(grid), length(grid))
-#     F2mi_squared = MVector{n_bands, Float64}(undef)
-#     Fmi_squared::Float64 = 0.0
-#     Fji::ComplexF64 = 0.0
-   
-#     for i in eachindex(grid)
-#         @show i
-        
-#         @time for j in eachindex(grid)
-#             @inbounds Ki[j, :] .= f0s[j] * Γabc!.( Ref(ζ), Ref(grid[i]), Ref(grid[j]), grid, Ref(T), Ref(Δε), Ref(itps)) .* cfs
-#             @inbounds k1[j, :] .= map_to_first_bz.([grid[i].momentum .+ grid[j].momentum] .- map(x -> x.momentum, grid))
-#         end
-        
-#         @time for j in eachindex(grid)
-#             i == j && continue
-
-#             Fji = dot(grid[j].w, grid[i].w)
-#             for m in eachindex(grid)
-
-#                 ### ki + kj --> km + k4 ###
-#                 Fmi_squared = abs2(dot(grid[m].w, grid[i].w))
-#                 if Fmi_squared != 0
-#                     L[i,j] += Fmi_squared * dot( abs2.(eigvecs(H(k1[j, m])) * conj(grid[j].w)) , Ki[j, m])
-#                 end
-            
-#                 ### Depopulation Events ###
-#                 @inbounds W .= conj.(eigvecs(H(k1[m,j])))
-
-#                 F2mi_squared .=  abs2.(W * grid[i].w * dot(grid[j].w, grid[m].w)) .+ abs2.(W * grid[m].w * Fji)
-
-#                 @inbounds L[i,j] -= dot(F2mi_squared, Ki[m, j])
-#             end
-#         end
-
-#         L[i, :] /= (grid[i].dV * (1 - f0(grid[i].energy, T)) )
-#     end
-# end
-
-# function electron_electron!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, T::Real, H::Function, N::Int)
-#     itps = Ludwig.get_bands(H, N)
-#     n_bands = length(itps) 
-
-#     f0s  = SVector{length(grid), Float64}(map(x -> f0(x.energy, T), grid)) # Fermi-Dirac Grid
-#     F2mi_squared = MVector{n_bands, Float64}(undef)
+The function `cf_eigvecs!` is a convenience function that speeds up performance by populating a pre-allocated matrix with the closed form solution for the eigenvectors of `H`.
+"""
+function electron_electron!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, T::Real, H::Function, N::Int, cf_eigvecs!::Function)
+    itps = Ludwig.get_bands(H, N)
+    n_bands = length(itps) 
+    f0s  = SVector{length(grid), Float64}(map(x -> f0(x.energy, T), grid)) # Fermi-Dirac Grid
     
-#     Threads.@threads for i in eachindex(grid)
-#         @show i
-        
-#         K = Array{Float64}(undef, length(grid), length(grid), n_bands)
-#         W = MMatrix{n_bands, n_bands, ComplexF64}(undef)
+    F_squared = Matrix{Float64}(undef, length(grid), length(grid))
+    for j in eachindex(grid)
+        for m in eachindex(grid)
+            F_squared[j,m] = dot(grid[j].w, grid[m].w)^2
+        end 
+    end
 
-#         @time ee_kernel!(K, grid, i, T, Δε, itps, f0s)
+    Threads.@threads for i in eachindex(grid)
+        K = Array{Float64}(undef, length(grid), length(grid), n_bands)
+        W = MMatrix{n_bands, n_bands, Float64}(undef)
+        ee_kernel!(K, grid, i, T, Δε, itps, f0s)
 
-#         Fjm_squared::Float64 = 0.0
-#         Fni_squared = map(x -> abs2(dot(x.w, grid[i].w)), grid)
+        temp1::Float64 = 0.0
+        temp2::Float64 = 0.0
 
-#         @time for j in eachindex(grid)
-#             i== j && continue
-#             L[i,j] = 0.0
+        vertex(w, j, m) = begin
+            temp1 = 0.0
+            for μ in 1:n_bands
+                temp2 = 0.0
+                for σ in 1:n_bands
+                    temp2 += W[σ, μ] * w[σ]
+                end
+                @inbounds temp1 += temp2^2 * K[j,m,μ]
+            end
+            nothing
+        end
+
+        wi = grid[i].w
+        wj = MVector{n_bands, Float64}(undef); fill!(wj, 0.0)
+        wm = MVector{n_bands, Float64}(undef); fill!(wm, 0.0)
+
+        for j in eachindex(grid)
+            i == j && continue
+            L[i,j] = 0.0
+
+            for μ in 1:n_bands
+                wj[μ] = grid[j].w[μ] # Reduced memory allocation
+            end 
             
-#             for m in eachindex(grid)
-#                 if Fni_squared[m] != 0
-#                     L[i,j] += Fni_squared[m] * dot(abs2.(eigvecs(H(grid[i].momentum + grid[j].momentum - grid[m].momentum)) * grid[j].w), @view K[j,m,:])
-#                 end
+            kij = grid[i].momentum + grid[j].momentum
+            qij = grid[i].momentum - grid[j].momentum
 
-#                 W = eigvecs(H(grid[i].momentum + grid[m].momentum - grid[j].momentum))
-#                 @show W
-#                 return nothing
+            for m in eachindex(grid)
 
-#                 Fjm_squared = abs2(dot(grid[j].w, grid[m].w))
-#                 for μ in 1:n_bands
-#                     F2mi_squared[μ] = abs2(dot(W[:, μ], grid[i].w)) * Fjm_squared + abs2(dot(W[:, μ], grid[m].w)) * Fni_squared[j]
-#                 end
+                if F_squared[m, i] != 0
+                    cf_eigvecs!(W, kij - grid[m].momentum)
+                    vertex(wj, j, m)
+                    L[i,j] += F_squared[m, i] * temp1
+                end
 
-#                 L[i,j] -= dot(F2mi_squared, @view K[m, j, :])
+                if F_squared[j, i] != 0 || F_squared[j, m] != 0
 
-#             end
-#         end
+                    cf_eigvecs!(W, qij + grid[m].momentum)
 
-#         L[i, :] /= (grid[i].dV * (1 - f0(grid[i].energy, T)) )
-#     end
-# end
+                    if F_squared[j, m] != 0
+                        vertex(wi, m, j)
+                        L[i,j] -= F_squared[j, m] * temp1
+                    end
 
-
-# cf_eignvecs is a function which populates a matrix with closed form solutions for the eigenvectors
-# function electron_electron!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, T::Real, H::Function, N::Int, cf_eigvecs!::Function)
-#     itps = Ludwig.get_bands(H, N)
-#     n_bands = length(itps) 
-#     f0s  = SVector{length(grid), Float64}(map(x -> f0(x.energy, T), grid)) # Fermi-Dirac Grid
-    
-#     F_squared = Matrix{Float64}(undef, length(grid), length(grid))
-#     for j in eachindex(grid)
-#         for m in eachindex(grid)
-#             F_squared[j,m] = dot(grid[j].w, grid[m].w)^2
-#         end 
-#     end
-
-#     Threads.@threads for i in eachindex(grid)
-#         K = Array{Float64}(undef, length(grid), length(grid), n_bands)
-#         W = MMatrix{n_bands, n_bands, Float64}(undef)
-#         ee_kernel!(K, grid, i, T, Δε, itps, f0s)
-
-#         temp1::Float64 = 0.0
-#         temp2::Float64 = 0.0
-
-#         vertex(w, j, m) = begin
-#             temp1 = 0.0
-#             for μ in 1:n_bands
-#                 temp2 = 0.0
-#                 for σ in 1:n_bands
-#                     temp2 += W[σ, μ] * w[σ]
-#                 end
-#                 @inbounds temp1 += temp2^2 * K[j,m,μ]
-#             end
-#             nothing
-#         end
-
-#         wi = grid[i].w
-#         wj = MVector{n_bands, Float64}(undef); fill!(wj, 0.0)
-#         wm = MVector{n_bands, Float64}(undef); fill!(wm, 0.0)
-
-#         for j in eachindex(grid)
-#             i == j && continue
-#             L[i,j] = 0.0
-
-#             for μ in 1:n_bands
-#                 wj[μ] = grid[j].w[μ] # Reduced memory allocation
-#             end 
-            
-#             kij = grid[i].momentum + grid[j].momentum
-#             qij = grid[i].momentum - grid[j].momentum
-
-#             for m in eachindex(grid)
-
-#                 if F_squared[m, i] != 0
-#                     cf_eigvecs!(W, kij - grid[m].momentum)
-#                     vertex(wj, j, m)
-#                     L[i,j] += F_squared[m, i] * temp1
-#                 end
-
-#                 if F_squared[j, i] != 0 || F_squared[j, m] != 0
-
-#                     cf_eigvecs!(W, qij + grid[m].momentum)
-
-#                     if F_squared[j, m] != 0
-#                         vertex(wi, m, j)
-#                         L[i,j] -= F_squared[j, m] * temp1
-#                     end
-
-#                     if F_squared[j, i] != 0
-#                         for μ in 1:n_bands
-#                             wm[μ] = grid[m].w[μ]
-#                         end
+                    if F_squared[j, i] != 0
+                        for μ in 1:n_bands
+                            wm[μ] = grid[m].w[μ]
+                        end
                         
-#                         vertex(wm, m, j)
-#                         L[i,j] -= F_squared[j, i] * temp1
-#                     end
-#                 end
-#             end
-#         end
+                        vertex(wm, m, j)
+                        L[i,j] -= F_squared[j, i] * temp1
+                    end
+                end
+            end
+        end
 
-#         L[i, :] /= (grid[i].dV * (1 - f0s[i]) )
-#     end
-# end
+        L[i, :] /= (grid[i].dV * (1 - f0s[i]) )
+    end
+end
 
 # function electron_electron(grid::Vector{Patch}, i::Int, j::Int, Δε::Real, T::Real, H::Function, N::Int, cf_eigvecs!::Function)
 #     Lij::Float64 = 0.0
