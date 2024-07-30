@@ -6,12 +6,15 @@ The sampled momenta lie at the orthocenter of each Patch, and information about 
 ```@docs
 Ludwig.Patch
 ```
+Each patch belongs to a specific band, and the following method allows the energy of that patch to be accessed without storing this as a separate field.
+```@docs
+Ludwig.energy(p::Patch)
+```
+
 These patches are stored in a container type `Mesh` which contains additional fields for plotting.
 ```@docs
 Ludwig.Mesh
 ```
-
-
 
 ## References
 J. M. Buhmann, Unconventional Transport Properties of Correlated Two-Dimensional Fermi Liquids, Ph.D. thesis, Institute
