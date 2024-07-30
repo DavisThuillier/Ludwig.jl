@@ -245,7 +245,7 @@ end
     electron_electron!(L, grid, Δε, T, H, N, cf_eigvecs!)
 
 Populate the collision matrix `L` defined on patches in `grid` for a scattering perturbation to the Hamiltonian of the form
-```
+```math
 V = \\frac{U}{N} \\sum_{a,b} \\sum_{\\mathbf{k}_1, \\mathbf{k}_2, \\mathbf{q}} \\sum_{\\mu\\nu\\sigma\\tau} c^\\dagger_{\\mathbf{k}_1 - \\mathbf{q},\\sigma} \\left( W_{\\mathbf{k}_1 - \\mathbf{q}}^{a \\sigma}\\right)^* W_{\\mathbf{k}_1}^{a \\mu} c_{\\mathbf{k}_1, \\mu} c^\\dagger_{\\mathbf{k}_2 + \\mathbf{q},\\tau} \\left( W_{\\mathbf{k}_2 + \\mathbf{q}}^{b \\tau}\\right)^* W_{\\mathbf{k}_2}^{b \\nu} c_{\\mathbf{k}_2, \\nu}
 ```
 The field `w` of the type `Patch` gives the column of ``W_\\mathbf{k}`` corresponding to the field `band_index` evaluated at the field `band_index`.
