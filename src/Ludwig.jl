@@ -44,6 +44,7 @@ module Ludwig
     include("./mesh/mesh.jl")
     include("./integration.jl")
     include("./properties.jl")
+    include("./form_factors.jl")
 
     function band_weight(v, n)
         weights = Vector{Float64}(undef, n)
