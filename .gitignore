@@ -1,2 +1,2 @@
 data/
-# docs/build/ # Ignore files used to build the site
+.vscode/
