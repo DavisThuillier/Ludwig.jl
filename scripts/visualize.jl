@@ -119,5 +119,25 @@ function main()
     display(f)
 end
 
-main()
-# deformation_potentials()
+function form_factors()
+    T = 4 * kb
+    n_ε = 3
+    n_θ = 24
+    mesh, _ = Ludwig.multiband_mesh(hamiltonian, T, n_ε, n_θ)
+
+    for i in 1:100
+        weights = Ludwig.multiband_weight(mesh.patches[i], vertex_factor, 10)
+
+        for μ in 1:1
+            f = Figure()
+            ax = Axis(f[1,1], aspect = 1.0)
+            h = heatmap!(ax, weights[:, :, μ], colorrange = (-1.0, 1.0))
+            Colorbar(f[1,2], h, )
+            display(f)
+        end
+    end
+
+    
+end
+
+form_factors()
