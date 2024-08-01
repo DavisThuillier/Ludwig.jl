@@ -46,14 +46,12 @@ module Ludwig
     include("./properties.jl")
     include("./form_factors.jl")
 
-    function band_weight(v, n)
-        weights = Vector{Float64}(undef, n)
-        ℓ = length(v) ÷ n
-        for i in eachindex(weights)
-            weights[i] = norm(@view v[(i - 1) * ℓ + 1: i * ℓ])
-        end
-    
-        return weights / sum(weights) # Normalize the weights
+    function Weff_squared_123(p1::Patch, p2::Patch, p3::Patch, Fpp::Function, Fpk::Function)
+
+    end
+
+    function Weff_squared_124()
+
     end
 
     """

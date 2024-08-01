@@ -95,4 +95,55 @@ function eigenvecs!(W::MMatrix{3, 3, Float64}, k)
     return nothing
 end
 
+"""
+    vertex_factor(p1, p2)
+
+Compute ``F_{k1, k2}`` for patches `p1` and `p2` specifically optimized for Sr2RuO4.
+"""
+function vertex_factor(p1::Patch, p2::Patch)
+    if p1.band_index != 2 # i.e. p1 ∈ {α, β}
+        if p2.band_index != 2
+            return dot(p1.w, p2.w)
+        else
+            return 0.0
+        end
+    else
+        if p2.band_index != 2
+            return 0.0
+        else
+            return 1.0
+        end
+    end
+end
+
+function vertex_factor(p::Patch, k, μ::Int)
+    if p.band_index != 2 # i.e. p ∈ {α, β}
+        if μ != 2
+            Δ1 = (exz(k) - eyz(k)) / (2 * V(k)) 
+            Δ2 = sqrt(1.0 + Δ1^2) # Eigenvectors for α,β are of the form (Δ1 ∓ Δ2, 1)
+            if μ == 1 
+                w1 = Δ1 - Δ2
+            else
+                w1 = Δ1 + Δ2
+            end
+
+            # display([w1, 1] / sqrt(1 + w1^2))
+            # display(eigvecs(hamiltonian(k)))
+            # println()
+
+            # return dot(p.w, eigvecs(hamiltonian(k))[:, μ])
+            return (p.w[1] * w1 + p.w[2]) / sqrt(1 + w1^2)
+            
+        else
+            return 0.0
+        end
+    else
+        if μ != 2
+            return 0.0
+        else
+            return 1.0
+        end
+    end
+end
+
 bands = [ham_α, ham_β, ham_γ]
