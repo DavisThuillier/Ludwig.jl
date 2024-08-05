@@ -61,7 +61,39 @@ end
 
 When only a single band `h` is provided, compute the integration kernel without summing over bands. 
 """
-Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Float64, Δε::Real, h::Function) = Γabc!(ζ, a, b, c, T, Δε, [h])
+function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Real, Δε::Real, ε, d::SVector{2, Float64})
+
+    @inline εabc = ε(d) # Energy from momentum conservation
+    δ = energy(a) + energy(b) - energy(c) - εabc # Energy conservation violations
+
+    v::SVector{2,Float64} = ForwardDiff.gradient(x -> ε(x + b.momentum - c.momentum), a.momentum)
+    
+    # ζ[1], ζ[2] = v' * a.jinv
+    # ζ[3], ζ[4] = v' * b.jinv
+    # ζ[5], ζ[6] = - v' * c.jinv
+    ζ[1] = v[1] * a.jinv[1,1] + v[2] * a.jinv[2,1]
+    ζ[2] = v[1] * a.jinv[1,2] + v[2] * a.jinv[2,2]
+    ζ[3] = v[1] * b.jinv[1,1] + v[2] * b.jinv[2,1]
+    ζ[4] = v[1] * b.jinv[1,2] + v[2] * b.jinv[2,2]
+    ζ[5] = - (v[1] * c.jinv[1,1] + v[2] * c.jinv[2,1])
+    ζ[6] = - (v[1] * c.jinv[1,2] + v[2] * c.jinv[2,2])
+    u::SVector{6, Float64} = (Δε / 2) * [1.0, 0.0, 1.0, 0.0, -1.0, 0.0] - ζ
+
+    if abs(δ) < Δε * 1e-4
+        return vol * a.djinv * b.djinv * c.djinv * ρ^(5/2) * (1 - f0(εabc, T)) / norm(u)
+    else
+        # εabc ≈ ε0 + ζ . x
+        ρ < δ^2 / dot(u,u) && return 0.0 # Check for intersection of energy conserving 5-plane with coordinate space
+
+        xpara::SVector{6, Float64} = - δ * u / dot(u,u) # Linearized coordinate along energy conserving direction
+
+        r5::Float64 = (ρ - δ^2 / dot(u,u) )^(5/2)
+
+        return vol * a.djinv * b.djinv * c.djinv * r5 * (1 - f0(εabc + dot(ζ, xpara), T)) / norm(u)
+    end
+    
+
+end
 
 """
     Γabc!(ζ, a, b, c, T, Δε, itps::Vector{ScaledInterpolation})
@@ -182,14 +214,6 @@ function ee_kernel!(K, grid::Vector{Patch}, i::Int, T, Δε, itps, f0s)
 
     return nothing
 end 
-
-function Iab(a::Patch, b::Patch, Δε::Float64, V_squared::Function)
-    if abs(a.energy - b.energy) < Δε/2 
-        return 16 * V_squared(a.momentum, b.momentum) * a.djinv * b.djinv / Δε 
-    else
-        return 0.0
-    end
-end
 
 """
     electron_electron!(L, grid, Δε, T, hams::Vector{Function})
@@ -332,38 +356,71 @@ function electron_electron!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δ�
     end
 end
 
-# function electron_electron(grid::Vector{Patch}, i::Int, j::Int, Δε::Real, T::Real, H::Function, N::Int, cf_eigvecs!::Function)
-#     Lij::Float64 = 0.0
-#     f0s = map(x -> f0(x.energy, T), grid) # Fermi-Dirac Grid
+function electron_electron(grid::Vector{Patch}, i::Int, j::Int, bands, Δε::Real, T::Real, Fpp::Function, Fpk::Function, n_bands::Int)
+    Lij::Float64 = 0.0
+    f0s = map(x -> f0(energy(x), T), grid) # Fermi-Dirac Grid
 
-#     for m in eachindex(grid)
-        
+    w123 = Vector{Float64}(undef, n_bands)
+    w124 = Vector{Float64}(undef, n_bands)
+    ζ  = MVector{6,Float64}(undef)
+
+    kij = grid[i].momentum + grid[j].momentum
+    qij = grid[i].momentum - grid[j].momentum
+    kijm = Vector{Float64}(undef, 2)
+    qimj = Vector{Float64}(undef, 2)
+
+    for m in eachindex(grid)
+        kijm = kij - grid[m].momentum
+        qimj = qij + grid[m].momentum
+
+        Weff_squared_123!(w123, grid[i], grid[j], grid[m], Fpp, Fpk, kijm)
+
+        for μ in eachindex(w123)
+            if w123[μ] != 0
+                Lij += w123[μ] * Γabc!(ζ, grid[i], grid[j], grid[m], T, Δε, bands[μ], kijm) * f0s[j] * (1 - f0s[m])
+            end
+        end
+
+        Weff_squared_123!(w123, grid[i], grid[m], grid[j], Fpp, Fpk, qimj)
+        Weff_squared_124!(w124, grid[i], grid[m], grid[j], Fpp, Fpk, qimj)
+
+        for μ in eachindex(w123)
+            Lij -= (w123[μ] + w124[μ]) * Γabc!(ζ, grid[i], grid[m], grid[j], T, Δε, bands[μ], qimj) * f0s[m] * (1 - f0s[j])
+        end
+    end
+
+    return Lij * f0s[i]
+end
+
+# function Iab(a::Patch, b::Patch, Δε::Float64, V_squared::Function)
+#     if abs(a.energy - b.energy) < Δε/2 
+#         return 16 * V_squared(a.momentum, b.momentum) * a.djinv * b.djinv / Δε 
+#     else
+#         return 0.0
 #     end
-
-#     return Lij / grid[i].dV
 # end
 
-function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, V_squared)
-    for i in ProgressBar(eachindex(grid))        
-        for j in eachindex(grid)
-            i == j && continue
-            @inbounds L[i,j] -= Iab(grid[i], grid[j], Δε, V_squared)
-        end
+# function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, V_squared)
+#     for i in ProgressBar(eachindex(grid))        
+#         for j in eachindex(grid)
+#             i == j && continue
+#             @inbounds L[i,j] -= Iab(grid[i], grid[j], Δε, V_squared)
+#         end
 
-        L[i, :] /= grid[i].dV
-    end
-    return nothing
-end
+#         L[i, :] /= grid[i].dV
+#     end
+#     return nothing
+# end
 
-function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, V_squared::Matrix)
-    ℓ = size(Γ)[1] ÷ 3
-    for i in ProgressBar(eachindex(grid))        
-        for j in eachindex(grid)
-            i == j && continue
-            @inbounds L[i,j] -= Iab(grid[i], grid[j], Δε, (x,y) -> V_squared[(i-1)÷ℓ + 1, (j-1)÷ℓ + 1])
-        end
+# function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, V_squared::Matrix)
+#     ℓ = size(Γ)[1] ÷ 3
+#     for i in ProgressBar(eachindex(grid))        
+#         for j in eachindex(grid)
+#             i == j && continue
+#             @inbounds L[i,j] -= Iab(grid[i], grid[j], Δε, (x,y) -> V_squared[(i-1)÷ℓ + 1, (j-1)÷ℓ + 1])
+#         end
 
-        L[i, :] /= grid[i].dV
-    end
-    return nothing
-end
+#         L[i, :] /= grid[i].dV
+#     end
+#     return nothing
+# end

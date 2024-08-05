@@ -62,11 +62,12 @@ end
 
 function main()
     T = 12 * kb
-    n_ε = 9
-    n_θ = 60
-    mesh, _ = Ludwig.multiband_mesh(hamiltonian, T, n_ε, n_θ)
+    n_ε = 3
+    n_θ = 24
+    mesh, _ = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
 
     corner_ids = map(x -> x.corners, mesh.patches)
+
     quads = Vector{Vector{SVector{2, Float64}}}(undef, 0)
     for i in 1:size(corner_ids)[1]
         push!(quads, map(x -> mesh.corners[x], corner_ids[i]))
@@ -79,32 +80,8 @@ function main()
     )
     
     ℓ = length(mesh.patches)
-    # Dxx = Vector{Float64}(undef, ℓ)
-    # Dyy = Vector{Float64}(undef, ℓ)
-    # index = Vector{Float64}(undef, ℓ)
-    # for i in 1:ℓ
-    #     μ = (i-1)÷(ℓ÷3) + 1 # Band index
-        
-    #     if μ == 2; μ += 1
-    #     elseif μ == 3; μ -= 1
-    #     end
 
-    #     index[i] = μ
-    #     @show μ
-
-    #     Dxx[i] = dii_μ(mesh.patches[i].momentum, 1, μ)
-    #     Dyy[i] = dii_μ(mesh.patches[i].momentum, 2, μ)
-    # end
-
-    # for patch in mesh.patches
-    #     display(patch.W)
-    #     return nothing
-    # end
-    # for p in mesh.patches
-    #     @show p.w
-    # end
-
-    p = poly!(ax, quads, color = map(x -> argmax(x.energies), mesh.patches), colormap = :viridis)
+    p = poly!(ax, quads, color = 1:length(mesh.patches), colormap = :viridis)
 
     xs = map(x -> x.momentum[1], mesh.patches)
     ys = map(x -> x.momentum[2], mesh.patches)
@@ -120,18 +97,20 @@ function main()
 end
 
 function form_factors()
-    T = 4 * kb
-    n_ε = 3
-    n_θ = 24
-    mesh, _ = Ludwig.multiband_mesh(hamiltonian, T, n_ε, n_θ)
+    T = 12 * kb
+    n_ε = 12
+    n_θ = 38
+    mesh, _ = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
 
-    for i in 1:100
-        weights = Ludwig.multiband_weight(mesh.patches[i], vertex_factor, 10)
+    for i in 1:6:2*length(mesh.patches)÷3
+        weights = Ludwig.multiband_weight(mesh.patches[i], vertex_pk, 20)
 
+        k = mesh.patches[i].momentum
+        θ = Ludwig.get_angle(k)
         for μ in 1:1
             f = Figure()
-            ax = Axis(f[1,1], aspect = 1.0)
-            h = heatmap!(ax, weights[:, :, μ], colorrange = (-1.0, 1.0))
+            ax = Axis(f[1,1], aspect = 1.0, title = "Band $(mesh.patches[i].band_index), $(θ)" )
+            h = heatmap!(ax, abs.(weights[:, :, μ]), colorrange = (0.0, 1.0))
             Colorbar(f[1,2], h, )
             display(f)
         end
@@ -141,3 +120,4 @@ function form_factors()
 end
 
 form_factors()
+# main()

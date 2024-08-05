@@ -82,16 +82,33 @@ function hamiltonian(k)
     return h
 end
 
-# Closed form eigenvectors for Sr2RuO4
-function eigenvecs!(W::MMatrix{3, 3, Float64}, k)
-    W[1,2] = (exz(k) - eyz(k)) / (2 * V(k)) # Store in cell of W which will be set to 0 later
-    W[2,2] = sqrt(1.0 + W[1,2]^2) # Eigenvectors for α,β are of the form (W[1,1] ∓ W[1,2], 1)
-    W[3,1] = sqrt(1.0 + (W[1,2] - W[2,2])^2) # Norm of first eigenvector
-    W[3,3] = sqrt(1.0 + (W[1,2] + W[2,2])^2) # Norm of first eigenvector
+function orbital_weights(k)
+    W = zeros(Float64, 3, 3)
 
-    W[1,1] = (W[1,2] - W[2,2]) / W[3,1]; W[2,1] = 1.0 / W[3,1]; W[3,1] = 0.0
-    W[1,3] = (W[1,2] + W[2,2]) / W[3,3]; W[2,3] = 1.0 / W[3,3]; W[3,3] = 0.0
-    W[1,2] = 0.0; W[2,2] = 0.0; W[3,2] = 1.0
+    W[3,3] = 2 * V(k)
+    W[3,2] = sign(W[3,3])
+    W[1,3] = exz(k) - eyz(k) # Store in cell of W which will be set to 0 later
+    W[2,3] = sqrt(W[3,3]^2 + W[1,3]^2) 
+    W[3,1] = sqrt(W[3,3]^2 + (W[1,3] - W[2,3])^2) # Norm of first eigenvector
+
+    W[1,1] = W[3,2] * (W[1,3] - W[2,3]) / W[3,1]; W[2,1] = abs(W[3,3]) / W[3,1]; W[3,1] = 0.0
+    W[1,2] = W[2,1]; W[2,2] = - W[1,1]; W[3,2] = 0.0
+    W[1,3] = 0.0; W[2,3] = 0.0; W[3,3] = 1.0
+
+    return W
+end
+
+function orbital_weights(W::MMatrix{3, 3, Float64}, k)
+    W[3,3] = 2 * V(k)
+    W[3,2] = sign(W[3,3])
+    W[1,3] = exz(k) - eyz(k) # Store in cell of W which will be set to 0 later
+    W[2,3] = sqrt(W[3,3]^2 + W[1,3]^2) 
+    W[3,1] = sqrt(W[3,3]^2 + (W[1,3] - W[2,3])^2) # Norm of first eigenvector
+
+
+    W[1,1] = W[3,2] * (W[1,3] - W[2,3]) / W[3,1]; W[2,1] = abs(W[3,3]) / W[3,1]; W[3,1] = 0.0
+    W[1,2] = W[2,1]; W[2,2] = - W[1,1]; W[3,2] = 0.0
+    W[1,3] = 0.0; W[2,3] = 0.0; W[3,3] = 1.0
     return nothing
 end
 
@@ -100,45 +117,41 @@ end
 
 Compute ``F_{k1, k2}`` for patches `p1` and `p2` specifically optimized for Sr2RuO4.
 """
-function vertex_factor(p1::Patch, p2::Patch)
-    if p1.band_index != 2 # i.e. p1 ∈ {α, β}
-        if p2.band_index != 2
-            return dot(p1.w, p2.w)
+function vertex_pp(p1::Patch, p2::Patch)
+    if p1.band_index < 3 # i.e. p1 ∈ {α, β}
+        if p2.band_index < 3
+            return abs(dot(p1.w, p2.w))
         else
             return 0.0
         end
     else
-        if p2.band_index != 2
+        if p2.band_index < 3
             return 0.0
         else
-            return 1.0
+            return 1.0 # \gamma \gamma
         end
     end
 end
 
-function vertex_factor(p::Patch, k, μ::Int)
-    if p.band_index != 2 # i.e. p ∈ {α, β}
-        if μ != 2
-            Δ1 = (exz(k) - eyz(k)) / (2 * V(k)) 
-            Δ2 = sqrt(1.0 + Δ1^2) # Eigenvectors for α,β are of the form (Δ1 ∓ Δ2, 1)
+function vertex_pk(p::Patch, k, μ::Int)
+    if p.band_index < 3 # i.e. p ∈ {α, β}
+        if μ < 3
+            Δ1 = (exz(k) - eyz(k)) 
+            Δ2 = 2 * V(k)
+            Δ3 = sqrt(Δ2^2 + Δ1^2) 
             if μ == 1 
-                w1 = Δ1 - Δ2
+                w1 = Δ1 - Δ3
             else
-                w1 = Δ1 + Δ2
+                w1 = Δ1 + Δ3
             end
 
-            # display([w1, 1] / sqrt(1 + w1^2))
-            # display(eigvecs(hamiltonian(k)))
-            # println()
-
-            # return dot(p.w, eigvecs(hamiltonian(k))[:, μ])
-            return (p.w[1] * w1 + p.w[2]) / sqrt(1 + w1^2)
+            return abs((p.w[1] * w1 + p.w[2] * Δ2)) / sqrt(Δ2^2 + w1^2)
             
         else
             return 0.0
         end
     else
-        if μ != 2
+        if μ < 3
             return 0.0
         else
             return 1.0

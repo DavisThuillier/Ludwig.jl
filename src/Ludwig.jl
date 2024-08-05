@@ -15,7 +15,7 @@ module Ludwig
     export G0, kb, hbar, e_charge # Physical constants
     export f0
 
-    import StaticArrays: SVector, MVector, MMatrix
+    import StaticArrays: SVector, MVector, MMatrix, SMatrix
     using LinearAlgebra
     using ForwardDiff
     import DataStructures: OrderedDict
@@ -46,12 +46,31 @@ module Ludwig
     include("./properties.jl")
     include("./form_factors.jl")
 
-    function Weff_squared_123(p1::Patch, p2::Patch, p3::Patch, Fpp::Function, Fpk::Function)
+    function Weff_squared_123!(w::Vector, p1::Patch, p2::Patch, p3::Patch, Fpp::Function, Fpk::Function, k4)
+        f13 = Fpp(p1, p3) 
+        f23 = Fpp(p2, p3)
+        for μ4 in eachindex(w)
+            f14 = Fpk(p1, k4, μ4)
+            f24 = Fpk(p2, k4, μ4)
 
+            w[μ4] = abs2(f13*f24 - f14*f23) + 2 * abs2(f14*f23)
+        end
+
+        return nothing
     end
 
-    function Weff_squared_124()
+    function Weff_squared_124!(w::Vector, p1::Patch, p2::Patch, p4::Patch, Fpp::Function, Fpk::Function, k3)
+        f14 = Fpp(p1, p4)
+        f24 = Fpp(p2, p4)
 
+        for μ in eachindex(w)
+            f13 = Fpk(p1, k3, μ) 
+            f23 = Fpk(p2, k3, μ)
+
+            w[μ] = abs2(f13*f24 - f14*f23) + 2 * abs2(f14*f23)
+        end
+
+        return nothing
     end
 
     """
