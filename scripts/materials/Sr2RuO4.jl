@@ -120,7 +120,7 @@ Compute ``F_{k1, k2}`` for patches `p1` and `p2` specifically optimized for Sr2R
 function vertex_pp(p1::Patch, p2::Patch)
     if p1.band_index < 3 # i.e. p1 ∈ {α, β}
         if p2.band_index < 3
-            return abs(dot(p1.w, p2.w))
+            return dot(p1.w, p2.w)
         else
             return 0.0
         end
@@ -145,7 +145,7 @@ function vertex_pk(p::Patch, k, μ::Int)
                 w1 = Δ1 + Δ3
             end
 
-            return abs((p.w[1] * w1 + p.w[2] * Δ2)) / sqrt(Δ2^2 + w1^2)
+            return sign(Δ2) * (p.w[1] * w1 + p.w[2] * Δ2) / sqrt(Δ2^2 + w1^2)
             
         else
             return 0.0
