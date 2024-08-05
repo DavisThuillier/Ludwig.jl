@@ -15,7 +15,7 @@ Representation of a patch in momentum space to be integrated over when calculati
 """
 struct Patch{D}
     momentum::SVector{2,Float64} # Momentum in 1st BZ
-    energies::SVector{D, Float64} # Energy associated to band index and momentum
+    energies::SVector{D,Float64} # Energy associated to band index and momentum
     band_index::Int 
     v::SVector{2,Float64} # Group velocity
     dV::Float64 # Patch area
@@ -238,7 +238,7 @@ function generate_mesh(E::AbstractArray{<:Real, 2}, H::Function, band_index::Int
 
             ## Get weights from transformation matrix ##
             w::SVector{n_bands, Float64} = eigvecs(H(k[i,j]))[:, band_index]
-            e::SVector{n_bands, Float64} = eigvals(H(k[i,j]))
+            e::Float64 = eigvals(H(k[i,j]))[band_index]
 
             patches[i, j] = Patch(
                 k[i,j], 
@@ -277,24 +277,58 @@ function generate_mesh(E::AbstractArray{<:Real, 2}, H::Function, band_index::Int
 end
 
 """
-    generate_mesh(h::Function, T, n_levels, n_angles[, N, α])
+    multiband_mesh(bands, W, T, n_levels, n_angles[, N, α])
 
-Generate a single band mesh given a functional form `h` for the dispersion.
+Generate a Mesh of (`n_angles` - 1) x (`n_levels` - 1) patches per quadrant per band centered on each band's thermally broadened Fermi surface at temperature `T`.
+
+`bands` is a vector of the . The width of the Fermi tube at each surface is ``\\pm`` `α T`. 
 """
-function generate_mesh(h::Function, T::Real, n_levels::Int, n_angles::Int, N::Int = 1001, α::Real = 6.0)
+function multiband_mesh(bands::Vector, W::Function, T::Real, n_levels::Int, n_angles::Int, N::Int = 1001, α::Real = 6.0)
+    grid = Vector{Patch}(undef, 0)
+    corners = Vector{SVector{2, Float64}}(undef, 0)
+    n_bands = length(bands)
+    
+    Δε = 0.0
+    for i in eachindex(bands)
+        mesh, Δε = generate_mesh(bands, W, i, n_bands, T, n_levels, n_angles, N, α)
+        grid = vcat(grid, map(x -> Patch(
+                                    x.momentum, 
+                                    x.energies,
+                                    x.band_index,
+                                    x.v,
+                                    x.dV,
+                                    x.jinv, 
+                                    x.djinv,
+                                    x.w,
+                                    x.corners .+ length(corners)
+                                ), mesh.patches)
+        )
+        corners = vcat(corners, mesh.corners)
+    end
+
+    return Mesh(grid, corners, n_bands), Δε
+
+end
+
+"""
+    generate_mesh(E::AbstractArray{<:Real, 2}, H, band_index, T, n_levels, n_angles[, α])
+
+Generate a `Mesh` of (`n_angles` - 1) x (`n_levels` - 1) patches per quadrant using marching squares to find energy contours of `E`, the energy eigenvalues of `H` corresponding to `band_index` evaluated on a regular grid of ``\\mathbf{k} \\in [0.0, 0.5]\\times[0.0, 0.5]``. 
+
+The width of the Fermi tube is ``\\pm`` `α T`. 
+"""
+function generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Real, n_levels::Int, n_angles::Int, N::Int = 1001, α::Real = 6.0)
     n_levels = max(3, n_levels) # Enforce minimum of 1 patches in the energy direction
     n_angles = max(3, n_angles) # Enforce minimum of 2 patches in angular direction
     Δθ = (pi/2) / (n_angles - 1) 
 
-    # Generate grid of 1st quadrant 
     x = LinRange(0.0, 0.5, N)
-    E = map(x -> h([x[1], x[2]]), collect(Iterators.product(x, x)))
+    E = map(x -> bands[band_index]([x[1], x[2]]), collect(Iterators.product(x, x)))
 
     e_threshold = α*T # Half-width of Fermi tube
     e_min = max(-e_threshold, 0.999 * minimum(E))
     e_max = min(e_threshold, 0.999 * maximum(E))
     Δε = (e_max - e_min) / (n_levels - 1)
-
     energies = collect(LinRange(e_min, e_max, n_levels))
 
     c = contours(x, x, E, energies) # Generate Fermi surface contours
@@ -315,7 +349,7 @@ function generate_mesh(h::Function, T::Real, n_levels::Int, n_angles::Int, N::In
             # Patch momentum is the arithmetic mean of
         end
     end
-    v = map(x -> ForwardDiff.gradient(h, x), k)
+    v = map(x -> ForwardDiff.gradient(bands[band_index], x), k)
 
     A = zeros(Float64, 2, 2) # Finite Difference Jacobian
     k1 = SVector{2, Float64}([0.0,0.0])
@@ -330,7 +364,7 @@ function generate_mesh(h::Function, T::Real, n_levels::Int, n_angles::Int, N::In
             else
                 i2 = i+1; i1 = i-1 # Backward difference
             end 
-            ΔE = h(k[i2,j]) - h(k[i1, j])
+            ΔE = bands[band_index](k[i2,j]) - bands[band_index](k[i1,j])
             A[1,1] = (k[i2,j][1] - k[i1,j][1]) / ΔE # ∂kx/∂ε |θ
             A[1,2] = (k[i2,j][2] - k[i1,j][2]) / ΔE # ∂ky/∂ε |θ
 
@@ -365,37 +399,47 @@ function generate_mesh(h::Function, T::Real, n_levels::Int, n_angles::Int, N::In
             J[2,1] = - 2 * A[1,2] / det(A) / Δθ   # ∂θ/∂kx |ky
             J[2,2] = 2 * A[1,1] / det(A) / Δθ # ∂θ/∂ky |kx
 
+            ## Get weights from transformation matrix ##
+            w::SVector{n_bands, Float64} = W(k[i,j])[:, band_index]
+            e = SVector{n_bands, Float64}( map(x -> x(k[i,j]), bands) )
+
             patches[i, j] = Patch(
                 k[i,j], 
-                h(k[i,j]),
-                ForwardDiff.gradient(h, k[i,j]),
+                e,
+                band_index,
+                v[i,j],
                 get_patch_area(corners, i, j),
                 inv(J),
                 1/det(J),
-                [(j-1)*(n_levels) + i, (j-1)*(n_levels) + i+1, j*(n_levels) + i+1, j*(n_levels) + i],
-                1, # Single band
-                [1] # Single band transformation matrix
+                w,
+                [(j-1)*(n_levels) + i, (j-1)*(n_levels) + i+1, j*(n_levels) + i+1, j*(n_levels) + i]
             )
         end
     end
-
+    
     Mx = [1 0; 0 -1] # Mirror across the x-axis
     My = [-1 0; 0 1] # Mirror across the y-axis
     R = [0 -1; 1 0] # Rotation matrix for pi / 2
 
     patches = hcat(patches,
-        map(x -> rotate_patch(x, 1, length(corners)), patches),
-        map(x -> rotate_patch(x, 2, 2*length(corners)), patches),
-        map(x -> rotate_patch(x, 3, 3*length(corners)), patches)
+        reverse(
+            map(x -> patch_op(x, My, mirror_perm, n_angles, n_levels, length(corners)), patches), dims=2
+        )
+    )
+    patches = hcat(patches,
+        reverse(
+            map(x -> patch_op(x, Mx, mirror_perm, 2 * n_angles, n_levels, 2 * length(corners)), patches), dims=2
+        )
     )
 
     corners = hcat(corners,
-        map(x -> R * x, corners),
-        map(x -> R^2 * x, corners),
-        map(x -> R^3 * x, corners)
+    map(x -> R * x, corners),
+    map(x -> R^2 * x, corners),
+    map(x -> R^3 * x, corners)
     )
 
-    return Mesh(vec(patches), vec(corners), 1), Δε
+    
+    return Mesh(vec(patches), vec(corners), n_bands), Δε
 end
 
 function patch_op(p::Patch, M::Matrix, corner_perm::Function, n_col::Int, n_row::Int, corner_shift::Int)
@@ -412,22 +456,10 @@ function patch_op(p::Patch, M::Matrix, corner_perm::Function, n_col::Int, n_row:
     )
 end
 
-function rotate_patch(p, n, shift)
-    R = [0 -1; 1 0]^n
-    return Patch(
-        SVector{2}(R * p.momentum),
-        p.energy,
-        SVector{2}(R * p.v),
-        p.dV,
-        R * p.jinv,
-        p.djinv,
-        p.corners .+ shift, 
-        p.band_index,
-        p.w
-    )
-end
-
 function mirror_perm(i::Int, n_col::Int, n_row::Int)
+    # row_index = mod(i - 1, n_row) + 1
+    # column_index = ceil(i / n_row)
+
     return Int( (n_col - ceil(i / n_row)) * n_row + mod(i - 1, n_row) + 1 )
 end
 
