@@ -283,7 +283,7 @@ Generate a Mesh of (`n_angles` - 1) x (`n_levels` - 1) patches per quadrant per 
 
 `bands` is a vector of the . The width of the Fermi tube at each surface is ``\\pm`` `α T`. 
 """
-function multiband_mesh(bands::Vector, W::Function, T::Real, n_levels::Int, n_angles::Int, N::Int = 1001, α::Real = 6.0)
+function multiband_mesh(bands::Vector, W::Function, T::Real, n_levels::Int, n_angles::Int; N::Int = 1001, α::Real = 6.0)
     grid = Vector{Patch}(undef, 0)
     corners = Vector{SVector{2, Float64}}(undef, 0)
     n_bands = length(bands)
@@ -346,7 +346,7 @@ function generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Rea
     for i in 1:n_levels-1
         for j in 1:n_angles-1
             k[i,j] = (corners[i, j] + corners[i + 1, j] + corners[i + 1, j + 1] + corners[i, j + 1]) / 4
-            # Patch momentum is the arithmetic mean of
+            # Patch momentum is the arithmetic mean of corners
         end
     end
     v = map(x -> ForwardDiff.gradient(bands[band_index], x), k)

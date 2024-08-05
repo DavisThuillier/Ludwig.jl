@@ -98,20 +98,6 @@ function orbital_weights(k)
     return W
 end
 
-function orbital_weights(W::MMatrix{3, 3, Float64}, k)
-    W[3,3] = 2 * V(k)
-    W[3,2] = sign(W[3,3])
-    W[1,3] = exz(k) - eyz(k) # Store in cell of W which will be set to 0 later
-    W[2,3] = sqrt(W[3,3]^2 + W[1,3]^2) 
-    W[3,1] = sqrt(W[3,3]^2 + (W[1,3] - W[2,3])^2) # Norm of first eigenvector
-
-
-    W[1,1] = W[3,2] * (W[1,3] - W[2,3]) / W[3,1]; W[2,1] = abs(W[3,3]) / W[3,1]; W[3,1] = 0.0
-    W[1,2] = W[2,1]; W[2,2] = - W[1,1]; W[3,2] = 0.0
-    W[1,3] = 0.0; W[2,3] = 0.0; W[3,3] = 1.0
-    return nothing
-end
-
 """
     vertex_factor(p1, p2)
 
