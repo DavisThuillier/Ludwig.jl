@@ -1,5 +1,5 @@
 using Ludwig
-using CairoMakie
+using CairoMakie, LaTeXStrings
 using LinearAlgebra
 using StaticArrays
 
@@ -12,7 +12,11 @@ function rational_format(x)
     elseif x == 1
         return L"\pi"
     elseif denominator(x) == 1
-        L"%$(numerator(x)) \pi"
+        return L"%$(numerator(x)) \pi"
+    elseif numerator(x) == 1
+        return L"\frac{\pi}{%$(denominator(x))}"
+    elseif numerator(x) == -1
+        return L"-\frac{\pi}{%$(denominator(x))}"
     else 
         return L"\frac{%$(numerator(x))}{%$(denominator(x))} \pi"
     end
@@ -102,15 +106,29 @@ function form_factors()
     n_θ = 38
     mesh, _ = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
 
+    xticks = map(x -> (x // 4), -8:8)
+
+    N = 100
+    krange = LinRange(-0.5, 0.5, N)
+
     for i in 1:6:2*length(mesh.patches)÷3
-        weights = Ludwig.multiband_weight(mesh.patches[i], vertex_pk, 20)
+        weights = Ludwig.multiband_weight(mesh.patches[i], vertex_pk, N)
 
         k = mesh.patches[i].momentum
         θ = Ludwig.get_angle(k)
         for μ in 1:1
             f = Figure()
-            ax = Axis(f[1,1], aspect = 1.0, title = "Band $(mesh.patches[i].band_index), $(θ)" )
-            h = heatmap!(ax, abs.(weights[:, :, μ]), colorrange = (0.0, 1.0))
+            ax = Axis(f[1,1], 
+                      aspect = 1.0, 
+                      title  = latexstring("Band $(mesh.patches[i].band_index), \$\\theta = \$ $(round(θ, digits = 4))"),
+                      xlabel = L"k_x",
+                      ylabel = L"k_y",
+                      xticks = xticks,
+                      xtickformat = values -> rational_format.(values),
+                      yticks = xticks,
+                      ytickformat = values -> rational_format.(values)
+                      )
+            h = heatmap!(ax, krange, krange, weights[:, :, μ], colorrange = (-1.0, 1.0))
             Colorbar(f[1,2], h, )
             display(f)
         end
