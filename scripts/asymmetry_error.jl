@@ -6,14 +6,16 @@ import LinearAlgebra: dot
 using CairoMakie
 using LsqFit
 using StatsBase
+using ProgressBars
 
-function main(T::Real, n_ε::Int, n_θ::Int)
+function main(T::Real, n_ε::Int, n_θ::Int, α)
     T = kb * T # Convert K to eV
 
-    mesh, Δε = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ; α = 6.0)
+    mesh, Δε = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ; α = α)
     ℓ = length(mesh.patches)
 
-    vertex_model = "Constant"
+    vertex_model = ""
+    # vertex_model = "Constant"
 
     if vertex_model == "Constant" 
         Fpp(p1, p2) = 1.0
@@ -26,28 +28,30 @@ function main(T::Real, n_ε::Int, n_θ::Int)
     end
 
     N = 3000
+    @show ℓ^2
     errors = Vector{Float64}(undef, N)
     counter = 0
-    for i in 1:10:ℓ, j in 1:10:ℓ
-        Lij = Ludwig.electron_electron(mesh.patches, i, j, bands, Δε, T, Fpp, Fpk, mesh.n_bands)
-        Lji = Ludwig.electron_electron(mesh.patches, j, i, bands, Δε, T, Fpp, Fpk, mesh.n_bands)
+    while true
+        i,j = rand(1:ℓ, 2)
+        Lij = Ludwig.electron_electron(mesh.patches, i, j, bands, Δε, T, Fpp, Fpk, mesh.n_bands, mesh.α)
+        Lji = Ludwig.electron_electron(mesh.patches, j, i, bands, Δε, T, Fpp, Fpk, mesh.n_bands, mesh.α)
 
         counter += 1
         errors[counter] = abs( 2 * (Lij - Lji) / (Lij + Lji) )
+        mod(counter, 100) == 0 && @show counter
         counter == N && break
     end
 
-    ## Fit histogram of errors
+    ## Fit histogram of errors ##
     x_lower = 0.0
     x_upper = 0.5
-    n_bins  = 50
+    n_bins  = 100
     step    = (x_upper - x_lower) / n_bins 
-    bins = LinRange(0.0, 0.5, n_bins)
+    bins = LinRange(x_lower, x_upper, n_bins)
 
     h = StatsBase.fit(Histogram, errors, bins)
     h = StatsBase.normalize(h, mode = :pdf) 
 
-    
     midpoints = ((h.edges[1] .+ circshift(h.edges[1], -1)) / 2.0)[1:end-1]
     mean = dot(midpoints, h.weights) * step
 
@@ -59,16 +63,16 @@ function main(T::Real, n_ε::Int, n_θ::Int)
     ax = Axis(f[1,1], ylabel = "PDF", xlabel = "Asymmetry Error", title = title)
     # xlims!(ax, x_lower, x_upper)
     hist!(ax, errors, bins = bins, normalization = :pdf)
-    domain = LinRange(x_lower, x_upper, 100)
+    # domain = LinRange(x_lower, x_upper, 100)
     # lines!(ax, domain, expmodel(domain, fit.param), color = :red)
     display(f)
 
 end
 
 T   = 12.0
-n_ε = 12
+n_ε = 14
 n_θ = 38
 
 include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
 
-main(T, n_ε, n_θ)
+main(T, n_ε, n_θ, n_ε / 2.0)
