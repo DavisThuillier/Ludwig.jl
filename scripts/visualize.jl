@@ -65,10 +65,10 @@ function deformation_potentials()
 end
 
 function main()
-    T = 12 * kb
-    n_ε = 3
-    n_θ = 24
-    mesh, _ = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
+    T = 24 * kb
+    n_ε = 18
+    n_θ = 38
+    mesh, _ = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ; α = 18.0)
 
     corner_ids = map(x -> x.corners, mesh.patches)
 
@@ -137,5 +137,5 @@ function form_factors()
     
 end
 
-form_factors()
-# main()
+# form_factors()
+main()

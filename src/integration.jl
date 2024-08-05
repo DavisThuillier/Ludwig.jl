@@ -61,9 +61,10 @@ end
 
 When only a single band `h` is provided, compute the integration kernel without summing over bands. 
 """
-function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Real, Δε::Real, ε, d::SVector{2, Float64})
-
+function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Real, Δε::Real, ε, d::SVector{2, Float64}, e_max)
     @inline εabc = ε(d) # Energy from momentum conservation
+    abs(εabc) > e_max && return 0.0
+
     δ = energy(a) + energy(b) - energy(c) - εabc # Energy conservation violations
 
     v::SVector{2,Float64} = ForwardDiff.gradient(x -> ε(x + b.momentum - c.momentum), a.momentum)
@@ -88,6 +89,11 @@ function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Real, 
         xpara::SVector{6, Float64} = - δ * u / dot(u,u) # Linearized coordinate along energy conserving direction
 
         r5::Float64 = (ρ - δ^2 / dot(u,u) )^(5/2)
+
+        # if abs(εabc) > e_max
+        # @show vol * a.djinv * b.djinv * c.djinv * r5 * (1 - f0(εabc + dot(ζ, xpara), T)) / norm(u)
+            # return 0.0
+        # end
 
         return vol * a.djinv * b.djinv * c.djinv * r5 * (1 - f0(εabc + dot(ζ, xpara), T)) / norm(u)
     end
@@ -356,9 +362,10 @@ function electron_electron!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δ�
     end
 end
 
-function electron_electron(grid::Vector{Patch}, i::Int, j::Int, bands, Δε::Real, T::Real, Fpp::Function, Fpk::Function, n_bands::Int)
+function electron_electron(grid::Vector{Patch}, i::Int, j::Int, bands, Δε::Real, T::Real, Fpp::Function, Fpk::Function, n_bands::Int, α)
     Lij::Float64 = 0.0
     f0s = map(x -> f0(energy(x), T), grid) # Fermi-Dirac Grid
+    e_max = α*T
 
     w123 = Vector{Float64}(undef, n_bands)
     w124 = Vector{Float64}(undef, n_bands)
@@ -369,15 +376,22 @@ function electron_electron(grid::Vector{Patch}, i::Int, j::Int, bands, Δε::Rea
     kijm = Vector{Float64}(undef, 2)
     qimj = Vector{Float64}(undef, 2)
 
+    energies = Vector{Float64}(undef, n_bands)
+
     for m in eachindex(grid)
         kijm = kij - grid[m].momentum
         qimj = qij + grid[m].momentum
+
+        for μ in eachindex(bands)
+            energies[μ] = bands[μ](kijm)
+        end
+        @show argmax(energies)
 
         Weff_squared_123!(w123, grid[i], grid[j], grid[m], Fpp, Fpk, kijm)
 
         for μ in eachindex(w123)
             if w123[μ] != 0
-                Lij += w123[μ] * Γabc!(ζ, grid[i], grid[j], grid[m], T, Δε, bands[μ], kijm) * f0s[j] * (1 - f0s[m])
+                Lij += w123[μ] * Γabc!(ζ, grid[i], grid[j], grid[m], T, Δε, bands[μ], kijm, e_max) * f0s[j] * (1 - f0s[m])
             end
         end
 
@@ -385,7 +399,7 @@ function electron_electron(grid::Vector{Patch}, i::Int, j::Int, bands, Δε::Rea
         Weff_squared_124!(w124, grid[i], grid[m], grid[j], Fpp, Fpk, qimj)
 
         for μ in eachindex(w123)
-            Lij -= (w123[μ] + w124[μ]) * Γabc!(ζ, grid[i], grid[m], grid[j], T, Δε, bands[μ], qimj) * f0s[m] * (1 - f0s[j])
+            Lij -= (w123[μ] + w124[μ]) * Γabc!(ζ, grid[i], grid[m], grid[j], T, Δε, bands[μ], qimj, e_max) * f0s[m] * (1 - f0s[j])
         end
     end
 

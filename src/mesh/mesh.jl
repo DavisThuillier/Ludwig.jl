@@ -15,7 +15,7 @@ Representation of a patch in momentum space to be integrated over when calculati
 """
 struct Patch{D}
     momentum::SVector{2,Float64} # Momentum in 1st BZ
-    energies::SVector{D,Float64} # Energy associated to band index and momentum
+    energy::Float64 # Energy associated to band index and momentum
     band_index::Int 
     v::SVector{2,Float64} # Group velocity
     dV::Float64 # Patch area
@@ -30,7 +30,7 @@ end
 
 Return the energy corresponding to the band for which `p` was generated.
 """
-energy(p::Patch) = p.energies[p.band_index]
+energy(p::Patch) = p.energy
 
 """
 Container struct for patches over which to integrate.
@@ -44,6 +44,7 @@ struct Mesh
     patches::Vector{Patch}
     corners::Vector{SVector{2, Float64}} # Corners of patches for plotting
     n_bands::Int
+    α # Width of Fermi tube is 2α
 end
 
 """
@@ -125,7 +126,7 @@ function multiband_mesh(H::Function, T::Real, n_levels::Int, n_angles::Int, N::I
         mesh, Δε = generate_mesh(E[:,:,i], H, i, T, n_levels, n_angles, α)
         grid = vcat(grid, map(x -> Patch(
                                     x.momentum, 
-                                    x.energies,
+                                    x.energy,
                                     x.band_index,
                                     x.v,
                                     x.dV,
@@ -293,7 +294,7 @@ function multiband_mesh(bands::Vector, W::Function, T::Real, n_levels::Int, n_an
         mesh, Δε = generate_mesh(bands, W, i, n_bands, T, n_levels, n_angles, N, α)
         grid = vcat(grid, map(x -> Patch(
                                     x.momentum, 
-                                    x.energies,
+                                    x.energy,
                                     x.band_index,
                                     x.v,
                                     x.dV,
@@ -306,7 +307,7 @@ function multiband_mesh(bands::Vector, W::Function, T::Real, n_levels::Int, n_an
         corners = vcat(corners, mesh.corners)
     end
 
-    return Mesh(grid, corners, n_bands), Δε
+    return Mesh(grid, corners, n_bands, α), Δε
 
 end
 
@@ -401,11 +402,10 @@ function generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Rea
 
             ## Get weights from transformation matrix ##
             w::SVector{n_bands, Float64} = W(k[i,j])[:, band_index]
-            e = SVector{n_bands, Float64}( map(x -> x(k[i,j]), bands) )
 
             patches[i, j] = Patch(
                 k[i,j], 
-                e,
+                bands[band_index](k[i,j]),
                 band_index,
                 v[i,j],
                 get_patch_area(corners, i, j),
@@ -439,13 +439,13 @@ function generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Rea
     )
 
     
-    return Mesh(vec(patches), vec(corners), n_bands), Δε
+    return Mesh(vec(patches), vec(corners), n_bands, α), Δε
 end
 
 function patch_op(p::Patch, M::Matrix, corner_perm::Function, n_col::Int, n_row::Int, corner_shift::Int)
     return Patch(
         SVector{2}(M * p.momentum), 
-        p.energies,
+        p.energy,
         p.band_index,
         SVector{2}(M * p.v),
         p.dV,
