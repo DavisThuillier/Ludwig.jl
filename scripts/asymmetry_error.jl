@@ -12,6 +12,7 @@ function main(T::Real, n_ε::Int, n_θ::Int, α)
     T = kb * T # Convert K to eV
 
     mesh, Δε = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ; α = α)
+    f0s = map(x -> f0(x.energy, T), mesh.patches)
     ℓ = length(mesh.patches)
 
     vertex_model = ""
@@ -27,20 +28,34 @@ function main(T::Real, n_ε::Int, n_θ::Int, α)
         title = L"F_{\mathbf{k}_1\mathbf{k}_2}^{\mu_1\mu_2} = (W_{\mathbf{k}_1}^\dagger W_{\mathbf{k}_1})^{\mu_1\mu_2}"
     end
 
-    N = 3000
-    @show ℓ^2
+    N = 1001
+    x = LinRange(-0.5, 0.5, N)
+    E = Array{Float64}(undef, N, N)
+    itps = Vector{ScaledInterpolation}(undef, length(bands))
+    for μ in eachindex(bands)
+        for i in 1:N, j in 1:N
+            E[i, j] = bands[μ]([x[i], x[j]]) # Get eigenvalues (bands) of each k-point
+        end
+
+        itp = interpolate(E, BSpline(Cubic(Line(OnGrid()))))
+        itps[μ] = scale(itp, x, x)
+    end
+
+    N = 2000
     errors = Vector{Float64}(undef, N)
     counter = 0
-    while true
+    @time while true
         i,j = rand(1:ℓ, 2)
-        Lij = Ludwig.electron_electron(mesh.patches, i, j, bands, Δε, T, Fpp, Fpk, mesh.n_bands, mesh.α)
-        Lji = Ludwig.electron_electron(mesh.patches, j, i, bands, Δε, T, Fpp, Fpk, mesh.n_bands, mesh.α)
+        Lij = Ludwig.electron_electron(mesh.patches, f0s, i, j, itps, T, Fpp, Fpk)
+        Lji = Ludwig.electron_electron(mesh.patches, f0s, j, i, itps, T, Fpp, Fpk)
 
         counter += 1
         errors[counter] = abs( 2 * (Lij - Lji) / (Lij + Lji) )
         mod(counter, 100) == 0 && @show counter
         counter == N && break
     end
+
+    return nothing
 
     ## Fit histogram of errors ##
     x_lower = 0.0
@@ -70,9 +85,9 @@ function main(T::Real, n_ε::Int, n_θ::Int, α)
 end
 
 T   = 12.0
-n_ε = 14
+n_ε = 12
 n_θ = 38
 
 include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
 
-main(T, n_ε, n_θ, n_ε / 2.0)
+main(T, n_ε, n_θ, 6.0)
