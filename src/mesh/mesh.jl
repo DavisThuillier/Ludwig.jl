@@ -16,9 +16,11 @@ Representation of a patch in momentum space to be integrated over when calculati
 struct Patch{D}
     momentum::SVector{2,Float64} # Momentum in 1st BZ
     energy::Float64 # Energy associated to band index and momentum
+    bounds::SVector{2,Float64}
     band_index::Int 
     v::SVector{2,Float64} # Group velocity
     dV::Float64 # Patch area
+    de::Float64
     jinv::Matrix{Float64} # Jacobian of transformation from (kx, ky) --> (E, θ)
     djinv::Float64 # Inverse jacobian determinant
     w::SVector{D, Float64} # Weight vector of overlap with orbitals
@@ -295,9 +297,11 @@ function multiband_mesh(bands::Vector, W::Function, T::Real, n_levels::Int, n_an
         grid = vcat(grid, map(x -> Patch(
                                     x.momentum, 
                                     x.energy,
+                                    x.bounds,
                                     x.band_index,
                                     x.v,
                                     x.dV,
+                                    x.de,
                                     x.jinv, 
                                     x.djinv,
                                     x.w,
@@ -406,9 +410,11 @@ function generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Rea
             patches[i, j] = Patch(
                 k[i,j], 
                 bands[band_index](k[i,j]),
+                SVector{2}(energies[i], energies[i + 1]),
                 band_index,
                 v[i,j],
                 get_patch_area(corners, i, j),
+                Δε,
                 inv(J),
                 1/det(J),
                 w,
@@ -446,9 +452,11 @@ function patch_op(p::Patch, M::Matrix, corner_perm::Function, n_col::Int, n_row:
     return Patch(
         SVector{2}(M * p.momentum), 
         p.energy,
+        p.bounds,
         p.band_index,
         SVector{2}(M * p.v),
         p.dV,
+        p.de,
         M * p.jinv, 
         p.djinv,
         p.w,

@@ -2,40 +2,56 @@ using Ludwig
 using HDF5
 using Interpolations
 using StaticArrays
-import LinearAlgebra: eigvals
-
-
+using ProgressBars
+using LinearAlgebra
 
 function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
     T = kb * T # Convert K to eV
 
-    mesh, Δε = Ludwig.multiband_mesh(hamiltonian, T, n_ε, n_θ)
-
+    mesh, Δε = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
     ℓ = length(mesh.patches)
 
     # Initialize file - will error if
-    h5open(outfile, "cw") do fid
-        g = create_group(fid, "data")
-        write_attribute(g, "n_e", n_ε)
-        write_attribute(g, "n_theta", n_θ)
-        g["corners"] = copy(transpose(reduce(hcat, mesh.corners)))
-        g["momenta"] = copy(transpose(reduce(hcat, map(x -> x.momentum, mesh.patches))))
-        g["velocities"] = copy(transpose(reduce(hcat, map(x -> x.v, mesh.patches))))
-        g["energies"] = map(x -> x.energy, mesh.patches) 
-        g["dVs"] = map(x -> x.dV, mesh.patches)
-        g["corner_ids"] = copy(transpose(reduce(hcat, map(x -> x.corners, mesh.patches))))
-    end 
+    # h5open(outfile, "cw") do fid
+    #     g = create_group(fid, "data")
+    #     write_attribute(g, "n_e", n_ε)
+    #     write_attribute(g, "n_theta", n_θ)
+    #     g["corners"] = copy(transpose(reduce(hcat, mesh.corners)))
+    #     g["momenta"] = copy(transpose(reduce(hcat, map(x -> x.momentum, mesh.patches))))
+    #     g["velocities"] = copy(transpose(reduce(hcat, map(x -> x.v, mesh.patches))))
+    #     g["energies"] = map(x -> x.energy, mesh.patches) 
+    #     g["dVs"] = map(x -> x.dV, mesh.patches)
+    #     g["corner_ids"] = copy(transpose(reduce(hcat, map(x -> x.corners, mesh.patches))))
+    # end 
+
+    N = 1001
+    x = LinRange(-0.5, 0.5, N)
+    E = Array{Float64}(undef, N, N)
+    itps = Vector{ScaledInterpolation}(undef, length(bands))
+    for μ in eachindex(bands)
+        for i in 1:N, j in 1:N
+            E[i, j] = bands[μ]([x[i], x[j]]) # Get eigenvalues (bands) of each k-point
+        end
+
+        itp = interpolate(E, BSpline(Cubic(Line(OnGrid()))))
+        itps[μ] = scale(itp, x, x)
+    end
 
     L = zeros(Float64, ℓ, ℓ) # Scattering operator
+    f0s = map(x -> f0(x.energy, T), mesh.patches) # Fermi-Dirac Grid
 
-    N = 1001 # Interpolation dimension for energies
-    Ludwig.electron_electron!(L, mesh.patches, Δε, T, hamiltonian, N, eigenvecs!)
+    for i in 1:ℓ
+        @time for j in 1:ℓ
+            L[i,j] = Ludwig.electron_electron(mesh.patches, f0s, i, j, itps, T, vertex_pp, vertex_pk)
+        end
+    end
+
 
     # Write scattering operator out to file
-    h5open(outfile, "cw") do fid
-        g = fid["data"]
-        g["L"] = L
-    end
+    # h5open(outfile, "cw") do fid
+    #     g = fid["data"]
+    #     g["L"] = L
+    # end
 end
 
 function argument_handling()

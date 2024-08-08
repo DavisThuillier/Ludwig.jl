@@ -61,9 +61,7 @@ end
 
 When only a single band `h` is provided, compute the integration kernel without summing over bands. 
 """
-function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Real, Δε::Real, ε, d::SVector{2, Float64}, e_max)
-    @inline εabc = ε(d) # Energy from momentum conservation
-    abs(εabc) > e_max && return 0.0
+function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Real, d, εabc, ε::Function)
 
     δ = energy(a) + energy(b) - energy(c) - εabc # Energy conservation violations
 
@@ -78,7 +76,7 @@ function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Real, 
     ζ[4] = v[1] * b.jinv[1,2] + v[2] * b.jinv[2,2]
     ζ[5] = - (v[1] * c.jinv[1,1] + v[2] * c.jinv[2,1])
     ζ[6] = - (v[1] * c.jinv[1,2] + v[2] * c.jinv[2,2])
-    u::SVector{6, Float64} = (Δε / 2) * [1.0, 0.0, 1.0, 0.0, -1.0, 0.0] - ζ
+    u::SVector{6, Float64} = [a.de/2.0, 0.0, b.de/2.0, 0.0, -c.de/2.0, 0.0] - ζ
 
     if abs(δ) < Δε * 1e-4
         return vol * a.djinv * b.djinv * c.djinv * ρ^(5/2) * (1 - f0(εabc, T)) / norm(u)
@@ -90,10 +88,37 @@ function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Real, 
 
         r5::Float64 = (ρ - δ^2 / dot(u,u) )^(5/2)
 
-        # if abs(εabc) > e_max
-        # @show vol * a.djinv * b.djinv * c.djinv * r5 * (1 - f0(εabc + dot(ζ, xpara), T)) / norm(u)
-            # return 0.0
-        # end
+        return vol * a.djinv * b.djinv * c.djinv * r5 * (1 - f0(εabc + dot(ζ, xpara), T)) / norm(u)
+    end
+    
+
+end
+
+function Γabc!(ζ::MVector{6, Float64}, a::Patch, b::Patch, c::Patch, T::Real, d, εabc, itp::ScaledInterpolation)
+    δ = energy(a) + energy(b) - energy(c) - εabc # Energy conservation violations
+
+    @inbounds v::SVector{2,Float64} = Interpolations.gradient(itp, d[1], d[2])
+    
+    # ζ[1], ζ[2] = v' * a.jinv
+    # ζ[3], ζ[4] = v' * b.jinv
+    # ζ[5], ζ[6] = - v' * c.jinv
+    ζ[1] = v[1] * a.jinv[1,1] + v[2] * a.jinv[2,1]
+    ζ[2] = v[1] * a.jinv[1,2] + v[2] * a.jinv[2,2]
+    ζ[3] = v[1] * b.jinv[1,1] + v[2] * b.jinv[2,1]
+    ζ[4] = v[1] * b.jinv[1,2] + v[2] * b.jinv[2,2]
+    ζ[5] = - (v[1] * c.jinv[1,1] + v[2] * c.jinv[2,1])
+    ζ[6] = - (v[1] * c.jinv[1,2] + v[2] * c.jinv[2,2])
+    u::SVector{6, Float64} = [a.de/2.0, 0.0, b.de/2.0, 0.0, -c.de/2.0, 0.0] - ζ
+
+    if abs(δ) < a.de * 1e-4
+        return vol * a.djinv * b.djinv * c.djinv * ρ^(5/2) * (1 - f0(εabc, T)) / norm(u)
+    else
+        # εabc ≈ ε0 + ζ . x
+        ρ < δ^2 / dot(u,u) && return 0.0 # Check for intersection of energy conserving 5-plane with coordinate space
+
+        xpara::SVector{6, Float64} = - δ * u / dot(u,u) # Linearized coordinate along energy conserving direction
+
+        r5::Float64 = (ρ - δ^2 / dot(u,u) )^(5/2)
 
         return vol * a.djinv * b.djinv * c.djinv * r5 * (1 - f0(εabc + dot(ζ, xpara), T)) / norm(u)
     end
@@ -362,13 +387,15 @@ function electron_electron!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δ�
     end
 end
 
-function electron_electron(grid::Vector{Patch}, i::Int, j::Int, bands, Δε::Real, T::Real, Fpp::Function, Fpk::Function, n_bands::Int, α)
-    Lij::Float64 = 0.0
-    f0s = map(x -> f0(energy(x), T), grid) # Fermi-Dirac Grid
-    e_max = α*T
+function get_ebounds(p::Patch)
+    return [p.energy - p.de/2, p.energy + p.de/2]
+end
 
-    w123 = Vector{Float64}(undef, n_bands)
-    w124 = Vector{Float64}(undef, n_bands)
+function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, itps::Vector{ScaledInterpolation}, T::Real, Fpp::Function, Fpk::Function)
+    Lij::Float64 = 0.0
+    w123::Float64 = 0.0
+    w124::Float64 = 0.0
+
     ζ  = MVector{6,Float64}(undef)
 
     kij = grid[i].momentum + grid[j].momentum
@@ -376,31 +403,67 @@ function electron_electron(grid::Vector{Patch}, i::Int, j::Int, bands, Δε::Rea
     kijm = Vector{Float64}(undef, 2)
     qimj = Vector{Float64}(undef, 2)
 
-    energies = Vector{Float64}(undef, n_bands)
+    energies = Vector{Float64}(undef, length(itps))
+
+    iplusj_bounds = grid[i].bounds .+ grid[j].bounds
+    iminusj_bounds = grid[i].bounds .- reverse(grid[j].bounds)
+    m_bounds = Vector{Float64}(undef, 2)
+    mn_bounds = Vector{Float64}(undef, 2)
+    ijm_bounds = Vector{Float64}(undef, 2)
+    imj_bounds = Vector{Float64}(undef, 2)
+
+    μ4::Int = 0
+    μ34::Int = 0
+    min_e::Float64 = 0
 
     for m in eachindex(grid)
-        kijm = kij - grid[m].momentum
-        qimj = qij + grid[m].momentum
-
-        for μ in eachindex(bands)
-            energies[μ] = bands[μ](kijm)
-        end
-        @show argmax(energies)
-
-        Weff_squared_123!(w123, grid[i], grid[j], grid[m], Fpp, Fpk, kijm)
-
-        for μ in eachindex(w123)
-            if w123[μ] != 0
-                Lij += w123[μ] * Γabc!(ζ, grid[i], grid[j], grid[m], T, Δε, bands[μ], kijm, e_max) * f0s[j] * (1 - f0s[m])
+        m_bounds .= grid[m].bounds
+        kijm .= mod.(kij .- grid[m].momentum .+ 0.5, 1.0) .- 0.5
+        
+        min_e = 1e3
+        μ4 = 1
+        for μ in eachindex(itps)
+            energies[μ] = itps[μ](kijm[1], kijm[2])
+            if abs(energies[μ]) < min_e 
+                min_e = abs(energies[μ]); μ4 = μ
             end
         end
 
-        Weff_squared_123!(w123, grid[i], grid[m], grid[j], Fpp, Fpk, qimj)
-        Weff_squared_124!(w124, grid[i], grid[m], grid[j], Fpp, Fpk, qimj)
+        mn_bounds .= m_bounds .+ [energies[μ4] - grid[m].de, energies[μ4] + grid[m].de]
 
-        for μ in eachindex(w123)
-            Lij -= (w123[μ] + w124[μ]) * Γabc!(ζ, grid[i], grid[m], grid[j], T, Δε, bands[μ], qimj, e_max) * f0s[m] * (1 - f0s[j])
+        ijm_bounds[1] = iplusj_bounds[1] - mn_bounds[2]
+        ijm_bounds[2] = iplusj_bounds[2] - mn_bounds[1]
+
+        if sign(ijm_bounds[1]) != sign(ijm_bounds[2]) 
+            w123 = Weff_squared_123(grid[i], grid[j], grid[m], Fpp, Fpk, kijm, μ4)
+
+            if w123 != 0
+                Lij += w123 * Γabc!(ζ, grid[i], grid[j], grid[m], T, kijm, energies[μ4], itps[μ4]) * f0s[j] * (1 - f0s[m])
+            end
+        end 
+
+        qimj .= mod.(qij .+ grid[m].momentum .+ 0.5, 1.0) .- 0.5
+
+        min_e = 1e3
+        μ34 = 1
+        for μ in eachindex(itps)
+            energies[μ] = itps[μ](qimj[1], qimj[2])
+            if abs(energies[μ]) < min_e 
+                min_e = abs(energies[μ]); μ34 = μ
+            end
         end
+
+        mn_bounds .= m_bounds .- [energies[μ34] + grid[m].de, energies[μ34] - grid[m].de]
+        imj_bounds .= iminusj_bounds .+ mn_bounds
+        if sign(imj_bounds[1]) != sign(imj_bounds[2]) 
+            w123 = Weff_squared_123(grid[i], grid[m], grid[j], Fpp, Fpk, qimj, μ34)
+            w124 = Weff_squared_124(grid[i], grid[m], grid[j], Fpp, Fpk, qimj, μ34)
+
+            if w123 + w124 != 0
+                Lij -= (w123 + w124) * Γabc!(ζ, grid[i], grid[m], grid[j], T, qimj, energies[μ34], itps[μ34]) * f0s[m] * (1 - f0s[j])
+            end
+        end
+
     end
 
     return Lij * f0s[i]
