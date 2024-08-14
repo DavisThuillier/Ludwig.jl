@@ -103,197 +103,19 @@ function get_angle(k)
 end
 
 """
-    multiband_mesh(H, T, n_levels, n_angles[, N, α])
-
-Generate a Mesh of (`n_angles` - 1) x (`n_levels` - 1) patches per quadrant per band centered on each band's thermally broadened Fermi surface at temperature `T`.
-
-It is assumed that `H` is a square-matrix-valued function whose eigenvalues are the single-electron band energies. `N` determines the number of points in ``k_x`` and ``k_y`` in the first quadrant of the Brillouin Zone for evaluating `H` and generating energy contours. The width of the Fermi tube at each surface is ``\\pm`` `α T`. 
-"""
-function multiband_mesh(H::Function, T::Real, n_levels::Int, n_angles::Int, N::Int = 1001, α::Real = 6.0)
-    # Generate grid of 1st quadrant 
-    x = LinRange(0.0, 0.5, N)
-    
-    n_bands = size(H([0.0, 0.0]))[1] # Number of bands
-    E = Array{Float64}(undef, N, N, n_bands)
-    for i in 1:N, j in 1:N
-        E[i, j, :] .= eigvals(H([x[i], x[j]]))# Get eigenvalues (bands) of each k-point
-    end
-    # Here it is assumed that there is no level crossing, so that the bands remain ordered as the eigenvalues are calculated across the grid
-
-    grid = Vector{Patch}(undef, 0)
-    corners = Vector{SVector{2, Float64}}(undef, 0)
-    
-    Δε = 0.0
-    for i in 1:n_bands
-        mesh, Δε = generate_mesh(E[:,:,i], H, i, T, n_levels, n_angles, α)
-        grid = vcat(grid, map(x -> Patch(
-                                    x.momentum, 
-                                    x.energy,
-                                    x.band_index,
-                                    x.v,
-                                    x.dV,
-                                    x.jinv, 
-                                    x.djinv,
-                                    x.w,
-                                    x.corners .+ length(corners)
-                                ), mesh.patches)
-        )
-        corners = vcat(corners, mesh.corners)
-    end
-
-    return Mesh(grid, corners, n_bands), Δε
-
-end
-
-"""
-    generate_mesh(E::AbstractArray{<:Real, 2}, H, band_index, T, n_levels, n_angles[, α])
-
-Generate a `Mesh` of (`n_angles` - 1) x (`n_levels` - 1) patches per quadrant using marching squares to find energy contours of `E`, the energy eigenvalues of `H` corresponding to `band_index` evaluated on a regular grid of ``\\mathbf{k} \\in [0.0, 0.5]\\times[0.0, 0.5]``. 
-
-The width of the Fermi tube is ``\\pm`` `α T`. 
-"""
-function generate_mesh(E::AbstractArray{<:Real, 2}, H::Function, band_index::Int, T::Real, n_levels::Int, n_angles::Int, α::Real = 6.0)
-    n_bands = size(H([0.0, 0.0]))[1] # Number of bands
-
-    itp = interpolate(E, BSpline(Cubic(Line(OnGrid()))))
-    x = LinRange(0.0, 0.5, size(E)[1])
-    itp = scale(itp, x, x)
-
-    n_levels = max(3, n_levels) # Enforce minimum of 1 patches in the energy direction
-    n_angles = max(3, n_angles) # Enforce minimum of 2 patches in angular direction
-    Δθ = (pi/2) / (n_angles - 1) 
-
-    e_threshold = α*T # Half-width of Fermi tube
-    e_min = max(-e_threshold, 0.999 * minimum(E))
-    e_max = min(e_threshold, 0.999 * maximum(E))
-    Δε = (e_max - e_min) / (n_levels - 1)
-
-    energies = collect(LinRange(e_min, e_max, n_levels))
-    
-    x = LinRange(0.0, 0.5, size(E)[1])
-    c = contours(x, x, E, energies) # Generate Fermi surface contours
-    
-    # Slice contours to generate patch corners
-    corners = Matrix{SVector{2,Float64}}(undef, n_levels, n_angles)
-    for i in eachindex(c)
-        for curve in c[i].isolines
-            first(curve.points)[1] < first(curve.points)[2] && reverse!(curve.points) # Enforce same curve orientation
-            corners[i, :] = angular_slice(curve, n_angles)
-        end
-    end
-
-    k = Matrix{SVector{2,Float64}}(undef, n_levels-1, n_angles-1)
-    for i in 1:n_levels-1
-        for j in 1:n_angles-1
-            k[i,j] = (corners[i, j] + corners[i + 1, j] + corners[i + 1, j + 1] + corners[i, j + 1]) / 4
-            # Patch momentum is the arithmetic mean of
-        end
-    end
-    v = map(x -> Interpolations.gradient(itp, x[1], x[2]), k)
-
-    A = zeros(Float64, 2, 2) # Finite Difference Jacobian
-    k1 = SVector{2, Float64}([0.0,0.0])
-    J = zeros(Float64, 2, 2)
-    patches = Matrix{Patch}(undef, n_levels-1, n_angles-1)
-    for i in 1:size(patches)[1]
-        for j in 1:size(patches)[2]
-            if i == 1
-                i2 = i+1; i1 = i # Forward difference
-            elseif i == size(patches)[1]
-                i2 = i; i1 = i-1 # Central difference
-            else
-                i2 = i+1; i1 = i-1 # Backward difference
-            end 
-            ΔE = itp(k[i2,j][1], k[i2,j][2]) - itp(k[i1,j][1], k[i1,j][2])
-            A[1,1] = (k[i2,j][1] - k[i1,j][1]) / ΔE # ∂kx/∂ε |θ
-            A[1,2] = (k[i2,j][2] - k[i1,j][2]) / ΔE # ∂ky/∂ε |θ
-
-            if j == 1
-                j2 = j+1; j1 = j
-                Δϕ = get_angle(k[i,j2]) + get_angle(k[i,j1])
-                if k[i, j1][2] < 0.5 - k[i, j1][1]
-                    k1 = SVector{2}(k[i, j1][1], -k[i,j1][2]) # Quadrant IV patch
-                else
-                    k1 = SVector{2}(1.0 - k[i, j1][1], k[i,j1][2]) # Next BZ patch
-                end 
-            elseif j == size(patches)[2]
-                j2 = j-1; j1 = j
-                Δϕ = (get_angle(k[i,j2]) + get_angle(k[i,j1])) - pi 
-                if k[i, j1][2] < 0.5 - k[i, j1][1]
-                    k1 = SVector{2}(-k[i, j1][1], k[i,j1][2]) # Quadrant II patch
-                else
-                    k1 = SVector{2}(k[i, j1][1], 1.0 - k[i,j1][2]) # Next BZ patch
-                end 
-            else
-                j2 = j+1; j1 = j-1
-                Δϕ = (get_angle(k[i,j2]) - get_angle(k[i, j1]))
-                k1 = k[i, j1]
-            end 
-            
-            A[2,1] = (k[i,j2][1] - k1[1]) / Δϕ   # ∂kx/∂θ |ε
-            A[2,2] = (k[i,j2][2] - k1[2]) / Δϕ   # ∂ky/∂θ |ε
-
-            # Use forward differentiation to better calculate energy derivatives
-            J[1,1] = 2 * v[i,j][1] / ΔE # ∂ε/∂kx |ky
-            J[1,2] = 2 * v[i,j][2] / ΔE # ∂ε/∂ky |kx
-            J[2,1] = - 2 * A[1,2] / det(A) / Δθ   # ∂θ/∂kx |ky
-            J[2,2] = 2 * A[1,1] / det(A) / Δθ # ∂θ/∂ky |kx
-
-            ## Get weights from transformation matrix ##
-            w::SVector{n_bands, Float64} = eigvecs(H(k[i,j]))[:, band_index]
-            e::Float64 = eigvals(H(k[i,j]))[band_index]
-
-            patches[i, j] = Patch(
-                k[i,j], 
-                e,
-                band_index,
-                Interpolations.gradient(itp, k[i,j][1], k[i,j][2]),
-                get_patch_area(corners, i, j),
-                inv(J),
-                1/det(J),
-                w,
-                [(j-1)*(n_levels) + i, (j-1)*(n_levels) + i+1, j*(n_levels) + i+1, j*(n_levels) + i]
-            )
-        end
-    end
-    
-    Mx = [1 0; 0 -1] # Mirror across the x-axis
-    My = [-1 0; 0 1] # Mirror across the y-axis
-    R = [0 -1; 1 0] # Rotation matrix for pi / 2
-
-    patches = vcat(patches,
-        map(x -> patch_op(x, My, mirror_perm, n_angles, n_levels, length(corners)), patches)
-    )
-    patches = vcat(patches,
-        map(x -> patch_op(x, Mx, mirror_perm, 2 * n_angles, n_levels, 2 * length(corners)), patches)
-    )
-
-
-    corners = hcat(corners,
-    map(x -> R * x, corners),
-    map(x -> R^2 * x, corners),
-    map(x -> R^3 * x, corners)
-    )
-
-    
-    return Mesh(vec(patches), vec(corners), n_bands), Δε
-end
-
-"""
     multiband_mesh(bands, W, T, n_levels, n_angles[, N, α])
 
 Generate a Mesh of (`n_angles` - 1) x (`n_levels` - 1) patches per quadrant per band centered on each band's thermally broadened Fermi surface at temperature `T`.
 
 `bands` is a vector of the . The width of the Fermi tube at each surface is ``\\pm`` `α T`. 
 """
-function multiband_mesh(bands::Vector, W::Function, T::Real, n_levels::Int, n_angles::Int; N::Int = 1001, α::Real = 6.0)
+function multiband_mesh(bands::Vector, W::Function, T::Real, n_levels::Int, n_angles::Int; N::Int = 2001, α::Real = 6.0)
     grid = Vector{Patch}(undef, 0)
     corners = Vector{SVector{2, Float64}}(undef, 0)
     n_bands = length(bands)
     
-    Δε = 0.0
     for i in eachindex(bands)
-        mesh, Δε = generate_mesh(bands, W, i, n_bands, T, n_levels, n_angles, N, α)
+        mesh = generate_mesh(bands, W, i, n_bands, T, n_levels, n_angles, N, α)
         grid = vcat(grid, map(x -> Patch(
                                     x.momentum, 
                                     x.energy,
@@ -311,7 +133,7 @@ function multiband_mesh(bands::Vector, W::Function, T::Real, n_levels::Int, n_an
         corners = vcat(corners, mesh.corners)
     end
 
-    return Mesh(grid, corners, n_bands, α), Δε
+    return Mesh(grid, corners, n_bands, α)
 
 end
 
@@ -334,26 +156,33 @@ function generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Rea
     e_min = max(-e_threshold, 0.999 * minimum(E))
     e_max = min(e_threshold, 0.999 * maximum(E))
     Δε = (e_max - e_min) / (n_levels - 1)
-    energies = collect(LinRange(e_min, e_max, n_levels))
+    energies = collect(LinRange(e_min, e_max, 2 * n_levels - 1))
 
     c = contours(x, x, E, energies) # Generate Fermi surface contours
     
     # Slice contours to generate patch corners
     corners = Matrix{SVector{2,Float64}}(undef, n_levels, n_angles)
+    k = Matrix{SVector{2,Float64}}(undef, n_levels-1, n_angles-1)
     for i in eachindex(c)
         for curve in c[i].isolines
             first(curve.points)[1] < first(curve.points)[2] && reverse!(curve.points) # Enforce same curve orientation
-            corners[i, :] = angular_slice(curve, n_angles)
+            if isodd(i)
+                corners[i ÷ 2 + 1, :] = angular_slice(curve, n_angles)
+            else
+                k[i ÷ 2, :] = angular_slice(curve, 2 * n_angles - 1)[2:2:end]
+            end
         end
     end
 
-    k = Matrix{SVector{2,Float64}}(undef, n_levels-1, n_angles-1)
-    for i in 1:n_levels-1
-        for j in 1:n_angles-1
-            k[i,j] = (corners[i, j] + corners[i + 1, j] + corners[i + 1, j + 1] + corners[i, j + 1]) / 4
-            # Patch momentum is the arithmetic mean of corners
-        end
-    end
+    # for i in 1:n_levels-1
+    #     @show i
+    #     for j in 1:n_angles-1
+    #         @show j
+    #         # k[i,j] = (corners[i, j] + corners[i + 1, j] + corners[i + 1, j + 1] + corners[i, j + 1]) / 4
+    #         k[i,j] = get_patch_momentum(corners, i, j, bands[band_index], (energies[i] + energies[i+1]) / 2.0)
+    #         # Patch momentum is the arithmetic mean of corners
+    #     end
+    # end
     v = map(x -> ForwardDiff.gradient(bands[band_index], x), k)
 
     A = zeros(Float64, 2, 2) # Finite Difference Jacobian
@@ -410,7 +239,7 @@ function generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Rea
             patches[i, j] = Patch(
                 k[i,j], 
                 bands[band_index](k[i,j]),
-                SVector{2}(energies[i], energies[i + 1]),
+                SVector{2}(energies[2i - 1], energies[2i + 1]),
                 band_index,
                 v[i,j],
                 get_patch_area(corners, i, j),
@@ -444,8 +273,35 @@ function generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Rea
     map(x -> R^3 * x, corners)
     )
 
+    return Mesh(vec(patches), vec(corners), n_bands, α)
+end
+
+function get_patch_momentum(corners, i, j, ε, ε0)
+    u = corners[i + 1, j] - corners[i, j]
+    v = corners[i, j + 1] - corners[i, j]
+
+    x = LinRange(0.0, 1.0, 4)
+    k = map(x -> corners[i,j] + x[1] * u + x[2] * v, collect(Iterators.product(x, x)))
+    E = map(x -> ε(corners[i,j] + x[1] * u + x[2] * v), collect(Iterators.product(x, x)))
+    c = find_contour(x, x, E, ε0).isolines
     
-    return Mesh(vec(patches), vec(corners), n_bands, α), Δε
+    if length(c) == 0
+        display(k)
+        @show corners[i + 1, j + 1]
+        @show ε0
+    end
+
+    iso = c[1]
+    k = 1
+    s = 0.0
+    while k < length(iso.points) && s < iso.arclength / 2.0
+        k += 1
+        s += norm(iso.points[k] - iso.points[k - 1])
+    end
+
+    coords = iso.points[k - 1] + (iso.points[k] - iso.points[k-1]) * (s - iso.arclength/2.0) / norm((iso.points[k] - iso.points[k-1])) # Coordinates in u,v space
+
+    return corners[i,j] + coords[1] * u + coords[2] * v
 end
 
 function patch_op(p::Patch, M::Matrix, corner_perm::Function, n_col::Int, n_row::Int, corner_shift::Int)
@@ -465,9 +321,6 @@ function patch_op(p::Patch, M::Matrix, corner_perm::Function, n_col::Int, n_row:
 end
 
 function mirror_perm(i::Int, n_col::Int, n_row::Int)
-    # row_index = mod(i - 1, n_row) + 1
-    # column_index = ceil(i / n_row)
-
     return Int( (n_col - ceil(i / n_row)) * n_row + mod(i - 1, n_row) + 1 )
 end
 
