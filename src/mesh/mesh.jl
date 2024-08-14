@@ -22,7 +22,7 @@ struct Patch{D}
     dV::Float64 # Patch area
     de::Float64
     jinv::Matrix{Float64} # Jacobian of transformation from (kx, ky) --> (E, θ)
-    djinv::Float64 # Inverse jacobian determinant
+    djinv::Float64 # Absolute value of inverse jacobian determinant
     w::SVector{D, Float64} # Weight vector of overlap with orbitals
     corners::Vector{Int} # Coordinates of corners for plotting
 end
@@ -416,7 +416,7 @@ function generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Rea
                 get_patch_area(corners, i, j),
                 Δε,
                 inv(J),
-                1/det(J),
+                1/abs(det(J)), 
                 w,
                 [(j-1)*(n_levels) + i, (j-1)*(n_levels) + i+1, j*(n_levels) + i+1, j*(n_levels) + i]
             )
