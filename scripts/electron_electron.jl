@@ -2,7 +2,6 @@ using Ludwig
 using HDF5
 using Interpolations
 using StaticArrays
-using ProgressBars
 using LinearAlgebra
 
 function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)

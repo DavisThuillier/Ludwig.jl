@@ -7,17 +7,11 @@ using LsqFit
 using DelimitedFiles
 using ProgressBars
 
-include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
-data_dir = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "model_1")
-plot_dir = joinpath(@__DIR__, "..", "plots", "Sr2RuO4")
-exp_dir  = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "experiment")
-
-function load(file)
+function load(file, T)
     h5open(file, "r") do fid
         g = fid["data"]
 
-        # Γ = 2pi * read(g, "Γ")
-        Γ = 2pi * read(g, "L") 
+        L = 2pi * read(g, "L") 
         k = reinterpret(SVector{2,Float64}, vec(transpose(read(g, "momenta"))))
         v = reinterpret(SVector{2,Float64}, vec(transpose(read(g, "velocities"))))
         E = read(g, "energies")
@@ -25,12 +19,18 @@ function load(file)
         corners = read(g, "corners")
         corner_ids = read(g, "corner_ids")
 
+        fd = f0.(E, T) # Fermi dirac on grid points
+
+        # L = Hermitian(0.5 * (L + L'))
+        # L = diagm(1 ./ sqrt.(dV .* fd .* (1 .- fd))) * (L + L') / 2.0 * diagm(sqrt.(dV .* fd .* (1 .- fd)))
+        L = diagm(1 ./ (dV .* fd .* (1 .- fd))) * L #(L + L') / 2.0 
+
         # Enforce particle conservation
-        for i in 1:size(Γ)[1]
-            Γ[i,i] -= sum(Γ[i, :])
+        for i in 1:size(L)[1]
+            L[i,i] -= sum(L[i, :])
         end
 
-        return Γ, k, v, E, dV, corners, corner_ids
+        return L, k, v, E, dV, corners, corner_ids
     end
 end
 
@@ -87,13 +87,13 @@ end
 function get_property(prop::String, T, n_ε::Int, n_θ::Int, Uee::Real, Vimp::Real; include_impurity::Bool = true)
     eefile = joinpath(data_dir, "Sr2RuO4_$(Float64(T))_$(n_ε)x$(n_θ).h5")
     
-    Γ, k, v, E, dV, _, _= load(eefile)
+    Γ, k, v, E, dV, _, _= load(eefile, T)
     Γ *= Uee^2
     ℓ = size(Γ)[1]
 
     if include_impurity
         impfile = joinpath(data_dir, "Sr2RuO4_unitary_imp_$(T)_$(n_ε)x$(n_θ).h5")
-        Γimp, _, _, _, _, _, _ = load(impfile)
+        Γimp, _, _, _, _, _, _ = load(impfile, T)
         Γ += Γimp * Vimp^2
     end
 
@@ -130,7 +130,7 @@ end
 
 function spectrum(n_ε, n_θ, Uee, Vimp)
     # T = 2.0:0.5:14.0
-    T = 12.0:0.5:12.0
+    T = 2.0:0.5:14.0
     ℓ = 12 * (n_ε - 1) * (n_θ - 1) # Dimension of matrix
 
     info_file = joinpath(data_dir, "spectrum.aux")
@@ -172,33 +172,40 @@ function τ_eff(n_ε, n_θ, Uee, Vimp)
 end
 
 function display_heatmap(file, T)
-    Γ, k, v, E, dV, corners, corner_ids = load(file)
+    Γ, k, v, E, dV, corners, corner_ids = load(file, T)
     fd = f0.(E, T) # Fermi dirac on grid points
 
     w = fd .* (1 .- fd) # Energy derivative of FD on grid points
     # M = diagm(sqrt.(w .* dV)) * Γ * (diagm(1 ./ sqrt.(w .* dV)))
-    M = diagm(w .* dV) * Γ
+    # M = diagm(w .* dV) * Γ
+    M = Γ
 
     ℓ = size(Γ)[1]
-    f = Figure(size = (1000, 1000))
+    f = Figure(size = (2000, 2000))
     ax = Axis(f[1,1], aspect = 1.0)
-    b = 5e-10
-    h = heatmap!(ax, -M, colormap = :viridis, colorrange = (-b, b))
+    b = 6e-10
+    h = heatmap!(ax, -M, colormap = :lisbon, colorrange = (-b, b))
     # h = heatmap!(ax, abs.(M-M') / norm(M), colormap = :lisbon) #, colorrange = (-b, b))
     Colorbar(f[1,2], h)
     display(f)
     # save(joinpath(@__DIR__,"..", "plots","Sr2RuO4_interband_heatmap.png"), f)
+
+    λ = eigvals(Γ)
+    @show λ[1:4]
+    f = Figure()
+    ax = Axis(f[1,1])
+    scatter!(ax, real.(λ[1:1000]))
+    display(f)
 end
 
-function modes(T, n_ε, n_θ, Uee, bands)
+function modes(T, n_ε, n_θ, Uee)
     file = joinpath(data_dir, "Sr2RuO4_$(T)_$(n_ε)x$(n_θ).h5")
 
-    Γ, k, v, E, dV, corners, corner_ids = load(file)
-    Γ *= Uee^2
+    Γ, k, v, E, dV, corners, corner_ids = load(file, T)
+    Γ *= Uee^2 
     fd = f0.(E, T) # Fermi dirac on grid points
     w = fd .* (1 .- fd) # Energy derivative of FD on grid points
 
-    M = diagm(sqrt.(w .* dV)) * Γ * (diagm(1 ./ sqrt.(w .* dV)))
 
     quads = Vector{Vector{SVector{2, Float64}}}(undef, 0)
     for i in 1:size(corner_ids)[1]
@@ -207,46 +214,23 @@ function modes(T, n_ε, n_θ, Uee, bands)
 
     N = 20
     
-    @time eigenvalues  = eigvals(M)
-    @time eigenvectors = eigvecs(M)
+    @time eigenvalues  = eigvals(Γ)
+    @time eigenvectors = eigvecs(Γ)
 
-    F = eigen(M)
     eigenvalues *= 1e-12 / hbar
     
-    colors = Vector{RGB{Float64}}(undef, length(eigenvalues))
     for i in eachindex(eigenvalues)
         # println("λ_$(i) = ", eigenvalues[i])
-        weights = vcat(Ludwig.band_weight(eigenvectors[:, i], length(bands)))
-        # for j in eachindex(bands)
-            # println("   ", bands[j], ": ", weights[j])
-        # end
-        colors[i] = RGB{Float64}(weights...)
 
         if i < N
             f = Figure(size = (1000,1000), fontsize = 30)
             ax  = Axis(f[1,1], aspect = 1.0, title = latexstring("\$ \\tau_{$(i -1)} = $(round(real(eigenvalues[i]), digits = 6)) \\text{ fs}\$"), limits = (-0.5, 0.5, -0.5, 0.5))
-            p = poly!(ax, quads, color = real.(eigenvectors[:, i]), colormap = :viridis, 
+            p = poly!(ax, quads, color = real.(eigenvectors[:, i]) ./ (dV .* fd .* (1 .- fd)), colormap = :viridis, #colorrange = (-10, 10)
             )
             Colorbar(f[1,2], p)
             display(f)
         end
     end
-
-    N = length(eigenvalues)
-    f = Figure(size = (2000, 1000), fontsize = 42)
-    ax  = Axis(f[1,1], 
-               aspect = 2.4,
-               title  = latexstring("\$\\mathrm{Sr_2RuO_4}\$ collision operator spectrum"),
-               ylabel = L"\gamma (\mathrm{ps}^{-1})",
-               xlabel = "Mode"
-    )
-    scatter!(ax, real.(eigenvalues)[1:N] / 8, color = colors[1:N], markersize = 4)
-
-    α = MarkerElement(color = RGB(1,0,0), marker = :circle, markersize = 15)
-    β = MarkerElement(color = RGB(0,1,0), marker = :circle, markersize = 15)
-    γ = MarkerElement(color = RGB(0,0,1), marker = :circle, markersize = 15)
-    axislegend(ax, [α, β, γ], [L"\alpha", L"\beta", L"\gamma"], valign = :bottom)
-    display(f)
 
     outfile = joinpath(plot_dir, "Sr2RuO4_spectrum_αβγ.png")
     # save(outfile, f)
@@ -342,16 +326,20 @@ function plot_ρ(n_ε, n_θ, Uee, Vimp)
 
     # σ = Vector{Float64}(undef, length(t))
     # for i in eachindex(t)
-    #     σ[i] = get_property("σ", t[i], n_ε, n_θ, Uee, Vimp)
+    #     σ[i] = get_property("σ", t[i], n_ε, n_θ, Uee, Vimp; include_impurity = false)
+    #     @show 10^8  / σ[i]
     # end
 
     # ρ = 10^8  ./ σ # Convert to μΩ-cm
     # @show ρ
 
-    # ρ = [0.1150196207561388, 0.12451619211769277, 0.1375536322369924, 0.151331465720305, 0.16678337503360013, 0.18390660051654195, 0.20259655450950417, 0.22294204160296502, 0.24481574576635556, 0.26880111695227943, 0.2943530798780751, 0.3221427793466389, 0.35144701512387355, 0.3830058933824082, 0.41646153824899235, 0.4516984084562476, 0.4888882328571111, 0.5280041011251837, 0.5690052123933946, 0.6120857271933049, 0.6576240047597802, 0.7049349407316307, 0.7544758877211121, 0.8067026603183666, 0.8604543201283871]
+    ρ = 0.15 * [0.10872158361699431, 0.23809080558798026, 0.43363080295298295, 0.706763197327433, 1.0729721654876445, 1.544663774171448, 2.135872329663375, 2.859088473720753, 3.728467355719569, 4.761295134871748, 5.969293100821491, 7.36288476760714, 8.960981977879813, 10.777823770484233, 12.816063203243518, 15.09481820145951, 17.61332103286203, 20.400212448440772, 23.448536329557868, 26.766850601712335, 30.37759076593773, 34.28465441404842, 38.49449706586007, 42.9913038281453, 47.77120345654812] ./ t
 
-    model(t, p) = p[1] .+ p[2] * t.^p[3]
-    fit = curve_fit(model, t, ρ, [0.12, 0.1, 2.0], lower = [0.0, 0.0, 0.0])
+    # ρ = [0.07485179324509325, 0.03616889395515399, 0.17935857379141795, 0.36793819020855156, 0.6303609886176492, 0.9834176383595185, 1.4417574986395048, 2.016281736484058, 2.7238203864237023, 3.5718289877845244, 4.576305879960135, 5.746998103521272, 7.095181105915707, 8.629579592495226, 10.36755420760138, 12.318102104784973, 14.478651616228433, 16.87895421473701, 19.502886496691048, 22.376403030664264, 25.501158903000352, 28.894747983816462, 32.5507434502162, 36.47218788906652, 40.65380302689759] ./ t
+
+
+    model(t, p) = p[1] * t.^p[2]
+    fit = curve_fit(model, t, ρ, [0.0001, 1.0], lower = [0.0, 0.0])
     @show fit.param
 
 
@@ -360,15 +348,16 @@ function plot_ρ(n_ε, n_θ, Uee, Vimp)
               xlabel = L"T(\mathrm{K})",
               ylabel = L"\rho (\mathrm{\mu\Omega \,cm})")
     # lines!(ax, t, ρ)
-    lupien_file = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "rhovT_Lupien_digitized.dat")
+    lupien_file = joinpath(exp_dir, "rhovT_Lupien_digitized.dat")
     lupien_data = readdlm(lupien_file)
     scatter!(ax, lupien_data[:, 1], lupien_data[:, 2], color = :black)
     domain = 0.0:0.1:30.0
-    lines!(ax, domain, model(domain, fit.param))
+    scatter!(ax, t, ρ)
+    # lines!(ax, domain, model(domain, fit.param))
     display(f)
 
-    outfile = joinpath(plot_dir, "ρ_unitary_scattering.png")
-    save(outfile, f)
+    # outfile = joinpath(plot_dir, "ρ_unitary_scattering.png")
+    # save(outfile, f)
 
 end
 
@@ -499,6 +488,10 @@ function plot_spectrum(n_ε, n_θ, Uee, Vimp)
     # save(outfile, f)
 end
 
+function get_ρ()
+
+end
+
 function main(n_ε, n_θ)    
     # Unitary
     Uee = 0.03295629587089841
@@ -523,12 +516,13 @@ function main(n_ε, n_θ)
 
 end
 
+include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
+data_dir = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "model_1")
+plot_dir = joinpath(@__DIR__, "..", "plots", "Sr2RuO4")
+exp_dir  = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "experiment")
 
-# main(12, 38)
+# display_heatmap(joinpath(data_dir, "Sr2RuO4_12.0_12x38.h5"), 12*kb)
 
-σ = get_property("σ", 12, 6, 16, 0.05, 0.0; include_impurity = false)
-ρ = 1e8 / σ
-@show ρ
-
-
-display_heatmap(joinpath(data_dir, "Sr2RuO4_12.0_6x16.h5"), 12*kb)
+# plot_ρ(12, 38, 1.0, 0.0)
+# modes(12.0, 12, 38, 1.0)
+# spectrum(12, 38, 1.0, 0.0)
