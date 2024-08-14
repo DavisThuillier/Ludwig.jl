@@ -79,6 +79,8 @@ function find_contour(x, y, A::AbstractMatrix, level::Real = 0.0)
         if !isclosed && length(cells) > 0
             # Go back to the starting cell and walk the other direction
             edge, index = get_next_cell(start_edge, start_index)
+            !haskey(cells, index) && break 
+            
             follow_contour!(cells, reverse!(segment), x, y, A, is, js, index, edge, level)
         end
 
@@ -101,10 +103,12 @@ function follow_contour!(cells, contour, x, y, A, is, js, start_index, start_edg
 
     push!(contour, get_crossing(x, y, A, index, edge, level))
     while true
+
         edge = pop!(cells, index) ⊻ edge
         push!(contour, get_crossing(x, y, A, index, edge, level))
         
         edge, index = get_next_cell(edge, index)
+
 
         (!(index[1] ∈ is) || !(index[2] ∈ js) || index == start_index) && (break)
     end
