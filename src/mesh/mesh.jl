@@ -267,6 +267,8 @@ function generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Rea
     return Mesh(vec(patches), vec(corners), n_bands, α)
 end
 
+generate_mesh(ε::Function, T::Real, n_levels::Int, n_angles::Int, N::Int = 1001, α::Real = 6.0) = generate_mesh([ε], x -> [1.0], 1, 1, T, n_levels, n_angles, N, α)
+
 function get_patch_momentum(corners, i, j, ε, ε0)
     u = corners[i + 1, j] - corners[i, j]
     v = corners[i, j + 1] - corners[i, j]
