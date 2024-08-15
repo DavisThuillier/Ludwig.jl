@@ -174,15 +174,6 @@ function generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Rea
         end
     end
 
-    # for i in 1:n_levels-1
-    #     @show i
-    #     for j in 1:n_angles-1
-    #         @show j
-    #         # k[i,j] = (corners[i, j] + corners[i + 1, j] + corners[i + 1, j + 1] + corners[i, j + 1]) / 4
-    #         k[i,j] = get_patch_momentum(corners, i, j, bands[band_index], (energies[i] + energies[i+1]) / 2.0)
-    #         # Patch momentum is the arithmetic mean of corners
-    #     end
-    # end
     v = map(x -> ForwardDiff.gradient(bands[band_index], x), k)
 
     A = zeros(Float64, 2, 2) # Finite Difference Jacobian

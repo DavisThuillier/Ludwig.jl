@@ -493,7 +493,6 @@ function plot_spectrum(n_ε, n_θ, Uee, Vimp)
     # save(outfile, f)
 end
 
-
 function main(n_ε, n_θ)    
     # Unitary
     Uee = 0.03295629587089841
