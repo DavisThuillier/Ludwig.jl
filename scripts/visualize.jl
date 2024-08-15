@@ -3,8 +3,6 @@ using CairoMakie, LaTeXStrings
 using LinearAlgebra
 using StaticArrays
 
-include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
-
 function rational_format(x)
     x = Rational(x)
     if x == 0
@@ -65,38 +63,46 @@ function deformation_potentials()
 end
 
 function main()
-    T = 24 * kb
-    n_ε = 18
+    T = 12 * kb
+    n_ε = 12
     n_θ = 38
-    mesh, _ = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ; α = 18.0)
+    # mesh = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
+    # ℓ = length(mesh.patches)
 
-    corner_ids = map(x -> x.corners, mesh.patches)
+    # corner_ids = map(x -> x.corners, mesh.patches)
 
-    quads = Vector{Vector{SVector{2, Float64}}}(undef, 0)
-    for i in 1:size(corner_ids)[1]
-        push!(quads, map(x -> mesh.corners[x], corner_ids[i]))
-    end
+    # quads = Vector{Vector{SVector{2, Float64}}}(undef, 0)
+    # for i in 1:size(corner_ids)[1]
+    #     push!(quads, map(x -> mesh.corners[x], corner_ids[i]))
+    # end
+
+    x = LinRange(-0.5, 0.5, 1000)
+    E = map(x -> ε1([x[1], x[2]]), collect(Iterators.product(x, x)))
+    c = Ludwig.find_contour(x,x,E)
 
     f = Figure(size = (1000,1000))
     ax = Axis(f[1,1],
               aspect = 1.0,
-              limits = (-0.5,0.5,-0.5,0.5)
+            #   limits = (-0.5,0.5,-0.5,0.5)
     )
     
-    ℓ = length(mesh.patches)
+    h = heatmap!(ax, x,x ,E)
+    for iso in c.isolines
+        lines!(ax, iso.points)
+    end
 
-    p = poly!(ax, quads, color = 1:length(mesh.patches), colormap = :viridis)
+    # p = poly!(ax, quads, color = map(x -> x.energy, mesh.patches), colormap = :viridis)
 
-    xs = map(x -> x.momentum[1], mesh.patches)
-    ys = map(x -> x.momentum[2], mesh.patches)
-    us = map(x -> inv(x.jinv)[1,1] / norm(inv(x.jinv)[1,:]), mesh.patches)
-    vs = map(x -> inv(x.jinv)[1,2] / norm(inv(x.jinv)[1, :]), mesh.patches)
+    # xs = map(x -> x.momentum[1], mesh.patches)
+    # ys = map(x -> x.momentum[2], mesh.patches)
+    # us = map(x -> inv(x.jinv)[1,1] / norm(inv(x.jinv)[1,:]), mesh.patches)
+    # vs = map(x -> inv(x.jinv)[1,2] / norm(inv(x.jinv)[1, :]), mesh.patches)
     # us = map(x -> x.v[1] / norm(x.v), grid)
     # vs = map(x -> x.v[2] / norm(x.v), grid)
     # arrows!(ax, xs, ys, us, vs, lengthscale = 0.01, arrowsize = 3, linecolor = :black, arrowcolor = :black)
 
-    
-    Colorbar(f[1,2], p)
+    # scatter!(ax, map(x -> x.momentum, mesh.patches))
+    Colorbar(f[1,2], h)
     display(f)
 end
 
@@ -136,6 +142,8 @@ function form_factors()
 
     
 end
+
+include(joinpath(@__DIR__, "materials", "graphene.jl"))
 
 # form_factors()
 main()
