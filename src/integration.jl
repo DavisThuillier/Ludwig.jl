@@ -6,7 +6,7 @@ const ρ::Float64 = 4*6^(1/3)/pi
 const vol::Float64 = (8 * pi^2 / 15)
 
 """
-    Γabc!(ζ, u, a::Patch, b::Patch, c::Patch, T, εabc, ε::Function)
+    Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, T, εabc, ε::Function)
 
 Compute the integral
 ```math
@@ -19,7 +19,7 @@ with dispersion `ε` at temperature `T`.
 is an integral over momenta in patch ``\\mathcal{P}_i``. 
 
 """
-function Γabc!(ζ, u, a::Patch, b::Patch, c::Patch, T::Real, εabc, ε::Function)
+function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, T::Real, εabc, ε::Function)
     δ = energy(a) + energy(b) - energy(c) - εabc # Energy conservation violations
 
     v::SVector{2,Float64} = ForwardDiff.gradient(x -> ε(x + b.momentum - c.momentum), a.momentum)
@@ -54,12 +54,12 @@ function Γabc!(ζ, u, a::Patch, b::Patch, c::Patch, T::Real, εabc, ε::Functio
 end
 
 """
-    Γabc!(ζ, u, a::Patch, b::Patch, c::Patch, T, k, εabc, itp)
+    Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, T, k, εabc, itp)
 
-Compute ``\\mathcal{K}^_{abc} `` with `k` given by ``\\mathbf{k} \\equiv \\overbar{\\mathbf{k}}_a + \\overbar{\\mathbf{k}}_b - \\overbar{\\mathbf{k}}_c`` using `itp` as an interpolation of the dispersion.
+Compute ``\\mathcal{K}_{abc} `` with `k` given by ``\\mathbf{k} \\equiv \\overbar{\\mathbf{k}}_a + \\overbar{\\mathbf{k}}_b - \\overbar{\\mathbf{k}}_c`` using `itp` as an interpolation of the dispersion.
 
 """
-function Γabc!(ζ, u, a::Patch, b::Patch, c::Patch, T::Real, k, εabc, itp::ScaledInterpolation)
+function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, T::Real, k, εabc, itp::ScaledInterpolation)
     δ = energy(a) + energy(b) - energy(c) - εabc # Energy conservation violations
 
     @inbounds v::SVector{2,Float64} = Interpolations.gradient(itp, k[1], k[2])
@@ -135,7 +135,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         w123 = Weff_squared_123(grid[i], grid[j], grid[m], Fpp, Fpk, kijm, μ4)
 
         if w123 != 0
-            Lij += w123 * Γabc!(ζ, u, grid[i], grid[j], grid[m], T, kijm, energies[μ4], itps[μ4]) * f0s[j] * (1 - f0s[m])
+            Lij += w123 * Kabc!(ζ, u, grid[i], grid[j], grid[m], T, kijm, energies[μ4], itps[μ4]) * f0s[j] * (1 - f0s[m])
         end
 
         qimj .= mod.(qij .+ grid[m].momentum .+ 0.5, 1.0) .- 0.5
@@ -153,7 +153,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         w124 = Weff_squared_124(grid[i], grid[m], grid[j], Fpp, Fpk, qimj, μ34)
 
         if w123 + w124 != 0
-            Lij -= (w123 + w124) * Γabc!(ζ, u, grid[i], grid[m], grid[j], T, qimj, energies[μ34], itps[μ34]) * f0s[m] * (1 - f0s[j])
+            Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], T, qimj, energies[μ34], itps[μ34]) * f0s[m] * (1 - f0s[j])
         end
 
     end

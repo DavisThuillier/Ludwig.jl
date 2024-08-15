@@ -1,6 +1,6 @@
 # Collision Operator
 
-## Single Band and Naïve Multiband
+## Single Band
 For a single band with a momentum independent scattering potential ``V(\mathbf{q}) = V``,
 ```math
     \mathbf{L}_{ij} = \frac{1}{d A_i} \frac{2\pi}{1 - f^{(0)}_i} |V|^2 \frac{1}{(2\pi)^6} \sum_{m} (f^{(0)}_j (1 - f^{(0)}_m) \mathcal{K}_{ijm} - 2f^{(0)}_m (1 - f^{(0)}_j)\mathcal{K}_{imj}) 
@@ -9,19 +9,17 @@ where
 ```math
     \mathcal{K}_{ijm} = \int_i d^2 \mathbf{k}_i \int_j d^2 \mathbf{k}_j \int_m d^2 \mathbf{k}_m (1 - f^{(0)}(\mathbf{k}_i + \mathbf{k}_j - \mathbf{k}_m)) \delta(\varepsilon_i + \varepsilon_j - \varepsilon_m - \varepsilon(\mathbf{k}_i + \mathbf{k}_j - \mathbf{k}_m)).
 ```
-A first attempt at incorporating interband scattering was to perform a sum over the bands for the energy corresponding the final momentum computed by enforcing momentum conservation:
 
 ```@docs
-Ludwig.Γabc!
+Ludwig.Kabc!
 ```
 
 ## Improved Multiband
-The above model is not realistic, however. The bands consist of hybridized orbitals which have different overlap. To account for this, the next simplest model one can propose for the scattering term is
+In multiband scattering, the bands consist of hybridized orbitals. To account for this, a simple model one can propose for the scattering term is
 ```math
     U\sum_{i} \sum_{a,b} n_{i,a} n_{i,b}
 ```
-where ``i`` represents a site index and ``a, b`` are orbital indices. To handle this perturbation in our framework of scattering
-using the Born approximation, we need to evaluate this interaction term in the eigenbasis of the bare Hamiltonian.
+where ``i`` represents a site index and ``a, b`` are orbital indices. To handle this perturbation in our framework of scattering using the Born approximation, we need to evaluate this interaction term in the eigenbasis of the bare Hamiltonian.
 ```math
 \begin{aligned}
     \sum_i n_{i,a} n_{i, b} &= \sum_{i}c^\dagger_{i,a} c_{i,a} c^\dagger_{i,b} c_{i,b}\\
