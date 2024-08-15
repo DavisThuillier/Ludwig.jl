@@ -7,7 +7,7 @@ For a single band with a momentum independent scattering potential ``V(\mathbf{q
 ```
 where
 ```math
-    \mathcal{K}_{ijm} = \int_i d^2 \mathbf{k}_i \int_j d^2 \mathbf{k}_j \int_m d^2 \mathbf{k}_m (1 - f^{(0)}(\mathbf{k}_i + \mathbf{k}_j - \mathbf{k}_m)) \delta(\varepsilon_i + \varepsilon_j - \varepsilon_m - \varepsilon_\mu(\mathbf{k}_i + \mathbf{k}_j - \mathbf{k}_m)).
+    \mathcal{K}_{ijm} = \int_i d^2 \mathbf{k}_i \int_j d^2 \mathbf{k}_j \int_m d^2 \mathbf{k}_m (1 - f^{(0)}(\mathbf{k}_i + \mathbf{k}_j - \mathbf{k}_m)) \delta(\varepsilon_i + \varepsilon_j - \varepsilon_m - \varepsilon(\mathbf{k}_i + \mathbf{k}_j - \mathbf{k}_m)).
 ```
 A first attempt at incorporating interband scattering was to perform a sum over the bands for the energy corresponding the final momentum computed by enforcing momentum conservation:
 
