@@ -53,14 +53,16 @@ W^2_{\uparrow\downarrow\downarrow\uparrow} = | - U F^{\mu_1,\mu_4}_{k_1,k_4} F^{
 ```
 which finally gives
 ```
-W^2_{eff}(p_1,\mu_1,p_2,\mu_2,p_3,\mu_3,p_4,\mu_4) &= U^2 \left( |  F^{\mu_1,\mu_3}_{k_1,k_3} F^{\mu_2,\mu_4}_{k_2,k_4} -  F^{\mu_1,\mu_4}_{k_1,k_4} F^{\mu_2,\mu_3}_{k_2,k_3} |^2 + 2 |  F^{\mu_1,\mu_4}_{k_1,k_4} F^{\mu_2,\mu_3}_{k_2,k_3} |^2 \right)
+W^2_{eff}(p_1,\mu_1,p_2,\mu_2,p_3,\mu_3,p_4,\mu_4) = U^2 \left( |  F^{\mu_1,\mu_3}_{k_1,k_3} F^{\mu_2,\mu_4}_{k_2,k_4} -  F^{\mu_1,\mu_4}_{k_1,k_4} F^{\mu_2,\mu_3}_{k_2,k_3} |^2 + 2 |  F^{\mu_1,\mu_4}_{k_1,k_4} F^{\mu_2,\mu_3}_{k_2,k_3} |^2 \right)
 ```
 
 Then, the linearized collision integral is given by
 ```math
+\begin{aligned}
     \mathbf{L}_{ij} &= \frac{1}{\d A_i} \frac{2\pi / \hbar}{1 - f^{(0)}_i} 
 \frac{1}{(2\pi)^6}   &\frac12 \sum_{m}  \left( W^2_{eff}(p_i,p_j,p_m,p_{i+j-m})  f^{(0)}_j (1 - f^{(0)}_m) \mathcal{K}_{ijm}\right.\\
 &\left.- ( W^2_{eff}(p_i,p_m,p_j,p_{i+m-j}) + W^2_{eff}(p_i,p_m,p_{i+m-j},p_j) ) f^{(0)}_m(1 - f^{(0)}_j) \mathcal{K}_{imj} \right)
+\end{aligned}
 ```
 
 ```@docs
