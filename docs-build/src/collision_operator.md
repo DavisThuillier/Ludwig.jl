@@ -1,6 +1,6 @@
 # Collision Operator
 
-## Single Band and Naïve Multiband
+<!-- ## Single Band and Naïve Multiband
 For a single band with a momentum independent scattering potential ``V(\mathbf{q}) = V``,
 ```math
     \mathbf{L}_{ij} = \frac{1}{d A_i} \frac{2\pi}{1 - f^{(0)}_i} |V|^2 \frac{1}{(2\pi)^6} \sum_{m} (f^{(0)}_j (1 - f^{(0)}_m) \mathcal{K}_{ijm} - 2f^{(0)}_m (1 - f^{(0)}_j)\mathcal{K}_{imj}) 
@@ -22,7 +22,7 @@ Ludwig.electron_electron!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε:
 or
 ```@docs
 Ludwig.electron_electron!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, T::Real, itps::Vector{ScaledInterpolation})
-```
+``` -->
 
 ## Improved Multiband
 The above model is not realistic, however. The bands consist of hybridized orbitals which have different overlap. To account for this, the next simplest model one can propose for the scattering term is
@@ -51,9 +51,5 @@ U\sum_{i} \sum_{a,b} n_{i,a} n_{i,b} = \frac{U}{N} \sum_{\mathbf{k}_1, \mathbf{k
 
 The collision matrix elements can then be populated using 
 ```@docs
-Ludwig.electron_electron!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, T::Real, H::Function, N::Int, cf_eigvecs!::Function)
-```
-which is threaded to improve performance and uses the alternate kernel function `ee_kernel!` instead of `Γabc!` for improved memory allocation handling when dealing with the larger memory requirements of this interband model.
-```@docs
-Ludwig.ee_kernel!
+electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, itps::Vector{ScaledInterpolation}, T::Real, Fpp::Function, Fpk::Function)
 ```
