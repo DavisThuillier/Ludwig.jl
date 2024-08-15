@@ -7,21 +7,21 @@ using LinearAlgebra
 function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
     T = kb * T # Convert K to eV
 
-    mesh, Δε = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
+    mesh = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
     ℓ = length(mesh.patches)
 
     # Initialize file - will error if
-    # h5open(outfile, "cw") do fid
-    #     g = create_group(fid, "data")
-    #     write_attribute(g, "n_e", n_ε)
-    #     write_attribute(g, "n_theta", n_θ)
-    #     g["corners"] = copy(transpose(reduce(hcat, mesh.corners)))
-    #     g["momenta"] = copy(transpose(reduce(hcat, map(x -> x.momentum, mesh.patches))))
-    #     g["velocities"] = copy(transpose(reduce(hcat, map(x -> x.v, mesh.patches))))
-    #     g["energies"] = map(x -> x.energy, mesh.patches) 
-    #     g["dVs"] = map(x -> x.dV, mesh.patches)
-    #     g["corner_ids"] = copy(transpose(reduce(hcat, map(x -> x.corners, mesh.patches))))
-    # end 
+    h5open(outfile, "cw") do fid
+        g = create_group(fid, "data")
+        write_attribute(g, "n_e", n_ε)
+        write_attribute(g, "n_theta", n_θ)
+        g["corners"] = copy(transpose(reduce(hcat, mesh.corners)))
+        g["momenta"] = copy(transpose(reduce(hcat, map(x -> x.momentum, mesh.patches))))
+        g["velocities"] = copy(transpose(reduce(hcat, map(x -> x.v, mesh.patches))))
+        g["energies"] = map(x -> x.energy, mesh.patches) 
+        g["dVs"] = map(x -> x.dV, mesh.patches)
+        g["corner_ids"] = copy(transpose(reduce(hcat, map(x -> x.corners, mesh.patches))))
+    end 
 
     N = 1001
     x = LinRange(-0.5, 0.5, N)
@@ -47,10 +47,10 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
 
 
     # Write scattering operator out to file
-    # h5open(outfile, "cw") do fid
-    #     g = fid["data"]
-    #     g["L"] = L
-    # end
+    h5open(outfile, "cw") do fid
+        g = fid["data"]
+        g["L"] = L
+    end
 end
 
 function argument_handling()

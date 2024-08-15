@@ -80,7 +80,7 @@ function find_contour(x, y, A::AbstractMatrix, level::Real = 0.0)
             # Go back to the starting cell and walk the other direction
             edge, index = get_next_cell(start_edge, start_index)
             !haskey(cells, index) && break 
-            
+
             follow_contour!(cells, reverse!(segment), x, y, A, is, js, index, edge, level)
         end
 
