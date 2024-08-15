@@ -95,10 +95,7 @@ end
 
 Compute the element (`i`,`j`) of the linearized Boltzmann collision operator for electron electron scattering.
 
-The bands used to construct `grid` are callable using the interpolated dispersion in `itps`. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center an can be calculated independent of `i` and `j`. The functions `Fpp` and `Fpk` are vertex factors that provide the effective, spin-summed transition rate as
-```math
-    W^2_\\text{eff} &= U^2 \\left( |  F^{\\mu_1,\\mu_3}_{\\mathbf{k}_1,\\mathbf{k}_3} F^{\\mu_2,\\mu_4}_{\\mathbf{k}_2,\\mathbf{k}_4} -  F^{\\mu_1,\\mu_4}_{k_1,k_4} F^{\\mu_2,\\mu_3}_{\\mathbf{k}_2,\\mathbf{k}_3} |^2 + 2 |  F^{\\mu_1,\\mu_4}_{\\mathbf{k}_1,\\mathbf{k}_4} F^{\\mu_2,\\mu_3}_{\\mathbf{k}_2,\\mathbf{k}_3} |^2 
-``` 
+The bands used to construct `grid` are callable using the interpolated dispersion in `itps`. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center an can be calculated independent of `i` and `j`. The functions `Fpp` and `Fpk` are vertex factors defined for two patch variables and for one patch and one momentum vector respectively.
 
 """
 function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, itps::Vector{ScaledInterpolation}, T::Real, Fpp::Function, Fpk::Function)
