@@ -56,7 +56,7 @@ end
 """
     Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, T, k, εabc, itp)
 
-Compute ``\\mathcal{K}_{abc} `` with `k` given by ``\\mathbf{k} \\equiv \\overbar{\\mathbf{k}}_a + \\overbar{\\mathbf{k}}_b - \\overbar{\\mathbf{k}}_c`` using `itp` as an interpolation of the dispersion.
+Compute ``\\mathcal{K}_{abc} `` with `k` given by momentum conservation using the representative central momenta of patches `a`, `b`, and `c`, using `itp` as an interpolation of the dispersion.
 
 """
 function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, T::Real, k, εabc, itp::ScaledInterpolation)
