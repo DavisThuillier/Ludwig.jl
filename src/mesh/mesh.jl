@@ -107,7 +107,8 @@ end
 
 Generate a Mesh of (`n_angles` - 1) x (`n_levels` - 1) patches per quadrant per band centered on each band's thermally broadened Fermi surface at temperature `T`.
 
-`bands` is a vector of the . The width of the Fermi tube at each surface is ``\\pm`` `α T`. 
+`bands` is a vector of functions defining the eigenvalues of the single-electron Hamiltonian over the 1st Brillouin Zone. The function `W` is an array-valued function whose input is a momentum 2-vector, and whose output columns are the the eigenvectors corresponding to `bands`. 
+The width of the Fermi tube at each surface is ``\\pm`` `α T`. 
 """
 function multiband_mesh(bands::Vector, W::Function, T::Real, n_levels::Int, n_angles::Int; N::Int = 2001, α::Real = 6.0)
     grid = Vector{Patch}(undef, 0)
@@ -138,13 +139,13 @@ function multiband_mesh(bands::Vector, W::Function, T::Real, n_levels::Int, n_an
 end
 
 """
-    generate_mesh(E::AbstractArray{<:Real, 2}, H, band_index, T, n_levels, n_angles[, α])
+    generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Real, n_levels::Int, n_angles::Int)
 
-Generate a `Mesh` of (`n_angles` - 1) x (`n_levels` - 1) patches per quadrant using marching squares to find energy contours of `E`, the energy eigenvalues of `H` corresponding to `band_index` evaluated on a regular grid of ``\\mathbf{k} \\in [0.0, 0.5]\\times[0.0, 0.5]``. 
+Generate a single-band `Mesh` in a multiband system; the mesh will have (`n_angles` - 1) x (`n_levels` - 1) patches per quadrant centered at the Fermi surface using marching squares to find energy contours of `bands[band_index]` evaluated on a regular grid of ``\\mathbf{k} \\in [0.0, 0.5]\\times[0.0, 0.5]``. The width of the Fermi tube is ``\\pm`` `α T`. 
 
-The width of the Fermi tube is ``\\pm`` `α T`. 
+The function `W` is an array-valued function whose input is a momentum 2-vector, and whose output columns are the the eigenvectors of the single-electron Hamiltonian whose eigenvalues are the functions in `bands`.
 """
-function generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Real, n_levels::Int, n_angles::Int, N::Int = 1001, α::Real = 6.0)
+function generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Real, n_levels::Int, n_angles::Int, N::Int, α::Real)
     n_levels = max(3, n_levels) # Enforce minimum of 1 patches in the energy direction
     n_angles = max(3, n_angles) # Enforce minimum of 2 patches in angular direction
     Δθ = (pi/2) / (n_angles - 1) 
@@ -267,36 +268,20 @@ function generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Rea
     return Mesh(vec(patches), vec(corners), n_bands, α)
 end
 
-generate_mesh(ε::Function, T::Real, n_levels::Int, n_angles::Int, N::Int = 1001, α::Real = 6.0) = generate_mesh([ε], x -> [1.0], 1, 1, T, n_levels, n_angles, N, α)
+"""
+    generate_mesh(ε::Function, T::Real, n_levels::Int, n_angles::Int[, N, α])
 
-function get_patch_momentum(corners, i, j, ε, ε0)
-    u = corners[i + 1, j] - corners[i, j]
-    v = corners[i, j + 1] - corners[i, j]
+Generate a `Mesh` of (`n_angles` - 1) x (`n_levels` - 1) patches per quadrant centered at the Fermi surface using marching squares to find energy contours of `ε` evaluated on a regular grid of ``\\mathbf{k} \\in [0.0, 0.5]\\times[0.0, 0.5]``. The width of the Fermi tube is ``\\pm`` `α T`. 
+"""
+generate_mesh(ε::Function, T::Real, n_levels::Int, n_angles::Int, N::Int = 2001, α::Real = 6.0) = generate_mesh([ε], x -> [1.0], 1, 1, T, n_levels, n_angles, N, α)
 
-    x = LinRange(0.0, 1.0, 4)
-    k = map(x -> corners[i,j] + x[1] * u + x[2] * v, collect(Iterators.product(x, x)))
-    E = map(x -> ε(corners[i,j] + x[1] * u + x[2] * v), collect(Iterators.product(x, x)))
-    c = find_contour(x, x, E, ε0).isolines
-    
-    if length(c) == 0
-        display(k)
-        @show corners[i + 1, j + 1]
-        @show ε0
-    end
+"""
+    patch_op(p, M, corner_perm, n_col, n_row, corner_shift)
 
-    iso = c[1]
-    k = 1
-    s = 0.0
-    while k < length(iso.points) && s < iso.arclength / 2.0
-        k += 1
-        s += norm(iso.points[k] - iso.points[k - 1])
-    end
+Perform the symmetry operation of `M` on patch `p` to generate another patch. 
 
-    coords = iso.points[k - 1] + (iso.points[k] - iso.points[k-1]) * (s - iso.arclength/2.0) / norm((iso.points[k] - iso.points[k-1])) # Coordinates in u,v space
-
-    return corners[i,j] + coords[1] * u + coords[2] * v
-end
-
+`corner_perm` is a permutation function that takes `n_col`, `n_row` and `p.corners` as input to determine the ids of the patch corners in a corresponding array. This is for plotting purposes only. 
+"""
 function patch_op(p::Patch, M::Matrix, corner_perm::Function, n_col::Int, n_row::Int, corner_shift::Int)
     return Patch(
         SVector{2}(M * p.momentum), 
