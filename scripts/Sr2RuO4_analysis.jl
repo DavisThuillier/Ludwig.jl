@@ -12,14 +12,9 @@ function symmetrize(L, dV, E, T)
     D = diagm(dV .* fd .* (1 .- fd))
 
     return 0.5 * (L + inv(D) * L' * D)
-    # return inv(D) * L' * D
 end
 
 function load(file, T)
-    if T > 0.1
-        println("Are you certain that you have converted T to eV?")
-    end
-
     h5open(file, "r") do fid
         g = fid["data"]
 
@@ -31,7 +26,7 @@ function load(file, T)
         corners = read(g, "corners")
         corner_ids = read(g, "corner_ids")
 
-        L = symmetrize(L, dV, E, T)
+        L = symmetrize(L, dV, E, kb * T)
 
         # Enforce particle conservation
         for i in 1:size(L)[1]
@@ -96,7 +91,7 @@ function get_property(prop::String, T, n_ε::Int, n_θ::Int, Uee::Real, Vimp::Re
     eefile = joinpath(data_dir, "Sr2RuO4_$(Float64(T))_$(n_ε)x$(n_θ).h5")
     
     Γ, k, v, E, dV, _, _= load(eefile, T)
-    Γ *= Uee^2
+    Γ *= 0.5 * Uee^2
     ℓ = size(Γ)[1]
 
     if include_impurity
@@ -110,21 +105,19 @@ function get_property(prop::String, T, n_ε::Int, n_θ::Int, Uee::Real, Vimp::Re
     if prop == "σ"
         σ = Ludwig.conductivity(Γ, v, E, dV, T)
         return σ[1,1] / c
+    elseif prop == "σxx"
+        σ = Ludwig.longitudinal_conductivity(Γ, first.(v), E, dV, T)
+        return σ[1,1] / c
     elseif prop == "ηB1g"
         Dxx = zeros(Float64, ℓ)
         Dyy = zeros(Float64, ℓ)
         for i in 1:ℓ
             μ = (i-1)÷(ℓ÷3) + 1 # Band index
-            if μ < 3 # α and β bands
-                Dxx[i] = dii_μ(k[i], 1, μ)
-                Dyy[i] = dii_μ(k[i], 2, μ)
-            else
-                Dxx[i] = dxx_γ(k[i])
-                Dyy[i] = dyy_γ(k[i])
-            end
+            Dxx[i] = dii_μ(k[i], 1, μ)
+            Dyy[i] = dii_μ(k[i], 2, μ)
         end
 
-        return Ludwig.ηB1g(Γ, E, dV, Dxx, Dyy, T) ./ (a^2 * c)
+        return Ludwig.ηB1g(Γ, E, dV, Dxx, Dyy, T) / (a^2 * c)
     elseif prop == "τ_eff"
         # Effective lifetime as calculated from the conductivity
         τ = Ludwig.σ_lifetime(Γ, v, E, dV, T)
@@ -181,6 +174,10 @@ end
 
 function display_heatmap(file, T)
     Γ, k, v, E, dV, corners, corner_ids = load(file, T)
+
+    T = kb * T
+
+
     fd = f0.(E, T) # Fermi dirac on grid points
     D = diagm(sqrt.(dV .* fd .* (1 .- fd)))
     M = D * Γ * inv(D)
@@ -195,11 +192,11 @@ function display_heatmap(file, T)
     display(f)
     # save(joinpath(@__DIR__,"..", "plots","Sr2RuO4_interband_heatmap.png"), f)
 
-    λ = eigvals(M)
-    @show λ[1:4]
-    f = Figure()
-    ax = Axis(f[1,1])
-    scatter!(ax, real.(λ))
+    # λ = eigvals(M)
+    # @show λ[1:4]
+    # f = Figure()
+    # ax = Axis(f[1,1])
+    # scatter!(ax, real.(λ))
     # display(f)
 end
 
@@ -245,53 +242,6 @@ function modes(T, n_ε, n_θ, Uee)
     # save(outfile, f)
 end
 
-function ρ_matthiesen_fit()
-    data_file = joinpath(data_dir, "rho_ee.dat")
-
-    Ts = Float64[]
-    ρs = Float64[]
-    open(data_file, "r") do file
-        for line in readlines(file)
-            startswith(line, "#") && continue
-            T, ρ = split(line, " ")
-            push!(Ts, parse(Float64, T))
-            push!(ρs, parse(Float64, ρ))
-        end
-    end
-
-    model(t, p) = p[1] * t.^p[2]
-    fit = curve_fit(model, Ts, ρs, [1e-3, 2.0])
-    @show fit.param[2]
-
-    # Fit to Lupien's data
-    lupien_file = joinpath(exp_dir, "rhovT_Lupien_digitized.dat")
-    lupien_data = readdlm(lupien_file)
-    
-    lupien_T = lupien_data[11:60,1]
-    lupien_ρ = lupien_data[11:60,2]
-
-    lupien_model(t, p) = p[1] .+ p[2] * t.^fit.param[2]
-    lupien_fit = curve_fit(lupien_model, lupien_T, lupien_ρ, [0.1, 1.0])
-    @show lupien_fit.param 
-
-    scale = lupien_fit.param[2] / fit.param[1]
-
-    Uee = sqrt(scale) * 0.1
-    @show Uee
-
-    f = Figure(fontsize = 20)
-    ax = Axis(f[1,1],
-              xlabel = L"T(\mathrm{K})",
-              ylabel = L"\rho (\mathrm{\mu\Omega \,cm})")
-    scatter!(ax, lupien_data[:,1], lupien_data[:,2], color = :black)
-    domain = 0.0:0.1:30
-    lines!(ax, domain, lupien_fit.param[1] .+ scale * model(domain, fit.param), color = :red)
-    display(f)
-
-    # outfile = joinpath(@__DIR__, "..", "plots", "test.png")
-    # save(outfile, f)
-end
-
 function ρ_fit_with_impurities(n_ε, n_θ)
     # Fit to Lupien's data
     lupien_file = joinpath(exp_dir, "rhovT_Lupien_digitized.dat")
@@ -304,7 +254,7 @@ function ρ_fit_with_impurities(n_ε, n_θ)
     lupien_fit = curve_fit(lupien_model, lupien_T, lupien_ρ, [0.12, 0.003, 1.9])
     @show lupien_fit.param 
 
-    temps = 2.0:0.5:14.0
+    temps = 2.0:2.0:14.0
     lupien_ρ = lupien_model(temps, lupien_fit.param)
 
     Vfit_model(t, p) = begin 
@@ -322,8 +272,8 @@ function ρ_fit_with_impurities(n_ε, n_θ)
         ρ
     end
 
-    Uee = 0.033
-    Vimp = 4e-6
+    Uee = 0.07517388226660576
+    Vimp = 8.647920506354473e-5
 
     guess = [Uee, Vimp]
     Vfit = curve_fit(Vfit_model, temps, lupien_ρ, guess, lower = [0.0, 0.0])
@@ -331,22 +281,24 @@ function ρ_fit_with_impurities(n_ε, n_θ)
 end
 
 function plot_ρ(n_ε, n_θ, Uee, Vimp)
-    t = 2.0:2.0:12.0
+    t = 2.0:0.5:12.0
 
-    # σ = Vector{Float64}(undef, length(t))
-    # for i in eachindex(t)
-    #     σ[i] = get_property("σ", t[i], n_ε, n_θ, Uee, Vimp; include_impurity = false)
-    #     @show 10^8 / σ[i]
-    # end
+    σ = Vector{Float64}(undef, length(t))
+    for i in eachindex(t)
+        σ[i] = get_property("σxx", t[i], n_ε, n_θ, Uee, Vimp; include_impurity = true)
+        @show 10^8 / σ[i]
+    end
 
-    # ρ = 10^8  ./ σ # Convert to μΩ-cm
-    # @show ρ
+    ρ = 10^8  ./ σ # Convert to μΩ-cm
+    @show ρ
 
-    ρ = [10.61569786497378, 43.632565918609295, 100.23207756862656, 181.4054170200275, 288.5846338902795, 423.2393870804205] * 0.001
+    ρ = [0.10959056505116326, 0.12151019463132146, 0.13504856338798898, 0.15016845154757302, 0.16672467041152575, 0.1847198405479588, 0.2041851433762483, 0.22516814159799386, 0.24777750498999843, 0.27197760942785343, 0.29784506878946493, 0.32543193395073594, 0.35473522979103506, 0.38579389146608156, 0.4186462443045558, 0.4534385594028692, 0.49009715381486624, 0.5286627463900118, 0.5691567274598581, 0.6116340508555088, 0.6561653206886255]
 
     model(t, p) = p[1] .+ p[2] * t.^p[3]
     fit = curve_fit(model, t, ρ, [0.0, 0.0001, 2.0], lower = [0.0, 0.0, 0.0])
     @show fit.param
+
+    
 
     f = Figure(fontsize = 20)
     ax = Axis(f[1,1],
@@ -366,19 +318,33 @@ function plot_ρ(n_ε, n_θ, Uee, Vimp)
 
 end
 
+function get_η(n_ε, n_θ, Uee, Vimp)
+    temps = 2.0:0.5:14.0
+    data_file = joinpath(data_dir, "ηB1g.dat")
+
+    # open(data_file, "w") do file
+        for T in temps
+            η = get_property("ηB1g", T, n_ε, n_θ, Uee, Vimp; include_impurity = true)
+            # println(file, "$(T), $(η)")
+            println("$(T), $(η)")
+        end
+    # end
+end
+
 function plot_η()
-    data_file = joinpath(data_dir, "viscosity_unitary.dat")
+    data_file = joinpath(data_dir, "ηB1g.dat")
 
     T = Float64[]
     ηB1g = Float64[]
     open(data_file, "r") do file
         for line in readlines(file)
             startswith(line, "#") && continue
-            t, η1 = split(line, " ")
+            t, η1 = split(line, ",")
             push!(T, parse(Float64, t))
             push!(ηB1g, parse(Float64, η1))
         end
     end
+    ηB1g *= pi
 
     # Fit to Brad's data
     visc_file = joinpath(exp_dir,"B1gViscvT_new.dat")
@@ -404,7 +370,7 @@ function plot_η()
             xtickformat = values -> [L"%$(Int(sqrt(x)))^2" for x in values]
             )
             xlims!(0.0, 14^2)
-    ylims!(ax, 0.0, 40)
+    ylims!(ax, 0.0, 24)
     xlims!(ax, 0.0, 14^2)
     
     domain = 0.0:0.1:14.0
@@ -412,17 +378,11 @@ function plot_η()
     lines!(ax, domain.^2, 1 ./ (rmodel(domain, rfit.param) .- rfit.param[1]))
     lines!(ax, domain.^2, 1 ./ (model(domain, fit.param)), color = :red)
     scatter!(ax, T.^2, 1 ./ ηB1g)
-    
-    ax2 = Axis(f[1,2],
-        aspect = 1.0,
-        ylabel = L"\eta_\text{exp} / \eta_\text{theory} ",
-            xlabel = L"T(\mathrm{K})",
-    )
-    lines!(ax2, domain, (rfit.param[3]/fit.param[2]) * (rmodel(domain, rfit.param) .- rfit.param[1]) ./ (model(domain, fit.param)))
+
 
     display(f)
-    outfile = joinpath(@__DIR__, "..", "plots", "η_unitary.png")
-    save(outfile, f)
+    # outfile = joinpath(@__DIR__, "..", "plots", "η_unitary.png")
+    # save(outfile, f)
 
     return nothing
 
@@ -518,15 +478,19 @@ function main(n_ε, n_θ)
 end
 
 include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
-data_dir = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "single_band_test")
+data_dir = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "model_1")
 plot_dir = joinpath(@__DIR__, "..", "plots", "Sr2RuO4")
 exp_dir  = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "experiment")
 
-# for T in 2.0:2.0:12.0
-    # display_heatmap(joinpath(data_dir, "Sr2RuO4_$(T)_8x30.h5"), 12*kb)
-# end
+n_ε = 12
+n_θ = 38
+Uee = 0.07517388226660576
+Vimp = 8.647920506354473e-5
 
-display_heatmap(joinpath(data_dir, "Sr2RuO4_12.0_10x24.h5"), 12*kb)
-# plot_ρ(4, 20, 1.0, 0.0)
-modes(12.0, 10, 24, 1.0)
-# spectrum(12, 38, 1.0, 0.0)
+# display_heatmap(joinpath(data_dir, "Sr2RuO4_12.0_12x38.h5"), 12)
+# ρ_fit_with_impurities(12, 38)
+plot_ρ(12, 38, Uee, Vimp)
+# modes(12.0, 10, 24, 1.0)
+# plot_η()
+# get_η(n_ε, n_θ, Uee, Vimp)
+# @show get_property("ηB1g", 12.0, 12, 38, Uee, Vimp; include_impurity = true)

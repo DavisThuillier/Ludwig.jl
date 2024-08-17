@@ -158,35 +158,36 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
     return Lij / (grid[i].dV * (1 - f0s[i]))
 end
 
-# function Iab(a::Patch, b::Patch, Δε::Float64, V_squared::Function)
-#     if abs(a.energy - b.energy) < Δε/2 
-#         return 16 * V_squared(a.momentum, b.momentum) * a.djinv * b.djinv / Δε 
-#     else
-#         return 0.0
-#     end
-# end
+function Iab(a::Patch, b::Patch, V_squared::Function)
+    Δε = sqrt(a.de^2 + b.de^2) # Add energy differentials in quadrature to obtain ||u||
+    if abs(a.energy - b.energy) < Δε/2 
+        return 16 * V_squared(a.momentum, b.momentum) * a.djinv * b.djinv / Δε 
+    else
+        return 0.0
+    end
+end
 
-# function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, V_squared)
-#     for i in ProgressBar(eachindex(grid))        
-#         for j in eachindex(grid)
-#             i == j && continue
-#             @inbounds L[i,j] -= Iab(grid[i], grid[j], Δε, V_squared)
-#         end
+function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, V_squared)
+    for i in ProgressBar(eachindex(grid))        
+        for j in eachindex(grid)
+            i == j && continue
+            @inbounds L[i,j] -= Iab(grid[i], grid[j], V_squared)
+        end
 
-#         L[i, :] /= grid[i].dV
-#     end
-#     return nothing
-# end
+        L[i, :] /= grid[i].dV
+    end
+    return nothing
+end
 
-# function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, V_squared::Matrix)
-#     ℓ = size(Γ)[1] ÷ 3
-#     for i in ProgressBar(eachindex(grid))        
-#         for j in eachindex(grid)
-#             i == j && continue
-#             @inbounds L[i,j] -= Iab(grid[i], grid[j], Δε, (x,y) -> V_squared[(i-1)÷ℓ + 1, (j-1)÷ℓ + 1])
-#         end
+function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_squared::Matrix)
+    ℓ = size(L)[1] ÷ size(V_squared)[1]
+    for i in ProgressBar(eachindex(grid))        
+        for j in eachindex(grid)
+            i == j && continue
+            @inbounds L[i,j] -= Iab(grid[i], grid[j], (x,y) -> V_squared[(i-1)÷ℓ + 1, (j-1)÷ℓ + 1])
+        end
 
-#         L[i, :] /= grid[i].dV
-#     end
-#     return nothing
-# end
+        L[i, :] /= grid[i].dV
+    end
+    return nothing
+end

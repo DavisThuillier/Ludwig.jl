@@ -6,42 +6,26 @@ using StaticArrays
 function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
     T = kb * T # Convert K to eV
 
-    grid    = Vector{Patch}(undef, 0)
-    corners = Vector{SVector{2, Float64}}(undef, 0)
-    Δε = 0
-    for h in bands
-        mesh, Δε = Ludwig.generate_mesh(h, T, n_ε, n_θ, 2000)
-        grid = vcat(grid, map(x -> Patch(
-                                    x.momentum, 
-                                    x.energy,
-                                    x.v,
-                                    x.dV,
-                                    x.de,
-                                    x.jinv, 
-                                    x.djinv,
-                                    x.corners .+ length(corners)
-                                ), mesh.patches)
-        )
-        corners = vcat(corners, mesh.corners)
-    end
+    mesh = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
+    ℓ = length(mesh.patches)
 
-    ℓ = length(grid)
-
+    # Initialize file - will error if
     h5open(outfile, "cw") do fid
         g = create_group(fid, "data")
         write_attribute(g, "n_e", n_ε)
         write_attribute(g, "n_theta", n_θ)
-        g["corners"] = copy(transpose(reduce(hcat, corners)))
-        g["momenta"] = copy(transpose(reduce(hcat, map(x -> x.momentum, grid))))
-        g["velocities"] = copy(transpose(reduce(hcat, map(x -> x.v, grid))))
-        g["energies"] = map(x -> x.energy, grid) 
-        g["dVs"] = map(x -> x.dV, grid)
-        g["corner_ids"] = copy(transpose(reduce(hcat, map(x -> x.corners, grid))))
+        g["corners"] = copy(transpose(reduce(hcat, mesh.corners)))
+        g["momenta"] = copy(transpose(reduce(hcat, map(x -> x.momentum, mesh.patches))))
+        g["velocities"] = copy(transpose(reduce(hcat, map(x -> x.v, mesh.patches))))
+        g["energies"] = map(x -> x.energy, mesh.patches) 
+        g["dVs"] = map(x -> x.dV, mesh.patches)
+        g["corner_ids"] = copy(transpose(reduce(hcat, map(x -> x.corners, mesh.patches))))
     end 
 
-    Γ = zeros(Float64, ℓ, ℓ) # Scattering operator
+
     V_squared(k) = 1.0
-    # Ludwig.electron_impurity!(Γ, grid, Δε, (x,y) -> 1.0)
+
+    L = zeros(Float64, ℓ, ℓ) # Scattering operator
 
     V_squared = Matrix{Float64}(undef, 3, 3)
     Vs = [133.12, 42.209, 8.1114]
@@ -51,12 +35,12 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
         end
     end
 
-    Ludwig.electron_impurity!(Γ, grid, Δε, V_squared)
+    Ludwig.electron_impurity!(L, mesh.patches, V_squared)
 
     # Write scattering operator out to file
     h5open(outfile, "cw") do fid
         g = fid["data"]
-        g["Γ"] = Γ 
+        g["L"] = L
     end
 end
 
@@ -69,7 +53,7 @@ function argument_handling()
     return T, n_ε, n_θ, band_file, out_dir
 end
 
-dir = joinpath("..", "data", "Sr2RuO4")
+dir = joinpath("..", "data", "Sr2RuO4", "model_1")
 band_file = joinpath("materials", "Sr2RuO4.jl")
 include(joinpath(@__DIR__, band_file))
 n_ε = 12
