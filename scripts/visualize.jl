@@ -110,11 +110,11 @@ function form_factors()
     T = 12 * kb
     n_ε = 12
     n_θ = 38
-    mesh, _ = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
+    mesh = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
 
     xticks = map(x -> (x // 4), -8:8)
 
-    N = 100
+    N = 60
     krange = LinRange(-0.5, 0.5, N)
 
     for i in 1:6:2*length(mesh.patches)÷3
@@ -143,7 +143,7 @@ function form_factors()
     
 end
 
-include(joinpath(@__DIR__, "materials", "graphene.jl"))
+include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
 
-# form_factors()
-main()
+form_factors()
+# main()

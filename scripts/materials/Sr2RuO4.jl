@@ -85,15 +85,17 @@ end
 function orbital_weights(k)
     W = zeros(Float64, 3, 3)
 
-    W[3,3] = 2 * V(k)
-    W[3,2] = sign(W[3,3])
-    W[1,3] = exz(k) - eyz(k) # Store in cell of W which will be set to 0 later
-    W[2,3] = sqrt(W[3,3]^2 + W[1,3]^2) 
-    W[3,1] = sqrt(W[3,3]^2 + (W[1,3] - W[2,3])^2) # Norm of first eigenvector
+    Δ1 = exz(k) - eyz(k)
+    Δ2 = 2 * V(k)
+    ζ = sqrt(Δ1^2 + Δ2^2)
 
-    W[1,1] = W[3,2] * (W[1,3] - W[2,3]) / W[3,1]; W[2,1] = abs(W[3,3]) / W[3,1]; W[3,1] = 0.0
-    W[1,2] = W[2,1]; W[2,2] = - W[1,1]; W[3,2] = 0.0
-    W[1,3] = 0.0; W[2,3] = 0.0; W[3,3] = 1.0
+    nα = sqrt(Δ2^2 + (Δ1 - ζ)^2) # Norm of the eigenvector corresponding to α band
+
+    W[1,1] = sign(Δ2) * (Δ1 - ζ) / nα 
+    W[2,1] = abs(Δ2) / nα 
+    W[1,2] = W[2,1]
+    W[2,2] = - W[1,1]
+    W[3,3] = 1.0
 
     return W
 end
@@ -124,15 +126,14 @@ function vertex_pk(p::Patch, k, μ::Int)
         if μ < 3
             Δ1 = (exz(k) - eyz(k)) 
             Δ2 = 2 * V(k)
-            Δ3 = sqrt(Δ2^2 + Δ1^2) 
-            if μ == 1 
-                w1 = Δ1 - Δ3
-            else
-                w1 = Δ1 + Δ3
-            end
+            ζ = sqrt(Δ1^2 + Δ2^2) 
 
-            return sign(Δ2) * (p.w[1] * w1 + p.w[2] * Δ2) / sqrt(Δ2^2 + w1^2)
-            
+            w1 = Δ1 - ζ # First element of the α band weight
+            if μ == 1 # α band
+                return sign(Δ2) * (p.w[1] * w1 + p.w[2] * Δ2) / sqrt(Δ2^2 + w1^2)
+            else # β band
+                return sign(Δ2) * (p.w[1] * Δ2 - p.w[2] * w1) / sqrt(Δ2^2 + w1^2)
+            end
         else
             return 0.0
         end
