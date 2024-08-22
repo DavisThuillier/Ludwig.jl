@@ -25,38 +25,43 @@ function deformation_potentials()
 
      # Generate grid of 1st quadrant 
      x = LinRange(0.0, 0.5, N)
-     f = Figure(fontsize = 20)
-     xticks = map(x -> (x // 4), 0:1:16)
-     ax = Axis(f[1,1], 
-               xlabel = L"θ",
-               ylabel = L"D_{xx}^2",
-               xticks = xticks,
-               xtickformat = values -> rational_format.(values)
-               )
-    labels = [L"\alpha", L"\beta", L"\gamma"]
 
-     for μ in 2:3
-        E = map(x -> bands[μ]([x[1], x[2]]), collect(Iterators.product(x, x)))
-    
-        c = Ludwig.find_contour(x, x, E) # Generate Fermi surface contours
-        points = c.isolines[1].points
-        θ = map(x -> atan(x[2], x[1]), points) / pi
-        if θ[2] < θ[1] # Fix orientation
-            reverse!(θ)
-            reverse!(points)
+
+     for δ in 0.0:0.05:0.5
+        f = Figure(fontsize = 20)
+        xticks = map(x -> (x // 4), 0:1:16)
+        ax = Axis(f[1,1], 
+                xlabel = L"θ",
+                ylabel = L"D_{xx}^2",
+                xticks = xticks,
+                xtickformat = values -> rational_format.(values),
+                title = latexstring("\$\\delta = $(δ) \\mathrm{ eV}\$")
+                )
+        labels = [L"\alpha", L"\beta", L"\gamma"]
+
+        for μ in 2:3
+            E = map(x -> bands[μ]([x[1], x[2]]), collect(Iterators.product(x, x)))
+        
+            c = Ludwig.find_contour(x, x, E) # Generate Fermi surface contours
+            points = c.isolines[1].points
+            θ = map(x -> atan(x[2], x[1]), points) / pi
+            if θ[2] < θ[1] # Fix orientation
+                reverse!(θ)
+                reverse!(points)
+            end
+
+            points = vcat(points, reverse(points))
+            points = vcat(points, reverse(points))
+
+            θ = vcat(θ, θ .+ 0.5) 
+            θ = vcat(θ, θ .+ 1.0)
+
+            lines!(ax, θ[3:end-1], dii_μ.(points[3:end-1], 1, μ, δ).^2, label = labels[μ])
+            # lines!(ax, θ, label = labels[μ])
         end
-
-        points = vcat(points, reverse(points))
-        points = vcat(points, reverse(points))
-
-        θ = vcat(θ, θ .+ 0.5) 
-        θ = vcat(θ, θ .+ 1.0)
-
-        lines!(ax, θ[3:end-1], dii_μ.(points[3:end-1], 1, μ).^2, label = labels[μ])
-        # lines!(ax, θ, label = labels[μ])
-     end
-     axislegend(ax)
-     display(f)
+        axislegend(ax)
+        display(f)
+    end
 
     #  outfile = joinpath(@__DIR__, "..", "plots", "deformation_potentials.png")
     #  save(outfile, f)
@@ -145,5 +150,6 @@ end
 
 include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
 
-form_factors()
+# form_factors()
 # main()
+deformation_potentials()

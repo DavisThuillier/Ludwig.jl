@@ -56,13 +56,16 @@ function ham_β(k)
 end
 
 # Computes the xx or yy deformation potential for the α band. μ is a band index where 1 is α and 2 is β
-function dii_μ(k, i::Int, μ::Int)
+function dii_μ(k, i::Int, μ::Int, δ)
     if μ == 1 || μ == 2
+        (μ == 1) ? (δ /= tα) : (δ /= tβ)
         x = exz(k)
         y = eyz(k)
         Δ = sqrt( 0.25 * (x - y)^2 + V(k)^2 ) # Twice the band gap between α and β
 
-        d = alph * (1 + t3) * cos(2pi*k[i]) + (-1)^(μ+i) * (alph * (1 - t3)^2 * cos(2pi*k[i]) * (cos(2pi*k[1]) - cos(2pi*k[2])) ) / Δ
+        # d = alph * (1 + t3) * cos(2pi*k[i]) + (-1)^(μ+i) * (alph * (1 - t3)^2 * cos(2pi*k[i]) * (cos(2pi*k[1]) - cos(2pi*k[2])) ) / Δ
+        d = alph * (1 + t3) * cos(2pi*k[i]) + (-1)^(μ+1) * ((-1)^(i + 1) * (1 - t3) * ( alph * (1 - t3) * cos(2pi*k[i]) - δ) * (cos(2pi*k[1]) - cos(2pi*k[2])) + 8 * t5^2 * alph_p * (sin(2pi*k[1]) * sin(2pi*k[2]))^2) / Δ
+
         (μ == 1) ? (return d*tα) : return (d*tβ) 
     elseif μ == 3 # γ band
         return 2 * alph * tγ * cos(2pi*k[i]) + 2 * alph_p * tpγ * cos(2pi*k[1]) * cos(2pi*k[2])
