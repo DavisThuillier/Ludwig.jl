@@ -344,7 +344,7 @@ function plot_η()
             push!(ηB1g, parse(Float64, η1))
         end
     end
-    ηB1g *= pi
+    # ηB1g *= pi
 
     # Fit to Brad's data
     visc_file = joinpath(exp_dir,"B1gViscvT_new.dat")
@@ -356,7 +356,7 @@ function plot_η()
     data[:, 2] .-= rfit.param[1] # Subtract off systematic offset
 
 
-    model(t, p) = 1 ./ (p[1] .+ p[2] * t.^p[3])
+    model(t, p) = 1 ./ (p[1] .+ p[2] * t.^rfit.param[4])
     fit = curve_fit(model, T, ηB1g, [1.0, 0.1, 2.0])
     @show fit.param
     @show fit.param[1] / fit.param[2]
@@ -373,12 +373,14 @@ function plot_η()
     ylims!(ax, 0.0, 24)
     xlims!(ax, 0.0, 14^2)
     
-    domain = 0.0:0.1:14.0
+    domain = 0.0:0.1:12.0
     scatter!(ax, data[:, 1].^2, 1 ./ data[:, 2],color = :black)
     lines!(ax, domain.^2, 1 ./ (rmodel(domain, rfit.param) .- rfit.param[1]))
     lines!(ax, domain.^2, 1 ./ (model(domain, fit.param)), color = :red)
     scatter!(ax, T.^2, 1 ./ ηB1g)
 
+    mean_ratio = sum((rmodel(domain, rfit.param) .- rfit.param[1]) ./ (model(domain, fit.param))) / length(domain)
+    @show mean_ratio
 
     display(f)
     # outfile = joinpath(@__DIR__, "..", "plots", "η_unitary.png")
@@ -489,8 +491,8 @@ Vimp = 8.647920506354473e-5
 
 # display_heatmap(joinpath(data_dir, "Sr2RuO4_12.0_12x38.h5"), 12)
 # ρ_fit_with_impurities(12, 38)
-plot_ρ(12, 38, Uee, Vimp)
+# plot_ρ(12, 38, Uee, Vimp)
 # modes(12.0, 10, 24, 1.0)
-# plot_η()
+plot_η()
 # get_η(n_ε, n_θ, Uee, Vimp)
 # @show get_property("ηB1g", 12.0, 12, 38, Uee, Vimp; include_impurity = true)

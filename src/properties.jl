@@ -1,4 +1,19 @@
 """
+    inner_product(a, b, L, w)
+
+Compute the weighted inner product ``\\langle a | L^(-1) | b\\rangle`` with the weight vector `w`.
+"""
+function inner_product(a, b, L, w)
+    ϕ = bicgstabl(L, b)
+    prod = 0.0
+    for i in eachindex(a)
+        prod += a[i] * w[i] * ϕ[i]
+    end
+    return prod
+end
+
+
+"""
     conductivity(L, v, E, dV, T)
 """
 function conductivity(L, v, E, dV, T)
@@ -37,14 +52,17 @@ function ηB1g(L, E, dV, Dxx, Dyy, T)
     return η
 end
 
-function inner_product(a, b, L, w)
-    ϕ = bicgstabl(L, b)
-    prod = 0.0
-    for i in eachindex(a)
-        prod += a[i] * w[i] * ϕ[i]
-    end
-    return prod
+function ηB2g(L, E, dV, Dxy, T)
+    fd = f0.(E, T) # Fermi dirac on grid points
+
+    prefactor = 2 * hbar * e_charge / T
+
+    η = prefactor * inner_product(Dxy, Dxy, L, fd .* (1 .- fd) .* dV)
+
+    return η
 end
+
+
 
 """
     σ_lifetime(Γ, v, E, dV, T)
