@@ -38,7 +38,6 @@ function longitudinal_conductivity(L, vx, E, dV, T)
     return (G0 / (2π)) * (σxx / T) 
 end
 
-
 """
     ηB1g(L, E, dVs, Dxx, Dyy, T)
 """
