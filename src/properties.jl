@@ -47,7 +47,8 @@ function ηB1g(L, E, dV, Dxx, Dyy, T)
 
     prefactor = 2 * hbar * e_charge / T
 
-    η = prefactor * 0.5 * inner_product(Dxx, Dxx .- Dyy, L, fd .* (1 .- fd) .* dV)
+    # η = prefactor * 0.5 * inner_product(Dxx, Dxx .- Dyy, L, fd .* (1 .- fd) .* dV)
+    η = prefactor * 0.25 * inner_product(Dxx .- Dyy, Dxx .- Dyy, L, fd .* (1 .- fd) .* dV)
 
     return η
 end

@@ -493,6 +493,6 @@ Vimp = 8.647920506354473e-5
 # ρ_fit_with_impurities(12, 38)
 # plot_ρ(12, 38, Uee, Vimp)
 # modes(12.0, 10, 24, 1.0)
-plot_η()
-# get_η(n_ε, n_θ, Uee, Vimp)
+# plot_η()
+get_η(n_ε, n_θ, Uee, Vimp)
 # @show get_property("ηB1g", 12.0, 12, 38, Uee, Vimp; include_impurity = true)
