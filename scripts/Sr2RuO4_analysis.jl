@@ -14,7 +14,7 @@ function symmetrize(L, dV, E, T)
     return 0.5 * (L + inv(D) * L' * D)
 end
 
-function load(file, T; symmetrize = false)
+function load(file, T; symmetrized = false)
     h5open(file, "r") do fid
         g = fid["data"]
 
@@ -26,7 +26,7 @@ function load(file, T; symmetrize = false)
         corners = read(g, "corners")
         corner_ids = read(g, "corner_ids")
 
-        symmetrize && (L = symmetrize(L, dV, E, kb * T))
+        symmetrized && (L = symmetrize(L, dV, E, kb * T))
 
         # Enforce particle conservation
         for i in 1:size(L)[1]
@@ -90,7 +90,7 @@ end
 function get_property(prop::String, T, n_ε::Int, n_θ::Int, Uee::Real, Vimp::Real, δ = 0.0; include_impurity::Bool = true)
     eefile = joinpath(data_dir, "Sr2RuO4_$(Float64(T))_$(n_ε)x$(n_θ).h5")
     
-    Γ, k, v, E, dV, _, _= load(eefile, T, symmetrize = true)
+    Γ, k, v, E, dV, _, _= load(eefile, T, symmetrized = true)
     Γ *= 0.5 * Uee^2
     ℓ = size(Γ)[1]
 
@@ -368,9 +368,9 @@ function get_η(n_ε, n_θ, Uee, Vimp)
     temps = 14.0:-2.0:2.0
 
     # δ = 0.14117376906230963
-    δ = 0.5
+    δ = 0.0
 
-    for r in 0.6:0.1:1.0
+    for r in 1.0:0.1:1.0
         data_file = joinpath(data_dir, "ηB1g_r_$(r)_δ_$(δ).dat")
 
         open(data_file, "w") do file
