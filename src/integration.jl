@@ -159,7 +159,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
 end
 
 function Iab(a::Patch, b::Patch, V_squared::Function)
-    Δε = sqrt(a.de^2 + b.de^2) # Add energy differentials in quadrature to obtain ||u||
+    Δε = sqrt(a.de^2 + b.de^2) / sqrt(2) # Add energy differentials in quadrature to obtain ||u||
     if abs(a.energy - b.energy) < Δε/2 
         return 16 * V_squared(a.momentum, b.momentum) * a.djinv * b.djinv / Δε 
     else
