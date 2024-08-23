@@ -22,9 +22,6 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
         g["corner_ids"] = copy(transpose(reduce(hcat, map(x -> x.corners, mesh.patches))))
     end 
 
-
-    V_squared(k) = 1.0
-
     L = zeros(Float64, ℓ, ℓ) # Scattering operator
 
     V_squared = Matrix{Float64}(undef, 3, 3)
