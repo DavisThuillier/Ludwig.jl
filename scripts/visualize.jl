@@ -71,32 +71,32 @@ function main()
     T = 12 * kb
     n_ε = 12
     n_θ = 38
-    # mesh = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
-    # ℓ = length(mesh.patches)
+    mesh = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
+    ℓ = length(mesh.patches)
 
-    # corner_ids = map(x -> x.corners, mesh.patches)
+    corner_ids = map(x -> x.corners, mesh.patches)
 
-    # quads = Vector{Vector{SVector{2, Float64}}}(undef, 0)
-    # for i in 1:size(corner_ids)[1]
-    #     push!(quads, map(x -> mesh.corners[x], corner_ids[i]))
-    # end
-
-    x = LinRange(-0.5, 0.5, 1000)
-    E = map(x -> ε1([x[1], x[2]]), collect(Iterators.product(x, x)))
-    c = Ludwig.find_contour(x,x,E)
-
-    f = Figure(size = (1000,1000))
-    ax = Axis(f[1,1],
-              aspect = 1.0,
-            #   limits = (-0.5,0.5,-0.5,0.5)
-    )
-    
-    h = heatmap!(ax, x,x ,E)
-    for iso in c.isolines
-        lines!(ax, iso.points)
+    quads = Vector{Vector{SVector{2, Float64}}}(undef, 0)
+    for i in 1:size(corner_ids)[1]
+        push!(quads, map(x -> mesh.corners[x], corner_ids[i]))
     end
 
-    # p = poly!(ax, quads, color = map(x -> x.energy, mesh.patches), colormap = :viridis)
+    # x = LinRange(-0.5, 0.5, 1000)
+    # E = map(x -> ε1([x[1], x[2]]), collect(Iterators.product(x, x)))
+    # c = Ludwig.find_contour(x,x,E)
+
+    # f = Figure(size = (1000,1000))
+    # ax = Axis(f[1,1],
+    #           aspect = 1.0,
+    #         #   limits = (-0.5,0.5,-0.5,0.5)
+    # )
+    
+    # h = heatmap!(ax, x,x ,E)
+    # for iso in c.isolines
+    #     lines!(ax, iso.points)
+    # end
+
+    p = poly!(ax, quads, color = map(x -> x.energy, mesh.patches), colormap = :viridis, strokecolor = :black)
 
     # xs = map(x -> x.momentum[1], mesh.patches)
     # ys = map(x -> x.momentum[2], mesh.patches)

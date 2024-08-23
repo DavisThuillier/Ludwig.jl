@@ -62,8 +62,6 @@ function ηB2g(L, E, dV, Dxy, T)
     return η
 end
 
-
-
 """
     σ_lifetime(Γ, v, E, dV, T)
 """
