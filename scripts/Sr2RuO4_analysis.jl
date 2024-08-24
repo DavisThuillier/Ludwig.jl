@@ -339,7 +339,7 @@ function ρ_fit(n_ε, n_θ)
     lupien_T = lupien_data[11:60,1]
     lupien_ρ = lupien_data[11:60,2]
 
-    lupien_model(t, p) = p[1] .+ p[2] * t.^p[3]
+    lupien_model(t, p) = p[1] .+ p[2] * t.^2 #p[3]
     lupien_fit = curve_fit(lupien_model, lupien_T, lupien_ρ, [0.12, 0.003, 1.9])
     @show lupien_fit.param 
 
@@ -613,6 +613,86 @@ function plot_spectrum(n_ε, n_θ, Uee, Vimp)
     # save(outfile, f)
 end
 
+function plot_ρ_and_η(n_ε, n_θ, Uee, Vimp)
+    T = 2.0:0.5:12.0
+
+    # ρ = Vector{Float64}(undef, length(T))
+    # η = Vector{Float64}(undef, length(T))
+    # for i in eachindex(T)
+    #     ρ[i] = 1e8 / get_property("σxx", T[i], n_ε, n_θ, Uee, Vimp; include_impurity = true)
+    #     η[i] = get_property("ηB1g", T[i], n_ε, n_θ, Uee, Vimp; include_impurity = true)
+    # end
+
+    # @show ρ
+    # @show η
+
+    # ρ = [0.14572187053941366, 0.1583948568367494, 0.1728425862769762, 0.18901282110967638, 0.20667432212019982, 0.2257887321860733, 0.24635849964177697, 0.2684105636171452, 0.29204875574948685, 0.31721993847220736, 0.34400235558405456, 0.3724488327795807, 0.4025541823326671, 0.4343602379900469, 0.4679118286333832, 0.5033662819541096, 0.5406422926834203, 0.5797838939355607, 0.6208156109261806, 0.6637970814224016, 0.7088032591626268]
+    # η = [0.1632109937471985, 0.14104169141627979, 0.12153028700859449, 0.104572203676835, 0.09046997281210196, 0.07878866672121872, 0.06909612045431311, 0.06101620796348812, 0.054204113192094124, 0.04846692488169224, 0.043586830506469956, 0.03940454789543453, 0.035803078584045474, 0.03268040808617452, 0.029947369120300646, 0.027530396713247595, 0.02539869935048196, 0.02350404774632313, 0.021813544105868457, 0.020296558737697944, 0.01892834501990456]
+
+    ρ = [0.1184466057991059, 0.13021347042993292, 0.143596080709527, 0.15854907572090784, 0.17489943326990434, 0.19263351064614767, 0.21177117405749082, 0.2323511844774808, 0.2544772463142182, 0.27810943094383744, 0.3033228627991061, 0.33016842764032833, 0.3586429551527171, 0.38878524297657274, 0.4206348950232471, 0.45433677221108826, 0.48981748828118055, 0.527117413936166, 0.5662584554497896, 0.6072952203987327, 0.6502972674520632]
+    η = [0.1958796881072882, 0.16627525782177574, 0.14109624269862953, 0.11989784757382546, 0.10269560654437497, 0.08873094916369476, 0.07733182090541726, 0.06795287218998933, 0.06012861084233261, 0.05359280940948254, 0.04806950193915352, 0.043360191266380674, 0.03932100989922829, 0.03582971528067413, 0.032782009364159224, 0.030092616428403475, 0.027724258460274275, 0.02562214168020945, 0.023748640955960847, 0.022069190007005773, 0.020555898057792395]
+
+    
+    xticks = [4, 16, 36, 49, 64, 81, 100, 121, 144, 169, 196]
+    domain = 0.0:0.1:14.0
+
+    f = Figure(size = (1000, 600), fontsize = 24)
+    ax1 = Axis(f[1,1],
+               xlabel = L"T^2\,(\mathrm{K}^2)",
+               ylabel = L"\rho / \rho_0",
+               xticks = xticks,
+               xtickformat = values -> [L"%$(Int(sqrt(x)))^2" for x in values],
+               aspect = 0.9
+    )
+    xlims!(ax1, 0.0, 14^2)
+    ylims!(ax1, 0.0, 8.0)
+
+    lupien_file = joinpath(exp_dir, "rhovT_Lupien_digitized.dat")
+    lupien_data = readdlm(lupien_file)
+    l_model(t, p) = p[1] .+ p[2] * t.^2
+    lfit = curve_fit(l_model, lupien_data[10:60, 1], lupien_data[10:60, 2], [0.0, 0.0001, 2.0], lower = [0.0, 0.0, 0.0])
+    @show lfit.param[2] / lfit.param[1]
+    
+
+    ρ_model(t, p) = p[1] .+ p[2] * t.^2
+    ρ_fit = curve_fit(ρ_model, T, ρ, [1e-2, 0.1, 2.0])
+    @show ρ_fit.param[2] / ρ_fit.param[1]
+
+    scatter!(ax1, lupien_data[:, 1].^2, lupien_data[:, 2] / lfit.param[1], color = :black)
+
+    # scatter!(ax1, t.^2, ρ)
+    lines!(ax1, domain.^2, ρ_model(domain, ρ_fit.param) / ρ_fit.param[1], color = :red)
+
+    ax2 = Axis(f[1,2],
+               xlabel = L"T^2\,(\mathrm{K}^2)",
+               ylabel = L"(\eta / \eta_0)^{-1}",
+               xticks = xticks,
+               xtickformat = values -> [L"%$(Int(sqrt(x)))^2" for x in values],
+               aspect = 0.9
+    )
+    visc_file = joinpath(exp_dir,"B1gViscvT_new.dat")
+    data = readdlm(visc_file)
+    rmodel(t, p) = p[1] .+ 1 ./ (p[2] .+ p[3] * t.^p[4])
+    bound = 300 # ~ 8 K
+    rfit = curve_fit(rmodel, data[1:bound, 1], data[1:bound, 2], [0.1866, 1.2, 0.1, 2.0], lower = [0.0, 0.0, 0.0, 1.5])
+    data[:, 2] .-= rfit.param[1]
+    @show rfit.param[3] / rfit.param[2]
+    @show rfit.param[4]
+
+    η_model(t, p) = p[1] .+ p[2] * t.^rfit.param[4]
+    η_fit = curve_fit(η_model, T, 1 ./ η, [1.0, 0.1])
+    @show η_fit.param[2] / η_fit.param[1]
+    
+    scatter!(ax2, data[:, 1].^2, rfit.param[2] ./ data[:, 2], color = :black)
+    # scatter!(ax2, data[bound, 1]^2, rfit.param[2] / data[bound, 2], color = :green)
+    
+    lines!(ax2, domain.^2, η_model(domain, η_fit.param) / η_fit.param[1], color = :red)
+
+    display(f)
+
+    save(joinpath(plot_dir, "23 August 2024", "ρ_and_η_fit.png"), f)
+end
+
 function main(n_ε, n_θ)    
     # Unitary
     Uee = 0.03295629587089841
@@ -647,9 +727,11 @@ n_θ = 38
 Uee = 0.07517388226660576
 Vimp = 8.647920506354473e-5
 
+# Uee = 0.07373027869977024
+# Vimp = 7.664036519082529e-5
+
 # display_heatmap(joinpath(data_dir, "Sr2RuO4_12.0_12x38.h5"), 12)
 
-# ρ_fit(12, 38)
 # modes(12.0, n_ε, n_θ, Uee)
 
 ℓ = 4 * (n_ε - 1) * (n_θ - 1)
@@ -657,9 +739,10 @@ Vimp = 8.647920506354473e-5
 # i = 2 * ℓ + Int( ((n_ε - 1) + 1) * (n_θ ÷ 2 - 1.5))
 # @show i
 
+# ρ_fit(n_ε, n_θ)
+plot_ρ_and_η(n_ε, n_θ, Uee, Vimp)
 
-
-visualize_rows(3460, 12.0, n_ε, n_θ)
+# visualize_rows(3460, 12.0, n_ε, n_θ)
 
 # η_fit(Uee, Vimp)
 
