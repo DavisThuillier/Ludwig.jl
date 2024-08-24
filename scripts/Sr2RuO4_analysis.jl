@@ -284,13 +284,52 @@ function modes(T, n_ε, n_θ, Uee)
             Colorbar(f[1,2], p,) #label = L"\varepsilon - \mu \,(\text{eV})", labelsize = 30)
             display(f)
             outfile = joinpath(plot_dir, "23 August 2024", "Sr2RuO4_12K_mode_$(i).png")
-            save(outfile, f)
+            # save(outfile, f)
         end
     end
 
     outfile = joinpath(plot_dir, "Sr2RuO4_spectrum_αβγ.png")
     # save(outfile, f)
 end
+
+function visualize_rows(rows, T, n_ε, n_θ)
+    file = joinpath(data_dir, "Sr2RuO4_$(T)_$(n_ε)x$(n_θ).h5")
+
+    L, k, v, E, dV, corners, corner_ids = load(file, T; symmetrized = true)
+
+    quads = Vector{Vector{SVector{2, Float64}}}(undef, 0)
+    for i in 1:size(corner_ids)[1]
+        push!(quads, map(x -> SVector{2}(corners[x, :]), corner_ids[i, :]))
+    end
+
+    bound = 6e-4
+    for i in rows
+        f = Figure(size = (1000,1000), fontsize = 30)
+        ax  = Axis(f[1,1], aspect = 1.0, 
+            title = "Row $(i)", 
+            limits = (-0.5, 0.5, -0.5, 0.5),
+            xlabel = L"k_x",
+            xticks = map(x -> (x // 4), -4:1:4),
+            xtickformat = values -> rational_format.(values),
+            ylabel = L"k_y",
+            yticks = map(x -> (x // 4), -4:1:4),
+            ytickformat = values -> rational_format.(values),
+            xlabelsize = 30,
+            ylabelsize = 30,
+            # yautolimitmargin = (0.05f0, 0.1f0)
+        )
+        p = poly!(ax, quads, color = -L[i, :], colormap = :berlin, colorrange = (-bound, bound)
+        )
+        # @show maximum(abs.(L[i, :]))
+
+        Colorbar(f[1,2], p) #label = L"\varepsilon - \mu \,(\text{eV})", labelsize = 30)
+        display(f)
+        save(joinpath(plot_dir, "23 August 2024", "L_row_$(i).png"), f)
+    end 
+
+end
+
+visualize_rows(i::Int, T, n_ε, n_θ) = visualize_rows([i], T, n_ε, n_θ)
 
 function ρ_fit(n_ε, n_θ)
     # Fit to Lupien's data
@@ -611,7 +650,16 @@ Vimp = 8.647920506354473e-5
 # display_heatmap(joinpath(data_dir, "Sr2RuO4_12.0_12x38.h5"), 12)
 
 # ρ_fit(12, 38)
-modes(12.0, n_ε, n_θ, Uee)
+# modes(12.0, n_ε, n_θ, Uee)
+
+ℓ = 4 * (n_ε - 1) * (n_θ - 1)
+
+# i = 2 * ℓ + Int( ((n_ε - 1) + 1) * (n_θ ÷ 2 - 1.5))
+# @show i
+
+
+
+visualize_rows(3460, 12.0, n_ε, n_θ)
 
 # η_fit(Uee, Vimp)
 
