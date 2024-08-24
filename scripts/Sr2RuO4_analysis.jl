@@ -276,11 +276,12 @@ function modes(T, n_ε, n_θ, Uee)
                 ytickformat = values -> rational_format.(values),
                 xlabelsize = 30,
                 ylabelsize = 30,
-                yautolimitmargin = (0.05f0, 0.1f0)
+                # yautolimitmargin = (0.05f0, 0.1f0)
             )
-            p = poly!(ax, quads, color = real.(eigenvectors[:, i]), colormap = :viridis, #colorrange = (-10, 10)
+            p = poly!(ax, quads, color = real.(eigenvectors[:, i]) / maximum(abs.(eigenvectors[:, i])), colormap = :berlin, colorrange = (-1, 1)
             )
-            # Colorbar(f[1,2], p)
+
+            Colorbar(f[1,2], p,) #label = L"\varepsilon - \mu \,(\text{eV})", labelsize = 30)
             display(f)
             outfile = joinpath(plot_dir, "23 August 2024", "Sr2RuO4_12K_mode_$(i).png")
             save(outfile, f)
