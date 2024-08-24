@@ -7,6 +7,23 @@ using LsqFit
 using DelimitedFiles
 using ProgressBars
 
+function rational_format(x)
+    x = Rational(x)
+    if x == 0
+        return L"0"
+    elseif x == 1
+        return L"\pi"
+    elseif denominator(x) == 1
+        return L"%$(numerator(x)) \pi"
+    elseif numerator(x) == 1
+        return L"\frac{\pi}{%$(denominator(x))}"
+    elseif numerator(x) == -1
+        return L"-\frac{\pi}{%$(denominator(x))}"
+    else 
+        return L"\frac{%$(numerator(x))}{%$(denominator(x))} \pi"
+    end
+end
+
 function symmetrize(L, dV, E, T)
     fd = f0.(E, T) # Fermi dirac on grid points
     D = diagm(dV .* fd .* (1 .- fd))
@@ -184,13 +201,30 @@ function display_heatmap(file, T)
 
     ℓ = size(Γ)[1]
     f = Figure(size = (2000, 2000))
-    ax = Axis(f[1,1], aspect = 1.0)
+    ax = Axis(f[1,1], aspect = 1.0, 
+    backgroundcolor = :transparent,
+        leftspinevisible = false,
+        rightspinevisible = false,
+        bottomspinevisible = false,
+        topspinevisible = false,
+        xticklabelsvisible = false, 
+        yticklabelsvisible = false,
+        xgridcolor = :transparent,
+        ygridcolor = :transparent,
+        xminorticksvisible = false,
+        yminorticksvisible = false,
+        xticksvisible = false,
+        yticksvisible = false,
+        xautolimitmargin = (0.0,0.0),
+        yautolimitmargin = (0.0,0.0),
+        yreversed = true
+    )
     b = 6e-4
     h = heatmap!(ax, -M, colormap = :lisbon, colorrange = (-b, b))
     # h = heatmap!(ax, abs.(M-M') / norm(M), colormap = :lisbon) #, colorrange = (-b, b))
-    Colorbar(f[1,2], h)
+    # Colorbar(f[1,2], h)
     display(f)
-    # save(joinpath(@__DIR__,"..", "plots","Sr2RuO4_interband_heatmap.png"), f)
+    # save(joinpath(plot_dir,"23 August 2024","Sr2RuO4_interband_heatmap.png"), f)
 
     # λ = eigvals(M)
     # @show λ[1:4]
@@ -202,16 +236,22 @@ end
 
 function modes(T, n_ε, n_θ, Uee)
     file = joinpath(data_dir, "Sr2RuO4_$(T)_$(n_ε)x$(n_θ).h5")
+
+    L, k, v, E, dV, corners, corner_ids = load(file, T; symmetrized = true)
+    L *= 0.5 * Uee^2 
+
     T *= kb
 
-    Γ, k, v, E, dV, corners, corner_ids = load(file, T)
-    # Γ *= Uee^2 
-    fd = f0.(E, T) # Fermi dirac on grid points
+    # fd = f0.(E, T) # Fermi dirac on grid points
+    # D = diagm(sqrt.(dV .* fd .* (1 .- fd)))
 
-    D = diagm(sqrt.(dV .* fd .* (1 .- fd)))
-    M = D * Γ * inv(D)
+    # M = Hermitian(D * Γ * inv(D))
 
-    eigenvalues  = eigvals(M)
+    @time eigenvalues  = eigvals(L)
+    @time eigenvectors = eigvecs(L)
+
+    eigenvalues *= 1e-12 / hbar
+
     @show eigenvalues[1:4]
 
     quads = Vector{Vector{SVector{2, Float64}}}(undef, 0)
@@ -221,20 +261,29 @@ function modes(T, n_ε, n_θ, Uee)
 
     N = 10
     
-    @time eigenvalues  = eigvals(M)
-    @time eigenvectors = eigvecs(Γ)
-
-    eigenvalues *= 1e-12 / hbar
-    
     for i in eachindex(eigenvalues)
         if i < N
             println("λ_$(i) = ", eigenvalues[i])
             f = Figure(size = (1000,1000), fontsize = 30)
-            ax  = Axis(f[1,1], aspect = 1.0, title = latexstring("\$ \\tau_{$(i -1)} = $(round(real(eigenvalues[i]), digits = 6)) \\text{ fs}\$"), limits = (-0.5, 0.5, -0.5, 0.5))
+            ax  = Axis(f[1,1], aspect = 1.0, 
+                # title = latexstring("\$ \\tau_{$(i -1)} = $(round(real(1 / eigenvalues[i]), digits = 6)) \\text{ ps}\$"), 
+                limits = (-0.5, 0.5, -0.5, 0.5),
+                xlabel = L"k_x",
+                xticks = map(x -> (x // 4), -4:1:4),
+                xtickformat = values -> rational_format.(values),
+                ylabel = L"k_y",
+                yticks = map(x -> (x // 4), -4:1:4),
+                ytickformat = values -> rational_format.(values),
+                xlabelsize = 30,
+                ylabelsize = 30,
+                yautolimitmargin = (0.05f0, 0.1f0)
+            )
             p = poly!(ax, quads, color = real.(eigenvectors[:, i]), colormap = :viridis, #colorrange = (-10, 10)
             )
-            Colorbar(f[1,2], p)
+            # Colorbar(f[1,2], p)
             display(f)
+            outfile = joinpath(plot_dir, "23 August 2024", "Sr2RuO4_12K_mode_$(i).png")
+            save(outfile, f)
         end
     end
 
@@ -308,13 +357,13 @@ function plot_ρ(n_ε, n_θ, Uee, Vimp)
     # ρ = 10^8  ./ σ # Convert to μΩ-cm
     # @show ρ
 
-    # ρ = [0.10959056505116326, 0.12151019463132146, 0.13504856338798898, 0.15016845154757302, 0.16672467041152575, 0.1847198405479588, 0.2041851433762483, 0.22516814159799386, 0.24777750498999843, 0.27197760942785343, 0.29784506878946493, 0.32543193395073594, 0.35473522979103506, 0.38579389146608156, 0.4186462443045558, 0.4534385594028692, 0.49009715381486624, 0.5286627463900118, 0.5691567274598581, 0.6116340508555088, 0.6561653206886255]
+    ρ = [0.10959056505116326, 0.12151019463132146, 0.13504856338798898, 0.15016845154757302, 0.16672467041152575, 0.1847198405479588, 0.2041851433762483, 0.22516814159799386, 0.24777750498999843, 0.27197760942785343, 0.29784506878946493, 0.32543193395073594, 0.35473522979103506, 0.38579389146608156, 0.4186462443045558, 0.4534385594028692, 0.49009715381486624, 0.5286627463900118, 0.5691567274598581, 0.6116340508555088, 0.6561653206886255]
+    
 
-    # model(t, p) = p[1] .+ p[2] * t.^2#p[3]
-    # fit = curve_fit(model, t, ρ, [0.0, 0.0001, 2.0], lower = [0.0, 0.0, 0.0])
+    model(t, p) = p[1] .+ p[2] * t.^2
+
+    fit = curve_fit(model, t, ρ, [0.0, 0.0001, 2.0], lower = [0.0, 0.0, 0.0])
     # @show fit.param[2] / fit.param[1]
-
-    model(t, p) = p[1] .+ p[2] * t.^2#p[3]
 
     f = Figure(fontsize = 20)
     ax = Axis(f[1,1],
@@ -331,35 +380,36 @@ function plot_ρ(n_ε, n_θ, Uee, Vimp)
     scatter!(ax, lupien_data[:, 1], lupien_data[:, 2], color = :black)
     domain = 0.0:0.1:30.0
 
-    for r in 0.1:0.1:1.0
-        data_file = joinpath(data_dir, "ρ_r_$(r).dat")
+    # for r in 0.1:0.1:1.0
+    #     data_file = joinpath(data_dir, "ρ_r_$(r).dat")
 
-        T = Float64[]
-        ρ = Float64[]
-        open(data_file, "r") do file
-            for line in readlines(file)
-                startswith(line, "#") && continue
-                Ti, ρi = split(line, ",")
-                push!(T, parse(Float64, Ti))
-                push!(ρ, parse(Float64, ρi))
-            end
-        end
+    #     T = Float64[]
+    #     ρ = Float64[]
+    #     open(data_file, "r") do file
+    #         for line in readlines(file)
+    #             startswith(line, "#") && continue
+    #             Ti, ρi = split(line, ",")
+    #             push!(T, parse(Float64, Ti))
+    #             push!(ρ, parse(Float64, ρi))
+    #         end
+    #     end
 
         
-        fit = curve_fit(model, T, ρ, [0.0, 0.0001, 2.0], lower = [0.0, 0.0, 0.0])
+    #     fit = curve_fit(model, T, ρ, [0.0, 0.0001, 2.0], lower = [0.0, 0.0, 0.0])
         
-        lines!(ax, domain, (model(domain, fit.param)), color = r, colorrange = (0.0, 1.0), colormap = :thermal)
-        scatter!(ax, T, ρ, color = r, colorrange = (0.1, 1.0), colormap = :thermal)
+    #     lines!(ax, domain, (model(domain, fit.param)), color = r, colorrange = (0.0, 1.0), colormap = :thermal)
+    #     scatter!(ax, T, ρ, color = r, colorrange = (0.1, 1.0), colormap = :thermal)
 
-        display(f)
+    #     display(f)
 
-    end
+    # end
 
-    # lines!(ax, domain, model(domain, fit.param))
+    # scatter!(ax, t, ρ, color = :red)
+    lines!(ax, domain, model(domain, fit.param), color = :red)
     # lines!(ax, domain, model(domain, lfit.param))
-    # display(f)
+    display(f)
 
-    # outfile = joinpath(plot_dir, "ρ_unitary_scattering.png")
+    outfile = joinpath(plot_dir, "23 August 2024", "ρ_with_fit.png")
     # save(outfile, f)
 
 end
@@ -370,7 +420,7 @@ function get_η(n_ε, n_θ, Uee, Vimp)
     # δ = 0.14117376906230963
     δ = 0.0
 
-    for r in 1.0:0.1:1.0
+    for r in 0.0:0.1:1.0
         data_file = joinpath(data_dir, "ηB1g_r_$(r)_δ_$(δ).dat")
 
         open(data_file, "w") do file
@@ -406,14 +456,14 @@ function plot_η()
                 yticks = 0:2:40
                 )
                 xlims!(0.0, 14^2)
-        ylims!(ax, 0.0, 24)
+        ylims!(ax, 0.0, 40)
         xlims!(ax, 0.0, 13^2)
         domain = 0.0:0.1:14.0
         scatter!(ax, data[:, 1].^2, 1 ./ data[:, 2], color = :black)
         # lines!(ax, domain.^2, 1 ./ (rmodel(domain, rfit.param) .- rfit.param[1]))
 
     for r in 0.1:0.1:1.0
-        data_file = joinpath(data_dir, "ηB1g_r_$(r)_δ_0.5.dat")
+        data_file = joinpath(data_dir, "ηB1g_r_$(r)_δ_0.0.dat")
 
         T = 14.0:-2.0:2.0
         ηB1g = Float64[]
@@ -558,13 +608,14 @@ Uee = 0.07517388226660576
 Vimp = 8.647920506354473e-5
 
 # display_heatmap(joinpath(data_dir, "Sr2RuO4_12.0_12x38.h5"), 12)
-# ρ_fit_with_impurities(12, 38)
-# modes(12.0, 10, 24, 1.0)
+
+# ρ_fit(12, 38)
+modes(12.0, n_ε, n_θ, Uee)
 
 # η_fit(Uee, Vimp)
 
 # plot_η()
-get_η(n_ε, n_θ, Uee, Vimp)
+# get_η(n_ε, n_θ, Uee, Vimp)
 
 # get_ρ(n_ε, n_θ, Uee, Vimp)
 # plot_ρ(12, 38, Uee, Vimp)

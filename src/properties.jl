@@ -86,7 +86,7 @@ function spectrum(Γ, E, dVs, T)
     fd = f0.(E, T) # Fermi dirac on grid points
     w = fd .* (1 .- fd) # Energy derivative of FD on grid points
 
-    M = diagm(sqrt.(w .* dVs)) * Γ * (diagm(1 ./ sqrt.(w .* dVs)))
+    # M = diagm(sqrt.(w .* dVs)) * Γ * (diagm(1 ./ sqrt.(w .* dVs)))
 
     eigenvalues  = eigvals(M)
 

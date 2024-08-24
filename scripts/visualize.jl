@@ -70,7 +70,7 @@ end
 function main()
     T = 12 * kb
     n_ε = 12
-    n_θ = 38
+    n_θ = 60
     mesh = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
     ℓ = length(mesh.patches)
 
@@ -85,18 +85,26 @@ function main()
     # E = map(x -> ε1([x[1], x[2]]), collect(Iterators.product(x, x)))
     # c = Ludwig.find_contour(x,x,E)
 
-    # f = Figure(size = (1000,1000))
-    # ax = Axis(f[1,1],
-    #           aspect = 1.0,
-    #         #   limits = (-0.5,0.5,-0.5,0.5)
-    # )
+    f = Figure(size = (1200,1200), fontsize = 24)
+    ax = Axis(f[1,1],
+              aspect = 1.0,
+              limits = (0.0,0.5,0.0,0.5),
+              xlabel = L"k_x",
+              xticks = map(x -> (x // 8), 0:1:16),
+              xtickformat = values -> rational_format.(values),
+              ylabel = L"k_y",
+              yticks = map(x -> (x // 8), 0:1:16),
+              ytickformat = values -> rational_format.(values),
+              xlabelsize = 30,
+              ylabelsize = 30
+    )
     
     # h = heatmap!(ax, x,x ,E)
     # for iso in c.isolines
     #     lines!(ax, iso.points)
     # end
 
-    p = poly!(ax, quads, color = map(x -> x.energy, mesh.patches), colormap = :viridis, strokecolor = :black)
+    p = poly!(ax, quads, color = map(x -> x.energy, mesh.patches), colormap = :viridis, strokecolor = :black, strokewidth = 0.2)
 
     # xs = map(x -> x.momentum[1], mesh.patches)
     # ys = map(x -> x.momentum[2], mesh.patches)
@@ -106,9 +114,10 @@ function main()
     # vs = map(x -> x.v[2] / norm(x.v), grid)
     # arrows!(ax, xs, ys, us, vs, lengthscale = 0.01, arrowsize = 3, linecolor = :black, arrowcolor = :black)
 
-    # scatter!(ax, map(x -> x.momentum, mesh.patches))
-    Colorbar(f[1,2], h)
+    # Colorbar(f[1,2], p, label = L"\varepsilon - \mu (\mathrm{eV})", labelsize = 30)
     display(f)
+
+    save(joinpath(plot_dir,"23 August 2024","SRO_mesh_no_colorbar.png"), f)
 end
 
 function form_factors()
@@ -149,7 +158,8 @@ function form_factors()
 end
 
 include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
+plot_dir = joinpath(@__DIR__, "..", "plots", "Sr2RuO4")
 
 # form_factors()
-# main()
-deformation_potentials()
+main()
+# deformation_potentials()
