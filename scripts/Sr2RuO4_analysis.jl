@@ -286,7 +286,7 @@ function modes(T, n_ε, n_θ, Uee)
     gray_marker = MarkerElement(color = :gray, marker = :circle, markersize = 15,
     strokecolor = :gray)
 
-    axislegend(ax, [orange_marker, blue_marker, gray_marker], ["Odd", "Even", L"\tau \to \infty"], position = :rb)
+    axislegend(ax, [orange_marker, blue_marker, gray_marker], ["Even", "Odd", L"\tau \to \infty"], position = :rb)
     display(f)
 
     outfile = joinpath(plot_dir, "23 August 2024", "Sr2RuO4_spectrum_1_to_50.png")
