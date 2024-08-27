@@ -6,6 +6,7 @@ using LinearAlgebra
 using LsqFit
 using DelimitedFiles
 using ProgressBars
+import Statistics: mean
 
 function rational_format(x)
     x = Rational(x)
@@ -53,6 +54,113 @@ function symmetrize(L, dV, E, T)
     D = diagm(dV .* fd .* (1 .- fd))
 
     return 0.5 * (L + inv(D) * L' * D)
+end
+
+function mirror_x(v, n_ε, n_θ)
+    M = reshape(v, n_ε - 1, 4 * (n_θ - 1)) # Vector reshaped so that each row corresponds to an energy contour
+
+    return vec(reverse(M, dims = 2))
+end
+
+function mirror_y(v, n_ε, n_θ)
+    M = copy(reshape(v, n_ε - 1, 4 * (n_θ - 1))) # Vector reshaped so that each row corresponds to an energy contour
+
+    display(M)
+    M .= circshift(M, (0, -2))
+    display(M)
+    reverse!(M, dims = 2)
+    display(M)
+    M .= circshift(M, (0, 2))
+    display(M)
+
+    return vec(M)
+end
+
+function mirror_symmetrize(v1, v2, n_ε, n_θ)
+    W = Matrix{Float64}(undef, 2, 2)
+    W[1,1] = dot(v1, mirror_x(v1, n_ε, n_θ))
+    W[1,2] = dot(v1, mirror_x(v2, n_ε, n_θ))
+    W[2,1] = dot(v2, mirror_x(v1, n_ε, n_θ))
+    W[2,2] = dot(v2, mirror_x(v2, n_ε, n_θ))
+
+    weights = eigvecs(W)
+    @show weights
+
+    w1 = weights[1,1] * v1 + weights[2,1] * v2
+    w2 = weights[1,2] * v1 + weights[2,2] * v2
+
+    theta1 = mean(mod.(angle.(w1), pi))
+    theta2 = mean(mod.(angle.(w2), pi))
+
+    w1 = real.(exp(- im * theta1) * w1)
+    w2 = real.(exp(- im * theta2) * w2)
+
+    return w1, w2
+end
+
+function mirror_gamma_modes(T, n_ε, n_θ, Uee)
+    file = joinpath(data_dir, "Sr2RuO4_γ_$(T)_$(n_ε)x$(n_θ).h5")
+
+    L, k, v, E, dV, corners, corner_ids = load(file, T; symmetrized = true)
+    # L *= 0.5 * Uee^2
+
+    eigenvectors = eigvecs(L)
+
+    v1 = eigenvectors[:, 3]
+    v2 = eigenvectors[:, 4]
+
+    w1, w2 = mirror_symmetrize(v1, v2, n_ε, n_θ)
+
+    quads = Vector{Vector{SVector{2, Float64}}}(undef, 0)
+    for i in 1:size(corner_ids)[1]
+        push!(quads, map(x -> SVector{2}(corners[x, :]), corner_ids[i, :]))
+    end
+
+    f = Figure(size = (1000,1000), fontsize = 30)
+    ax  = Axis(f[1,1], aspect = 1.0, 
+        # title = latexstring("\$ \\tau_{$(i -1)} = $(round(real(1 / eigenvalues[i]), digits = 6)) \\text{ ps}\$"), 
+        limits = (-0.5, 0.5, -0.5, 0.5),
+        xlabel = L"k_x",
+        xticks = map(x -> (x // 4), -4:1:4),
+        xtickformat = values -> rational_format.(values),
+        ylabel = L"k_y",
+        yticks = map(x -> (x // 4), -4:1:4),
+        ytickformat = values -> rational_format.(values),
+        xlabelsize = 30,
+        ylabelsize = 30,
+        # yautolimitmargin = (0.05f0, 0.1f0)
+    )
+    p = poly!(ax, quads, color = real.(w1) / maximum(abs.(w1)), colormap = :roma100, colorrange = (-1, 1)
+    )
+
+    Colorbar(f[1,2], p,) #label = L"\varepsilon - \mu \,(\text{eV})", labelsize = 30)
+    display(f)
+    outfile = joinpath(plot_dir, "23 August 2024", "Sr2RuO4_γ_12K_mode_3_4_mirror_symmetrized_1.png")
+    save(outfile, f)
+
+    f = Figure(size = (1000,1000), fontsize = 30)
+    ax  = Axis(f[1,1], aspect = 1.0, 
+        # title = latexstring("\$ \\tau_{$(i -1)} = $(round(real(1 / eigenvalues[i]), digits = 6)) \\text{ ps}\$"), 
+        limits = (-0.5, 0.5, -0.5, 0.5),
+        xlabel = L"k_x",
+        xticks = map(x -> (x // 4), -4:1:4),
+        xtickformat = values -> rational_format.(values),
+        ylabel = L"k_y",
+        yticks = map(x -> (x // 4), -4:1:4),
+        ytickformat = values -> rational_format.(values),
+        xlabelsize = 30,
+        ylabelsize = 30,
+        # yautolimitmargin = (0.05f0, 0.1f0)
+    )
+    p = poly!(ax, quads, color = real.(w2) / maximum(abs.(w2)), colormap = :roma100, colorrange = (-1, 1)
+    )
+
+    Colorbar(f[1,2], p,) #label = L"\varepsilon - \mu \,(\text{eV})", labelsize = 30)
+    display(f)
+    outfile = joinpath(plot_dir, "23 August 2024", "Sr2RuO4_γ_12K_mode_3_4_mirror_symmetrized_2.png")
+    save(outfile, f)
+
+
 end
 
 function load(file, T; symmetrized = false)
@@ -1066,7 +1174,7 @@ Vimp = 8.647920506354473e-5
 
 # display_heatmap(joinpath(data_dir, "Sr2RuO4_12.0_12x38.h5"), 12)
 
-γ_modes(12.0, n_ε, n_θ, Uee)
+# γ_modes(12.0, n_ε, n_θ, Uee)
 # separate_band_conductivities(n_ε, n_θ, Uee, Vimp)
 # lifetimes(n_ε, n_θ, Uee, Vimp)
 # γ_lifetimes(n_ε, n_θ, Uee, Vimp, false)
@@ -1089,3 +1197,5 @@ Vimp = 8.647920506354473e-5
 
 # get_ρ(n_ε, n_θ, Uee, Vimp)
 # plot_ρ(12, 38, Uee, Vimp)
+
+mirror_gamma_modes(12.0, n_ε, n_θ, Uee)
