@@ -480,7 +480,7 @@ function γ_modes(T, n_ε, n_θ, Uee)
     # N = 20
     
     for i in eachindex(eigenvalues)
-        if i == 28
+        if i < 50
             println("λ_$(i) = ", eigenvalues[i])
             f = Figure(size = (1000,1000), fontsize = 30)
             ax  = Axis(f[1,1], aspect = 1.0, 
@@ -502,7 +502,7 @@ function γ_modes(T, n_ε, n_θ, Uee)
             Colorbar(f[1,2], p,) #label = L"\varepsilon - \mu \,(\text{eV})", labelsize = 30)
             display(f)
             outfile = joinpath(plot_dir, "23 August 2024", "Sr2RuO4_γ_12K_mode_$(i).png")
-            save(outfile, f)
+            # save(outfile, f)
         end
     end
 

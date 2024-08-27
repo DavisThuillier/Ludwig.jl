@@ -43,7 +43,7 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
     Fpp(p1, p2) = 1.0
     Fpk(p1, k, μ) = 1.0
 
-    for i in ProgressBar(1:ℓ)
+    Threads.@threads for i in ProgressBar(1:ℓ)
         for j in 1:ℓ
             L[i,j] = Ludwig.electron_electron(mesh.patches, f0s, i, j, itps, T, Fpp, Fpk)
         end
