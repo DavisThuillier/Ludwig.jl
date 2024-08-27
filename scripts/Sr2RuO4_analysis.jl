@@ -128,6 +128,52 @@ function convergence()
     # save(outfile, f)
 end
 
+function impurity_only(n_ε, n_θ, Vimp)
+    t = 2.0:0.5:14.0
+
+    σ = Vector{Float64}(undef, length(t))
+    η = Vector{Float64}(undef, length(t))
+    τ_σ = Vector{Float64}(undef, length(t))
+    τ_η = Vector{Float64}(undef, length(t))
+
+    for i in eachindex(t)
+        impfile = joinpath(data_dir, "Sr2RuO4_unitary_imp_$(t[i])_$(n_ε)x$(n_θ).h5")
+        Γ, k, v, E, dV, _, _ = load(impfile, t[i]; symmetrized = false)
+
+        Γ *= Vimp^2
+
+        Dxx = zeros(Float64, ℓ)
+        Dyy = zeros(Float64, ℓ)
+        for i in 1:ℓ
+            μ = (i-1)÷(ℓ÷3) + 1 # Band index
+            Dxx[i] = dii_μ(k[i], 1, μ, 0.0)
+            Dyy[i] = dii_μ(k[i], 2, μ, 0.0)
+        end
+
+        σ[i] = Ludwig.longitudinal_conductivity(Γ, first.(v), E, dV, kb * t[i]) / c
+        η[i] = Ludwig.ηB1g(Γ, E, dV, Dxx, Dyy, kb * t[i]) / (a^2 * c)
+        τ_σ[i] = Ludwig.σ_lifetime(Γ, v, E, dV, kb * t[i])
+        τ_η[i] = Ludwig.η_lifetime(Γ, Dxx, Dyy, E, dV, kb * t[i])
+        @show σ[i], η[i], τ_σ[i], τ_η[i]
+    end
+
+    @show σ
+    @show η
+    @show τ_σ
+    @show τ_η
+
+    f = Figure(fontsize = 20)
+    ax = Axis(f[1,1], ylabel = L"\tau_\text{eff}^{-1}\,(\mathrm{ps}^{-1})", xlabel = L"T\, (\mathrm{K})", 
+    xticks = [4, 16, 25, 36, 49, 64, 81, 100, 144, 169, 196],
+                xtickformat = values -> [L"%$(Int(sqrt(x)))^2" for x in values])
+                xlims!(ax, 0, 200)
+    scatter!(ax, t.^2, 1e-12 ./ σ_τ, label = L"\tau_\sigma")
+    scatter!(ax, t.^2, 1e-12 ./ η_τ, label = L"\tau_\eta")
+    axislegend(ax, position = :lt)
+    display(f)
+
+end
+
 function get_property(prop::String, T, n_ε::Int, n_θ::Int, Uee::Real, Vimp::Real, δ = 0.0; include_impurity::Bool = true)
     eefile = joinpath(data_dir, "Sr2RuO4_$(Float64(T))_$(n_ε)x$(n_θ).h5")
     
@@ -161,8 +207,17 @@ function get_property(prop::String, T, n_ε::Int, n_θ::Int, Uee::Real, Vimp::Re
         return Ludwig.ηB1g(Γ, E, dV, Dxx, Dyy, T) / (a^2 * c)
     elseif prop == "τ_eff"
         # Effective lifetime as calculated from the conductivity
-        τ = Ludwig.σ_lifetime(Γ, v, E, dV, T)
-        return hbar * τ
+        τ1 = Ludwig.σ_lifetime(Γ, v, E, dV, T)
+
+        Dxx = zeros(Float64, ℓ)
+        Dyy = zeros(Float64, ℓ)
+        for i in 1:ℓ
+            μ = (i-1)÷(ℓ÷3) + 1 # Band index
+            Dxx[i] = dii_μ(k[i], 1, μ, δ)
+            Dyy[i] = dii_μ(k[i], 2, μ, δ)
+        end
+        τ2 = Ludwig.η_lifetime(Γ, Dxx, Dyy, E, dV, T)
+        return hbar * τ1, hbar * τ2
     elseif prop == "spectrum"
         return Ludwig.spectrum(Γ, E, dV, T) ./ hbar
     else
@@ -440,7 +495,7 @@ function γ_modes(T, n_ε, n_θ, Uee)
                 ylabelsize = 30,
                 # yautolimitmargin = (0.05f0, 0.1f0)
             )
-            p = poly!(ax, quads, color = real.(eigenvectors[:, i]) / maximum(abs.(eigenvectors[:, i])), colormap = :berlin, colorrange = (-1, 1)
+            p = poly!(ax, quads, color = real.(eigenvectors[:, i]) / maximum(abs.(eigenvectors[:, i])), colormap = :roma100, colorrange = (-1, 1)
             )
 
             Colorbar(f[1,2], p,) #label = L"\varepsilon - \mu \,(\text{eV})", labelsize = 30)
@@ -492,6 +547,57 @@ function visualize_rows(rows, T, n_ε, n_θ)
 end
 
 visualize_rows(i::Int, T, n_ε, n_θ) = visualize_rows([i], T, n_ε, n_θ)
+
+function separate_band_conductivities(n_ε, n_θ, Uee, Vimp)
+    t = 2.0:0.5:14.0
+    # σ_γ = Vector{Float64}(undef, length(t))
+    # σ_αβ = Vector{Float64}(undef, length(t))
+
+    # for (i,T) in enumerate(t)
+
+    #     eefile = joinpath(data_dir, "Sr2RuO4_$(Float64(T))_$(n_ε)x$(n_θ).h5")
+        
+    #     Γ, k, v, E, dV, _, _= load(eefile, T, symmetrized = true)
+    #     Γ *= 0.5 * Uee^2
+    #     ℓ = size(Γ)[1]
+
+    #     impfile = joinpath(data_dir, "Sr2RuO4_unitary_imp_$(T)_$(n_ε)x$(n_θ).h5")
+    #     Γimp, _, _, _, _, _, _ = load(impfile, T)
+    #     Γ += Γimp * Vimp^2
+
+    #     T = kb*T
+
+    #     v_αβ = zeros(Float64, ℓ)
+    #     v_αβ[1:2*(ℓ÷3)] .= first.(v)[1:2*(ℓ÷3)]
+
+    #     v_γ = zeros(Float64, ℓ)
+    #     v_γ[2*(ℓ÷3) + 1: end] .= first.(v)[2*(ℓ÷3)+1:end]
+
+        
+    #     σ_αβ[i] = Ludwig.longitudinal_conductivity(Γ, v_αβ, E, dV, T) / c
+    #     σ_γ[i] = Ludwig.longitudinal_conductivity(Γ, v_γ, E, dV, T) / c
+    # end
+    # @show σ_αβ
+    # @show σ_γ
+
+    σ_αβ = [3.485251623174754e8, 3.350498393897893e8, 3.202862026705056e8, 3.047088090749613e8, 2.8872385087608236e8, 2.7267799850090873e8, 2.568477279579944e8, 2.4144034241533476e8, 2.2658609712477714e8, 2.1243205120582095e8, 1.9902772929225042e8, 1.8639990204702818e8, 1.7457213568633828e8, 1.6352932768996656e8, 1.5324807371226996e8, 1.4366868979668513e8, 1.3477717890939176e8, 1.2652865107789516e8, 1.1888088147367662e8, 1.1179094727934167e8, 1.052123464105264e8, 9.91025905527583e7, 9.342433584219703e7, 8.817130861808705e7, 8.325071476242156e7]
+    σ_γ = [3.3649312165033937e8, 2.9462607517610204e8, 2.56226259998439e8, 2.219849180600946e8, 1.9251216786805204e8, 1.6742496072802386e8, 1.4617108091441426e8, 1.2818244976761436e8, 1.1288689385708356e8, 9.991044474076752e7, 8.883932529838382e7, 7.93530986379384e7, 7.120170460874698e7, 6.416227833834111e7, 5.804692948255603e7, 5.268992422550955e7, 4.7999698813893124e7, 4.387441929634054e7, 4.023242058760622e7, 3.6998668113804646e7, 3.4114136277737245e7, 3.153048169503758e7, 2.9204638084954284e7, 2.7124330302763082e7, 2.5216218224687155e7]
+
+    ρ = [0.10959056505116326, 0.12151019463132146, 0.13504856338798898, 0.15016845154757302, 0.16672467041152575, 0.1847198405479588, 0.2041851433762483, 0.22516814159799386, 0.24777750498999843, 0.27197760942785343, 0.29784506878946493, 0.32543193395073594, 0.35473522979103506, 0.38579389146608156, 0.4186462443045558, 0.4534385594028692, 0.49009715381486624, 0.5286627463900118, 0.5691567274598581, 0.6116340508555088, 0.6561653206886255]
+
+    f = Figure()
+    ax = Axis(f[1,1], xlabel = L"T(\mathrm{K})",
+    ylabel = L"\sigma (\mathrm{MS \,m^{-1}})")
+
+    scatter!(ax, 2.0:0.5:12.0, 1e-6 * σ_αβ[1:21], color = :green, label = L"\alpha,\beta")
+    scatter!(ax, 2.0:0.5:12.0, 1e-6 * σ_γ[1:21], color = :blue, label = L"\gamma")
+    scatter!(ax, 2.0:0.5:12.0, 1e2 ./ ρ, color = :black, label = L"\alpha, \beta, \gamma")
+    axislegend(ax, position = :rt)
+
+    display(f)
+
+    # save(joinpath(plot_dir, "23 August 2024", "σ_band_contributions_with_total.png"),f)
+end 
 
 function ρ_fit(n_ε, n_θ)
     # Fit to Lupien's data
@@ -862,6 +968,40 @@ function plot_ρ_and_η(n_ε, n_θ, Uee, Vimp)
     save(joinpath(plot_dir, "23 August 2024", "ρ_and_η_fit.png"), f)
 end
 
+function lifetimes(n_ε, n_▓, Uee, Vimp)
+    t = 2.0:0.5:14.0
+
+    # σ_τ = Vector{Float64}(undef, length(t))
+    # η_τ = Vector{Float64}(undef, length(t))
+    # for i in eachindex(t)
+    #     σ_τ[i], η_τ[i] = get_property("τ_eff", t[i], n_ε, n_θ, Uee, Vimp, include_impurity = false)
+    # end
+    # @show σ_τ
+    # @show η_τ
+
+    # With impurity 
+    # σ_τ = [1.5379426604419398e-11, 1.4153664096410503e-11, 1.2974288764480237e-11, 1.1868653223645244e-11, 1.085768150490269e-11, 9.941054095654228e-12, 9.113114627721576e-12, 8.366103226176869e-12, 7.690377533893804e-12, 7.081362547616889e-12, 6.53107027355719e-12, 6.033135019923649e-12, 5.582724094619536e-12, 5.174610054588276e-12, 4.8042319709706505e-12, 4.4664228478470644e-12, 4.158960002210765e-12, 3.8786306267985055e-12, 3.622692805796296e-12, 3.3884820801602004e-12, 3.1736591921403806e-12, 2.9761941634076086e-12, 2.794276054874725e-12, 2.6275855240600728e-12, 2.4721297922739584e-12]
+    # η_τ = [2.248378867683754e-11, 1.946472905613255e-11, 1.6795271439185808e-11, 1.447625912345739e-11, 1.2539689018403753e-11, 1.09303620359893e-11, 9.591979482517447e-12, 8.473947321202503e-12, 7.529911842016506e-12, 6.7337727226534815e-12, 6.055771930112863e-12, 5.474114416173493e-12, 4.972727140608846e-12, 4.537548807223898e-12, 4.156413631726802e-12, 3.818893787055368e-12, 3.5206570916361886e-12, 3.255576395242323e-12, 3.01897651414712e-12, 2.8062912217134144e-12, 2.613698490838313e-12, 2.438966209794292e-12, 2.279390037396542e-12, 2.1357649647625993e-12, 2.001359872133798e-12] 
+
+    # Without impurity
+    σ_τ = [1.6026181361056132e-10, 1.0257874532699684e-10, 7.122884944705212e-11, 5.231135463761146e-11, 4.003171850295472e-11, 3.161152212547963e-11, 2.558739567328745e-11, 2.1127772272118413e-11, 1.7728227576577122e-11, 1.5084432121081086e-11, 1.298584640055659e-11, 1.1291975448698414e-11, 9.906714199279813e-12, 8.75925855970228e-12, 7.798313437706531e-12, 6.983388764992457e-12, 6.288043711259425e-12, 5.689913133654263e-12, 5.171843460288032e-12, 4.719938197011751e-12, 4.3231518819058414e-12, 3.972660830595949e-12, 3.661360636080351e-12, 3.3853421254420406e-12, 3.135942743061621e-12]
+    η_τ = [1.4601236133977752e-10, 9.341611693458268e-11, 6.483038412978151e-11, 4.7540576559707795e-11, 3.633253502772071e-11, 2.8654909104088672e-11, 2.3166338391120787e-11, 1.9104520287446257e-11, 1.6004547583011295e-11, 1.359607106660144e-11, 1.1684719218168684e-11, 1.0142255776852013e-11, 8.881562328189892e-12, 7.837937214022785e-12, 6.963471153891217e-12, 6.220614430388409e-12, 5.5871948493785754e-12, 5.042819826813676e-12, 4.571816415517399e-12, 4.160945361616479e-12, 3.799466277893721e-12, 3.480169068299188e-12, 3.1959823789679095e-12, 2.9454210472643614e-12, 2.718162848164906e-12]
+
+    @show σ_τ ./ η_τ
+
+    f = Figure(fontsize = 20)
+    ax = Axis(f[1,1], ylabel = L"\tau_\text{eff}^{-1}\,(\mathrm{ps}^{-1})", xlabel = L"T\, (\mathrm{K})", 
+    xticks = [4, 16, 25, 36, 49, 64, 81, 100, 144, 169, 196],
+                xtickformat = values -> [L"%$(Int(sqrt(x)))^2" for x in values])
+                xlims!(ax, 0, 200)
+    scatter!(ax, t.^2, 1e-12 ./ σ_τ, label = L"\tau_\sigma")
+    scatter!(ax, t.^2, 1e-12 ./ η_τ, label = L"\tau_\eta")
+    axislegend(ax, position = :lt)
+    display(f)
+    # save(joinpath(plot_dir, "23 August 2024", "τ_eff.png"),f)
+
+end
+
 include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
 data_dir = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "gamma_only")
 plot_dir = joinpath(@__DIR__, "..", "plots", "Sr2RuO4")
@@ -878,6 +1018,9 @@ Vimp = 8.647920506354473e-5
 # display_heatmap(joinpath(data_dir, "Sr2RuO4_12.0_12x38.h5"), 12)
 
 γ_modes(12.0, n_ε, n_θ, Uee)
+# separate_band_conductivities(n_ε, n_θ, Uee, Vimp)
+# lifetimes(n_ε, n_θ, Uee, Vimp)
+# impurity_only(n_ε, n_θ, Vimp)
 
 ℓ = 4 * (n_ε - 1) * (n_θ - 1)
 

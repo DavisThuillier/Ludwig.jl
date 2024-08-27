@@ -12,7 +12,6 @@ function inner_product(a, b, L, w)
     return prod
 end
 
-
 """
     conductivity(L, v, E, dV, T)
 """
@@ -46,7 +45,6 @@ function ηB1g(L, E, dV, Dxx, Dyy, T)
 
     prefactor = 2 * hbar * e_charge / T
 
-    # η = prefactor * 0.5 * inner_product(Dxx, Dxx .- Dyy, L, fd .* (1 .- fd) .* dV)
     η = prefactor * 0.25 * inner_product(Dxx .- Dyy, Dxx .- Dyy, L, fd .* (1 .- fd) .* dV)
 
     return η
@@ -63,23 +61,39 @@ function ηB2g(L, E, dV, Dxy, T)
 end
 
 """
-    σ_lifetime(Γ, v, E, dV, T)
+    σ_lifetime(L, v, E, dV, T)
 """
-function σ_lifetime(Γ, v, E, dV, T)
+function σ_lifetime(L, v, E, dV, T)
     fd = f0.(E, T) # Fermi dirac on grid points
-    w = fd .* (1 .- fd) # Energy derivative of FD on grid points
+    w = fd .* (1 .- fd)
     vx = first.(v)
 
     norm = 0.0
     for i in eachindex(vx)
         norm += w[i] * dV[i] * vx[i]^2
     end
-    ϕx = bicgstabl(Γ, vx)
-    σ = dot(vx .* w .* dVs, ϕx)
+    σ = inner_product(vx, vx, L, w .* dV)
 
     τ_eff = real( σ / norm)
     
-    return τ_eff
+    return τ_eff * hbar
+end
+
+function η_lifetime(L, Dxx, Dyy, E, dV, T)
+    fd = f0.(E, T) # Fermi dirac on grid points
+    w = fd .* (1 .- fd)
+
+    D = Dxx .- Dyy
+
+    norm = 0.0
+    for i in eachindex(D)
+        norm += w[i] * dV[i] * D[i]^2
+    end
+    η = inner_product(D, D, L, w .* dV)
+
+    τ_eff = real( η / norm)
+    
+    return τ_eff * hbar
 end
 
 function spectrum(Γ, E, dVs, T)
