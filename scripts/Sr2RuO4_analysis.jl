@@ -217,7 +217,7 @@ function get_property(prop::String, T, n_ε::Int, n_θ::Int, Uee::Real, Vimp::Re
             Dyy[i] = dii_μ(k[i], 2, μ, δ)
         end
         τ2 = Ludwig.η_lifetime(Γ, Dxx, Dyy, E, dV, T)
-        return hbar * τ1, hbar * τ2
+        return τ1, τ2
     elseif prop == "spectrum"
         return Ludwig.spectrum(Γ, E, dV, T) ./ hbar
     else
@@ -433,10 +433,12 @@ function γ_modes(T, n_ε, n_θ, Uee)
             ylabel = L"\lambda \,(\mathrm{ps}^{-1})"
     )
     for i in 1:50
-        if i  < 3
+        if i  == 1
             scatter!(ax, i, real(eigenvalues[i]), 
             color = :gray, 
             )
+        elseif i ==2
+            nothing
         else
             scatter!(ax, i, real(eigenvalues[i]), 
             color = parities[i] > 0 ? :orange : :blue, 
@@ -454,7 +456,7 @@ function γ_modes(T, n_ε, n_θ, Uee)
     axislegend(ax, [orange_marker, blue_marker, gray_marker], ["Even", "Odd", L"\tau \to \infty"], position = :rb)
     display(f)
 
-    outfile = joinpath(plot_dir, "23 August 2024", "Sr2RuO4_γ_only_spectrum_1_to_50.png")
+    outfile = joinpath(plot_dir, "23 August 2024", "Sr2RuO4_γ_only_spectrum_1_to_50_energy_mode_subtracted.png")
     # save(outfile, f)
 
     # return nothing
@@ -469,17 +471,16 @@ function γ_modes(T, n_ε, n_θ, Uee)
 
     eigenvalues *= 1e-12 / hbar
 
-    @show eigenvalues[1:4]
 
     quads = Vector{Vector{SVector{2, Float64}}}(undef, 0)
     for i in 1:size(corner_ids)[1]
         push!(quads, map(x -> SVector{2}(corners[x, :]), corner_ids[i, :]))
     end
 
-    N = 20
+    # N = 20
     
     for i in eachindex(eigenvalues)
-        if i < N
+        if i == 28
             println("λ_$(i) = ", eigenvalues[i])
             f = Figure(size = (1000,1000), fontsize = 30)
             ax  = Axis(f[1,1], aspect = 1.0, 
@@ -1002,6 +1003,54 @@ function lifetimes(n_ε, n_▓, Uee, Vimp)
 
 end
 
+function γ_lifetimes(n_ε, n_▓, Uee, Vimp, include_impurity)
+    t = 2.0:0.5:14.0
+
+    σ_τ = Vector{Float64}(undef, length(t))
+    η_τ = Vector{Float64}(undef, length(t))
+    for i in eachindex(t)
+
+        file = joinpath(data_dir, "Sr2RuO4_γ_$(t[i])_$(n_ε)x$(n_θ).h5")
+
+        L, k, v, E, dV, corners, corner_ids = load(file, t[i]; symmetrized = true)
+        ℓ = size(Γ)[1]
+        L *= 0.5 * Uee^2
+
+        # if include_impurity
+        #     impfile = joinpath(data_dir, "Sr2RuO4_unitary_imp_$(T)_$(n_ε)x$(n_θ).h5")
+        #     Γimp, _, _, _, _, _, _ = load(impfile, T)
+        #     Γ += Γimp * Vimp^2
+        # end
+
+        σ_τ[i] = Ludwig.σ_lifetime(Γ, v, E, dV, kb * t[i])
+
+        Dxx = zeros(Float64, ℓ)
+        Dyy = zeros(Float64, ℓ)
+        for i in 1:ℓ
+            Dxx[i] = dii_μ(k[i], 1, 3, 0.0)
+            Dyy[i] = dii_μ(k[i], 2, 3, 0.0)
+        end
+        σ_τ[i] = Ludwig.η_lifetime(Γ, Dxx, Dyy, E, dV, kb * t[i])
+    end
+    @show σ_τ
+    @show η_τ
+
+    # With impurity 
+
+
+    f = Figure(fontsize = 20)
+    ax = Axis(f[1,1], ylabel = L"\tau_\text{eff}^{-1}\,(\mathrm{ps}^{-1})", xlabel = L"T\, (\mathrm{K})", 
+    xticks = [4, 16, 25, 36, 49, 64, 81, 100, 144, 169, 196],
+                xtickformat = values -> [L"%$(Int(sqrt(x)))^2" for x in values])
+                xlims!(ax, 0, 200)
+    scatter!(ax, t.^2, 1e-12 ./ σ_τ, label = L"\tau_\sigma")
+    scatter!(ax, t.^2, 1e-12 ./ η_τ, label = L"\tau_\eta")
+    axislegend(ax, position = :lt)
+    display(f)
+    # save(joinpath(plot_dir, "23 August 2024", "τ_eff_γ.png"),f)
+
+end
+
 include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
 data_dir = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "gamma_only")
 plot_dir = joinpath(@__DIR__, "..", "plots", "Sr2RuO4")
@@ -1020,6 +1069,7 @@ Vimp = 8.647920506354473e-5
 γ_modes(12.0, n_ε, n_θ, Uee)
 # separate_band_conductivities(n_ε, n_θ, Uee, Vimp)
 # lifetimes(n_ε, n_θ, Uee, Vimp)
+# γ_lifetimes(n_ε, n_θ, Uee, Vimp, false)
 # impurity_only(n_ε, n_θ, Vimp)
 
 ℓ = 4 * (n_ε - 1) * (n_θ - 1)
