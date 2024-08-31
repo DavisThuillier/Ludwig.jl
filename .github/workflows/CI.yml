@@ -4,8 +4,8 @@ on:
   pull_request:
   workflow_dispatch:
 permissions:
-│   actions: write
-│   contents: read
+  actions: write
+  contents: read
 jobs:
   Build:
     runs-on: ubuntu-latest
