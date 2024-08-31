@@ -19,4 +19,4 @@ jobs:
           project: 'scripts'
       - name: electron-electron script
         run: |
-          julia --project=scripts scripts/electron_electron.jl 12.0 4 10 materials/Sr2RuO4.jl data
+          julia --project=scripts scripts/electron_electron.jl 12.0 4 10 materials/Sr2RuO4.jl .
