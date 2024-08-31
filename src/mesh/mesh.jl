@@ -16,7 +16,6 @@ Representation of a patch in momentum space to be integrated over when calculati
 struct Patch{D}
     momentum::SVector{2,Float64} # Momentum in 1st BZ
     energy::Float64 # Energy associated to band index and momentum
-    bounds::SVector{2,Float64}
     band_index::Int 
     v::SVector{2,Float64} # Group velocity
     dV::Float64 # Patch area
@@ -26,13 +25,6 @@ struct Patch{D}
     w::SVector{D, Float64} # Weight vector of overlap with orbitals
     corners::Vector{Int} # Coordinates of corners for plotting
 end
-
-"""
-    energy(p::Patch)
-
-Return the energy corresponding to the band for which `p` was generated.
-"""
-energy(p::Patch) = p.energy
 
 """
 Container struct for patches over which to integrate.

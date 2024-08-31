@@ -178,7 +178,7 @@ end
 """
     electron_impurity
 """
-function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, Δε::Real, V_squared)
+function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_squared)
     for i in eachindex(grid)
         for j in eachindex(grid)
             i == j && continue

@@ -12,11 +12,6 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile)
     f0s = map(x -> f0(x.energy, T), mesh.patches)
     ℓ = length(mesh.patches)
 
-    # for p in mesh.patches
-    #     @show (p.energy - (p.bounds[2] + p.bounds[1]) / 2.0 ) / p.de
-    # end
-    # return nothing
-
     # vertex_model = ""
     vertex_model = "Constant"
 
