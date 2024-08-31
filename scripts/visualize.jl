@@ -117,7 +117,7 @@ function main()
     # Colorbar(f[1,2], p, label = L"\varepsilon - \mu (\mathrm{eV})", labelsize = 30)
     display(f)
 
-    save(joinpath(plot_dir,"23 August 2024","SRO_mesh_no_colorbar.png"), f)
+    # save(joinpath(plot_dir,"23 August 2024","SRO_mesh_no_colorbar.png"), f)
 end
 
 function form_factors()
