@@ -15,3 +15,5 @@ jobs:
           show-versioninfo: true
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
+        with:
+          project: 'scripts'
