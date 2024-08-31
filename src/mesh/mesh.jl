@@ -19,7 +19,7 @@ struct Patch{D, T}
     band_index::Int 
     v::SVector{2,T} # Group velocity
     dV::T # Patch area
-    de::T
+    de::T 
     jinv::Matrix{T} # Jacobian of transformation from (kx, ky) --> (E, θ)
     djinv::T # Absolute value of inverse jacobian determinant
     w::SVector{D, T} # Weight vector of overlap with orbitals
