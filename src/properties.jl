@@ -30,7 +30,7 @@ function conductivity(L, v, E, dV, T)
     σ[2,1] = inner_product(last.(v), first.(v), L, weight)
     σ[2,2] = inner_product(last.(v), last.(v), L, weight)
 
-    return (G0 / (2π)) * (σ / T) 
+    return (G0 / (2π)) * (σ / T)
 end
 
 """
@@ -43,7 +43,7 @@ function longitudinal_conductivity(L, vx, E, dV, T)
 
     σxx = inner_product(vx, vx, L, fd .* (1 .- fd) .* dV)
 
-    return (G0 / (2π)) * (σxx / T) 
+    return (G0 / (2π)) * (σxx / T)
 end
 
 """
@@ -97,7 +97,7 @@ function σ_lifetime(L, v, E, dV, T)
     σ = inner_product(vx, vx, L, w .* dV)
 
     τ_eff = real( σ / norm)
-    
+
     return τ_eff * hbar
 end
 
@@ -119,6 +119,6 @@ function η_lifetime(L, Dxx, Dyy, E, dV, T)
     η = inner_product(D, D, L, w .* dV)
 
     τ_eff = real( η / norm)
-    
+
     return τ_eff * hbar
 end

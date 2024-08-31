@@ -110,13 +110,13 @@ Generate a Mesh of (`n_angles` - 1) x (`n_levels` - 1) patches per quadrant per 
 `bands` is a vector of functions defining the eigenvalues of the single-electron Hamiltonian over the 1st Brillouin Zone. The function `W` is an array-valued function whose input is a momentum 2-vector, and whose output columns are the the eigenvectors corresponding to `bands`. 
 The width of the Fermi tube at each surface is ``\\pm`` `α T`. 
 """
-function multiband_mesh(bands::Vector, W::Function, T::Real, n_levels::Int, n_angles::Int; N::Int = 2001, α::Real = 6.0)
+function multiband_mesh(bands::Vector, orbital_weights::Function, T::Real, n_levels::Int, n_angles::Int; N::Int = 2001, α::Real = 6.0)
     grid = Vector{Patch}(undef, 0)
     corners = Vector{SVector{2, Float64}}(undef, 0)
     n_bands = length(bands)
     
     for i in eachindex(bands)
-        mesh = generate_mesh(bands, W, i, n_bands, T, n_levels, n_angles, N, α)
+        mesh = generate_mesh(bands, orbital_weights, i, n_bands, T, n_levels, n_angles, N, α)
         grid = vcat(grid, map(x -> Patch(
                                     x.momentum, 
                                     x.energy,
