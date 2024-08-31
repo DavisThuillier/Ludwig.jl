@@ -17,3 +17,6 @@ jobs:
       - uses: julia-actions/julia-buildpkg@v1
         with:
           project: 'scripts'
+      - name: electron-electron script
+        run: |
+          julia --project=scripts scripts/electron_electron.jl 12.0 4 10 scripts/materials/Sr2RuO4.jl data/
