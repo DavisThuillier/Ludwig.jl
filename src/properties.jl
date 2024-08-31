@@ -14,6 +14,10 @@ end
 
 """
     conductivity(L, v, E, dV, T)
+
+Compute the conductivity tensor using ``\\sigma_{ij} = 2 e^2 \\langle v_i | L^{-1} | v_j \\rangle``.
+
+For correct conversion to SI units, `E` and `T` must be expressed in units of eV, dV must be in units of ``(2pi / a)^2,`` where ``a`` is the lattice constant, and `v` must be in units of ``(a / h) eV``.
 """
 function conductivity(L, v, E, dV, T)
     fd = f0.(E, T) # Fermi dirac on grid points
@@ -29,6 +33,11 @@ function conductivity(L, v, E, dV, T)
     return (G0 / (2π)) * (σ / T) 
 end
 
+"""
+    longitudinal_conductivity(L, vx, E, dV, T)
+
+Compute the ``\\sigma_xx`` component of the conductivity tensor.
+"""
 function longitudinal_conductivity(L, vx, E, dV, T)
     fd = f0.(E, T) # Fermi dirac on grid points
 
@@ -39,21 +48,32 @@ end
 
 """
     ηB1g(L, E, dVs, Dxx, Dyy, T)
+
+Compute the B1g viscosity from the deformation potentials `Dxx` and `Dyy`.
+
+For correct conversion to SI units, `E`, `Dxx`, `Dyy`, and `T` must be expressed in units of eV and dV must be in units of ``(2pi / a)^2,`` where ``a`` is the lattice constant.
 """
 function ηB1g(L, E, dV, Dxx, Dyy, T)
     fd = f0.(E, T) # Fermi dirac on grid points
 
-    prefactor = 2 * hbar * e_charge / T
+    prefactor = 2 * hbar * e_charge / T # hbar * e_charge converts hbar to units of J.s
 
     η = prefactor * 0.25 * inner_product(Dxx .- Dyy, Dxx .- Dyy, L, fd .* (1 .- fd) .* dV)
 
     return η
 end
 
+"""
+    ηB2g(L, E, dVs, Dxy, T)
+
+Compute the B2g viscosity from the deformation potentials `Dxx` and `Dyy`.
+
+For correct conversion to SI units, `E`, `Dxy`, and `T` must be expressed in units of eV and dV must be in units of ``(2pi / a)^2,`` where ``a`` is the lattice constant.
+"""
 function ηB2g(L, E, dV, Dxy, T)
     fd = f0.(E, T) # Fermi dirac on grid points
 
-    prefactor = 2 * hbar * e_charge / T
+    prefactor = 2 * hbar * e_charge / T # hbar * e_charge converts hbar to units of J.s
 
     η = prefactor * inner_product(Dxy, Dxy, L, fd .* (1 .- fd) .* dV)
 
@@ -62,6 +82,8 @@ end
 
 """
     σ_lifetime(L, v, E, dV, T)
+
+Compute the effective scattering lifetime corresponding the conductivity.
 """
 function σ_lifetime(L, v, E, dV, T)
     fd = f0.(E, T) # Fermi dirac on grid points
@@ -79,6 +101,11 @@ function σ_lifetime(L, v, E, dV, T)
     return τ_eff * hbar
 end
 
+"""
+    η_lifetime(L, Dxx, Dyy, E, dV, T)
+
+Compute the effective scattering lifetime corresponding the conductivity.
+"""
 function η_lifetime(L, Dxx, Dyy, E, dV, T)
     fd = f0.(E, T) # Fermi dirac on grid points
     w = fd .* (1 .- fd)
@@ -94,15 +121,4 @@ function η_lifetime(L, Dxx, Dyy, E, dV, T)
     τ_eff = real( η / norm)
     
     return τ_eff * hbar
-end
-
-function spectrum(Γ, E, dVs, T)
-    fd = f0.(E, T) # Fermi dirac on grid points
-    w = fd .* (1 .- fd) # Energy derivative of FD on grid points
-
-    # M = diagm(sqrt.(w .* dVs)) * Γ * (diagm(1 ./ sqrt.(w .* dVs)))
-
-    eigenvalues  = eigvals(M)
-
-    return eigenvalues
 end
