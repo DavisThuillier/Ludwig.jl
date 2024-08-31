@@ -136,7 +136,7 @@ function mirror_gamma_modes(T, n_ε, n_θ, Uee)
     Colorbar(f[1,2], p,) #label = L"\varepsilon - \mu \,(\text{eV})", labelsize = 30)
     display(f)
     outfile = joinpath(plot_dir, "23 August 2024", "Sr2RuO4_γ_12K_mode_3_4_mirror_symmetrized_1.png")
-    save(outfile, f)
+    # save(outfile, f)
 
     f = Figure(size = (1000,1000), fontsize = 30)
     ax  = Axis(f[1,1], aspect = 1.0, 
@@ -158,9 +158,7 @@ function mirror_gamma_modes(T, n_ε, n_θ, Uee)
     Colorbar(f[1,2], p,) #label = L"\varepsilon - \mu \,(\text{eV})", labelsize = 30)
     display(f)
     outfile = joinpath(plot_dir, "23 August 2024", "Sr2RuO4_γ_12K_mode_3_4_mirror_symmetrized_2.png")
-    save(outfile, f)
-
-
+    # save(outfile, f)
 end
 
 function load(file, T; symmetrized = false)
@@ -359,22 +357,22 @@ function spectrum(n_ε, n_θ, Uee, Vimp)
 
 end
 
-function τ_eff(n_ε, n_θ, Uee, Vimp)
-    T = 2.0:0.5:14.0
+# function τ_eff(n_ε, n_θ, Uee, Vimp)
+#     T = 2.0:0.5:14.0
 
-    file = joinpath(data_dir, "τ_eff.dat")
-    open(file, "w") do f
-        write(f, "#τ_eff from conductivity")
-        write(f, "\n#n_ε = $(n_ε), n_θ = $(n_θ)")
-        write(f, "\n#Uee = $(Uee) eV")
-        write(f, "\n#√n * Vimp = $(Vimp) eV m^{-3/2}")
-        write(f, "\n#T(K) τ_eff (ps)")
-        for i in eachindex(T)
-            τ = get_property("τ_eff", T[i], n_ε, n_θ, Uee, Vimp, include_impurity = false) * 1e12
-            write(f, "\n$(T[i]) $(τ)")
-        end
-    end 
-end
+#     file = joinpath(data_dir, "τ_eff.dat")
+#     open(file, "w") do f
+#         write(f, "#τ_eff from conductivity")
+#         write(f, "\n#n_ε = $(n_ε), n_θ = $(n_θ)")
+#         write(f, "\n#Uee = $(Uee) eV")
+#         write(f, "\n#√n * Vimp = $(Vimp) eV m^{-3/2}")
+#         write(f, "\n#T(K) τ_eff (ps)")
+#         for i in eachindex(T)
+#             τ = get_property("τ_eff", T[i], n_ε, n_θ, Uee, Vimp, include_impurity = false) * 1e12
+#             write(f, "\n$(T[i]) $(τ)")
+#         end
+#     end 
+# end
 
 function display_heatmap(file, T)
     Γ, k, v, E, dV, corners, corner_ids = load(file, T)
@@ -1117,11 +1115,11 @@ function γ_lifetimes(n_ε, n_▓, Uee, Vimp, include_impurity)
     σ_τ = Vector{Float64}(undef, length(t))
     η_τ = Vector{Float64}(undef, length(t))
     for i in eachindex(t)
-
+        println("T = $(t[i])")
         file = joinpath(data_dir, "Sr2RuO4_γ_$(t[i])_$(n_ε)x$(n_θ).h5")
 
         L, k, v, E, dV, corners, corner_ids = load(file, t[i]; symmetrized = true)
-        ℓ = size(Γ)[1]
+        ℓ = size(L)[1]
         L *= 0.5 * Uee^2
 
         # if include_impurity
@@ -1130,7 +1128,7 @@ function γ_lifetimes(n_ε, n_▓, Uee, Vimp, include_impurity)
         #     Γ += Γimp * Vimp^2
         # end
 
-        σ_τ[i] = Ludwig.σ_lifetime(Γ, v, E, dV, kb * t[i])
+        σ_τ[i] = Ludwig.σ_lifetime(L, v, E, dV, kb * t[i])
 
         Dxx = zeros(Float64, ℓ)
         Dyy = zeros(Float64, ℓ)
@@ -1138,24 +1136,26 @@ function γ_lifetimes(n_ε, n_▓, Uee, Vimp, include_impurity)
             Dxx[i] = dii_μ(k[i], 1, 3, 0.0)
             Dyy[i] = dii_μ(k[i], 2, 3, 0.0)
         end
-        σ_τ[i] = Ludwig.η_lifetime(Γ, Dxx, Dyy, E, dV, kb * t[i])
+        η_τ[i] = Ludwig.η_lifetime(L, Dxx, Dyy, E, dV, kb * t[i])
+        
     end
     @show σ_τ
     @show η_τ
 
-    # With impurity 
+    @show σ_τ ./ η_τ
 
+    # With impurity 
 
     f = Figure(fontsize = 20)
     ax = Axis(f[1,1], ylabel = L"\tau_\text{eff}^{-1}\,(\mathrm{ps}^{-1})", xlabel = L"T\, (\mathrm{K})", 
-    xticks = [4, 16, 25, 36, 49, 64, 81, 100, 144, 169, 196],
+    xticks = [4, 16, 25, 36, 49, 64, 81, 100, 121, 144, 169, 196],
                 xtickformat = values -> [L"%$(Int(sqrt(x)))^2" for x in values])
                 xlims!(ax, 0, 200)
     scatter!(ax, t.^2, 1e-12 ./ σ_τ, label = L"\tau_\sigma")
     scatter!(ax, t.^2, 1e-12 ./ η_τ, label = L"\tau_\eta")
     axislegend(ax, position = :lt)
     display(f)
-    # save(joinpath(plot_dir, "23 August 2024", "τ_eff_γ.png"),f)
+    save(joinpath(plot_dir, "23 August 2024", "τ_eff_γ.png"),f)
 
 end
 
@@ -1177,7 +1177,7 @@ Vimp = 8.647920506354473e-5
 # γ_modes(12.0, n_ε, n_θ, Uee)
 # separate_band_conductivities(n_ε, n_θ, Uee, Vimp)
 # lifetimes(n_ε, n_θ, Uee, Vimp)
-# γ_lifetimes(n_ε, n_θ, Uee, Vimp, false)
+γ_lifetimes(n_ε, n_θ, Uee, Vimp, false)
 # impurity_only(n_ε, n_θ, Vimp)
 
 ℓ = 4 * (n_ε - 1) * (n_θ - 1)
@@ -1198,4 +1198,4 @@ Vimp = 8.647920506354473e-5
 # get_ρ(n_ε, n_θ, Uee, Vimp)
 # plot_ρ(12, 38, Uee, Vimp)
 
-mirror_gamma_modes(12.0, n_ε, n_θ, Uee)
+# mirror_gamma_modes(12.0, n_ε, n_θ, Uee)
