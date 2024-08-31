@@ -13,16 +13,16 @@ Representation of a patch in momentum space to be integrated over when calculati
 - `w`: The weights of the original orbital basis corresponding to the `band_index`th eigenvalue
 - `corners`: Indices of coordinates in parent `Mesh` struct of corners for plotting
 """
-struct Patch{D}
-    momentum::SVector{2,Float64} # Momentum in 1st BZ
-    energy::Float64 # Energy associated to band index and momentum
+struct Patch{D, T}
+    momentum::SVector{2, T} # Momentum in 1st BZ
+    energy::T # Energy associated to band index and momentum
     band_index::Int 
-    v::SVector{2,Float64} # Group velocity
-    dV::Float64 # Patch area
-    de::Float64
-    jinv::Matrix{Float64} # Jacobian of transformation from (kx, ky) --> (E, θ)
-    djinv::Float64 # Absolute value of inverse jacobian determinant
-    w::SVector{D, Float64} # Weight vector of overlap with orbitals
+    v::SVector{2,T} # Group velocity
+    dV::T # Patch area
+    de::T
+    jinv::Matrix{T} # Jacobian of transformation from (kx, ky) --> (E, θ)
+    djinv::T # Absolute value of inverse jacobian determinant
+    w::SVector{D, T} # Weight vector of overlap with orbitals
     corners::Vector{Int} # Coordinates of corners for plotting
 end
 
@@ -37,12 +37,13 @@ Container struct for patches over which to integrate.
 - `patches`: Vector of patches
 - `corners`: Vector of points on patch corners for plotting mesh
 - `n_bands`: Dimension of the generating Hamiltonian
+- `α`: Half the width of the Fermi tube
 """
 struct Mesh
     patches::Vector{Patch}
-    corners::Vector{SVector{2, Float64}} # Corners of patches for plotting
+    corners::Vector{SVector{2, Float64}} 
     n_bands::Int
-    α # Width of Fermi tube is 2α
+    α
 end
 
 function Base.iterate(m::Mesh, state=0)

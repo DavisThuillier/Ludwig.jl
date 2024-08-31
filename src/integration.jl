@@ -20,7 +20,7 @@ is an integral over momenta in patch ``\\mathcal{P}_i``.
 
 """
 function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, T::Real, εabc, ε::Function)
-    δ = energy(a) + energy(b) - energy(c) - εabc # Energy conservation violations
+    δ = a.energy + b.energy - c.energy - εabc # Energy conservation violations
 
     v::SVector{2,Float64} = ForwardDiff.gradient(x -> ε(x + b.momentum - c.momentum), a.momentum)
 
@@ -60,7 +60,7 @@ Compute ``\\mathcal{K}_{abc} `` with `k` given by momentum conservation using th
 
 """
 function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, T::Real, k, εabc, itp::ScaledInterpolation)
-    δ = energy(a) + energy(b) - energy(c) - εabc # Energy conservation violations
+    δ = a.energy + b.energy - c.energy - εabc # Energy conservation violations
 
     @inbounds v::SVector{2,Float64} = Interpolations.gradient(itp, k[1], k[2])
 
