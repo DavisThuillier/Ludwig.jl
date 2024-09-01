@@ -1,6 +1,7 @@
 module Ludwig
 
 include("constants.jl") # Physical constants
+include("Lattices.jl")
 
 import StaticArrays: SVector, MVector, MMatrix, SMatrix
 using LinearAlgebra
