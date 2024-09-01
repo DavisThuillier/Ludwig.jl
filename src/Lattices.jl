@@ -1,4 +1,6 @@
-module Lattices2D
+module Lattices
+
+export Lattice, primitives, reciprocal_lattice_vectors, point_group, lattice_type
 
 using LinearAlgebra
 
@@ -18,6 +20,9 @@ struct Lattice
         end
     end
 end
+
+### Convenience Constructors ###
+Lattice(a1::AbstractVector, a2::AbstractVector) = Lattice(hcat(a1, a2))
 
 primitives(l::Lattice) = l.primitives
 reciprocal_lattice_vectors(l::Lattice) = inv(primitives(l))
