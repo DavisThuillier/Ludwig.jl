@@ -12,6 +12,7 @@ const D₄ = get_dihedral_group(4)
 const D₆ = get_dihedral_group(6)
 
 const point_groups = Dict("Oblique" => C₂, "Rectangular" => D₂, "Square" => D₄, "Hexagonal" => D₆)
+const num_bz_points = Dict("Oblique" => 6, "Rectangular" => 4, "Square" => 4, "Hexagonal" => 6)
 
 struct Lattice
     primitives::Matrix
@@ -59,30 +60,34 @@ end
 
 function get_bz(l::Lattice)
     rlv = reciprocal_lattice_vectors(l)
-    b1 = rlv[:, 1]
-    b2 = rlv[:, 2] 
 
-    vertices = Vector{AbstractArray}(undef, 0)
+    neighbors = map(x -> SVector{2}(rlv * x), collect.(Iterators.product(-2:2, -2:2))) |> vec
+    sort!(neighbors, by = norm)
+    deleteat!(neighbors, 1) # Deletes element corresponding to [0.0, 0.0]
+    
+    num_points = num_bz_points[lattice_type(l)]
+    nearest_neighbors = neighbors[1:num_points]
 
-    get_perpendicular_bisector_intersection(b1, b1 + b2) |> x -> push!(vertices, x)
-    get_perpendicular_bisector_intersection(b1 + b2, b2) |> x -> push!(vertices, x)
-    get_perpendicular_bisector_intersection(b2, b2 - b1) |> x -> push!(vertices, x)
-    get_perpendicular_bisector_intersection(b2 - b1, -b1) |> x -> push!(vertices, x)
-    get_perpendicular_bisector_intersection(-b1, -b1 - b2) |> x -> push!(vertices, x)
-    get_perpendicular_bisector_intersection(-b1 - b2, -b2) |> x -> push!(vertices, x)
-    get_perpendicular_bisector_intersection(-b2, b1 - b2) |> x -> push!(vertices, x)
-    get_perpendicular_bisector_intersection(b1 - b2, b1) |> x -> push!(vertices, x)
+    sort!(nearest_neighbors, by = x -> atan(x[2], x[1])) # Sort by angle
+
+    vertices = Vector{SVector{2, Real}}(undef, num_points)
+
+    for i in eachindex(nearest_neighbors)
+        vertices[i] = get_perpendicular_bisector_intersection(nearest_neighbors[i], nearest_neighbors[mod(i, num_points) + 1])
+    end
     
     deleteat!(vertices, vertices .== [[0.0, 0.0]])
     deleteat!(vertices, vertices .== [[]])
+
+    return vertices
 end
 
 function get_perpendicular_bisector_intersection(v1, v2)
     V = [v1[2] v2[2]; -v1[1] -v2[1]]
-    det(V) == 0 && return [] # No intersection
+    det(V) == 0 && return [0.0, 0.0] # No intersection
     
     t = 0.5 * inv(V) * (v2 - v1)
-    return (0.5 + t[1]) * v1
+    return 0.5 * v1 + t[1] * V[:, 1]
 end
 
 end # module
