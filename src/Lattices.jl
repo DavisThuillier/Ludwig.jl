@@ -82,11 +82,35 @@ function get_bz(l::Lattice)
     return vertices
 end
 
-function map_to_bz(k, rlv)
+function map_to_bz(k, rlv) #FIXME: Fails for hexagonal lattice
     k1 = inv(rlv) * k # k in reciprocal lattice basis
-    @show k1
     k1 = mod.(k1 .+ 0.5, 1.0) .- 0.5
+    @show k1
     return rlv * k1
+end
+
+function in_polygon(k, p)
+    w = _winding_number(p .- Ref(k)) # Winding number of polygon wrt k
+    return !(abs(w) < 0.1) # Returns false is w ≈ 0
+end
+
+function _winding_number(v)
+    w = 0
+    for i in eachindex(v)
+        j = (i == length(v)) ? 1 : i + 1 
+
+        if v[i][2] * v[j][2] < 0 # [vᵢvⱼ] crosses the x-axis
+            r = v[i][1] + v[i][2] * (v[j][1] - v[i][1]) / (v[i][2] - v[j][2]) # x-coordinate of intersection of [vᵢvⱼ] with x-axis
+            if r > 0
+                v[i][2] < 0 ? (w += 1) : (w -= 1)
+            end
+        elseif v[i][2] == 0 && v[i][1] > 0 # vᵢ on the positive x-axis
+            v[j][2] > 0 ? (w += 0.5) : (w -= 0.5)
+        elseif v[j][2] == 0 && v[j][2] > 0 # vⱼ on the positive x-axis
+            v[i][2] < 0 ? (w += 0.5) : (w -= 0.5)
+        end
+    end
+    return w
 end
 
 # function get_ibz(l::Lattice)
