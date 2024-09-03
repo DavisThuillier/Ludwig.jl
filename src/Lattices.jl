@@ -36,7 +36,7 @@ Lattice(a1::AbstractVector, a2::AbstractVector) = Lattice(hcat(a1, a2))
 Base.:(==)(l1::Lattice, l2::Lattice) = primitives(l1) == primitives(l2)
 primitives(l::Lattice) = l.primitives
 reciprocal_lattice_vectors(l::Lattice) = inv(primitives(l))
-point_group(l::Lattice) = point_groups(lattice_type(l))
+point_group(l::Lattice) = point_groups[lattice_type(l)]
 
 function lattice_type(l::Lattice)
     p = primitives(l)
@@ -81,6 +81,28 @@ function get_bz(l::Lattice)
 
     return vertices
 end
+
+function map_to_bz(k, rlv)
+    k1 = inv(rlv) * k # k in reciprocal lattice basis
+    @show k1
+    k1 = mod.(k1 .+ 0.5, 1.0) .- 0.5
+    return rlv * k1
+end
+
+# function get_ibz(l::Lattice)
+#     G = point_group(l)
+#     bz = get_bz(l)
+#     ibz = bz
+
+#     for vertex in bz
+#         for g in eachindex(G)
+#             if !(g*vertex ≈ vertex)
+
+#             end
+#         end
+#     end
+
+# end
 
 function get_perpendicular_bisector_intersection(v1, v2)
     V = [v1[2] v2[2]; -v1[1] -v2[1]]

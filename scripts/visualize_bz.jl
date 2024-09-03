@@ -14,6 +14,12 @@ function main()
     f = Figure()
     ax = Axis(f[1,1], aspect = 1.0)
     poly!(ax, bz)
+    
+    k = [-0.51, -0.51]
+    kᵩ = Lattices.map_to_bz(k, rlv)
+
+    scatter!(ax, k[1], k[2])
+    scatter!(ax, kᵩ[1], kᵩ[2])
 
     arrows!([0.0, 0.0], [0.0, 0.0], rlv[1, :], rlv[2, :], color = [:blue, :red])
     display(f)

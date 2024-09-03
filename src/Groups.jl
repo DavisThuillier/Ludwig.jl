@@ -1,9 +1,8 @@
 module Groups
 
-# import Base: *
-
 export Group, PermutationGroup, PermutationGroupElement, GroupElement
 export get_cyclic_group, get_dihedral_group, get_symmetric_group, get_table, inverse
+export get_matrix_representation
 
 abstract type Group end
 abstract type GroupElement end
@@ -78,6 +77,9 @@ struct PermutationGroup <:Group
     PermutationGroup(elements...) = new(closure(elements...))
 end
 
+Base.iterate(G::PermutationGroup) = iterate(G.elements)
+Base.iterate(G::PermutationGroup, s::Int) = iterate(G.elements, s)
+
 function get_table(G::Group)
     table = Matrix{Int}(undef, order(G), order(G))
     for i in eachindex(G.elements)
@@ -113,6 +115,30 @@ function get_symmetric_group(n::Int)
         end
         return PermutationGroup(elements...)
     end
+end
+
+function _unity_root_vector(p::Int, n::Int)
+    return [cos(2pi * p / n), sin(2pi * p / n)]
+end
+
+function get_matrix_representation(g::PermutationGroupElement)
+    n = length(g)
+    n < 2 && error(DimensionMismatch("Permutation must have length at least 2 to be represented by a 2x2 matrix."))
+
+    v₁ = _unity_root_vector(0, n)
+    v₂ = _unity_root_vector(1, n)
+    T = hcat(v₁, v₂) # Root of unity basis
+
+    w₁ = _unity_root_vector(g.permutation[1] - 1, n) 
+    w₂ = _unity_root_vector(g.permutation[2] - 1, n)
+
+    M = hcat(w₁, w₂) * inv(T) # Change of basis composed with permutation map of roots of polygon vertices
+    
+    for i in eachindex(M)
+        abs(M[i]) < 1e-12 && (M[i] = 0.0)
+    end
+    
+    return M
 end
 
 end
