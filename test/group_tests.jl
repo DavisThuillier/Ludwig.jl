@@ -22,4 +22,9 @@ using Ludwig.Groups
         # Groups.get_table(Dₙ) |> display
     end
 
+    for n in 1:6
+        Sₙ = Groups.get_symmetric_group(n)
+        @test Group.order(Sₙ) == factorial(n)
+    end
+
 end

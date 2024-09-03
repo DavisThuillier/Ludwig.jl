@@ -24,6 +24,13 @@ Base.show(io::IO, ::MIME"text/plain", g::PermutationGroupElement) = begin
     show(io, "text/plain", X)
 end
 
+function get_transposition(i::Int, j::Int, n::Int)
+    permutation = collect(1:n)
+    permutation[i] = j
+    permutation[j] = i
+    return PermutationGroupElement(permutation)
+end
+
 function Base.:*(g::PermutationGroupElement, h::PermutationGroupElement)::PermutationGroupElement
     length(g) != length(h) && throw(DimensionMismatch("Group elements must belong to the same permutation group."))
 
