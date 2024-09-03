@@ -6,25 +6,31 @@ using Ludwig.Groups
     gh = PermutationGroupElement([4, 2, 5, 3, 1])
 
     @test g * h == gh
-    @test is_identity(g * inverse(g)) == true
-    @test is_identity(h * inverse(h)) == true
-    @test is_identity(gh * inverse(gh)) == true
+    @test Groups.is_identity(g * inverse(g)) == true
+    @test Groups.is_identity(h * inverse(h)) == true
+    @test Groups.is_identity(gh * inverse(gh)) == true
 
+end
+
+@testset "Cyclic Groups" begin
     for n in [1, 2, 3, 4, 6]
         Cₙ = Groups.get_cyclic_group(n)
         @test Groups.order(Cₙ) == n
         # Groups.get_table(Cₙ) |> display
     end
+end
 
+@testset "Dihedral Groups" begin
     for n in [3, 4, 6]
         Dₙ = Groups.get_dihedral_group(n)
         @test Groups.order(Dₙ) == 2n
         # Groups.get_table(Dₙ) |> display
     end
+end
 
+@testset "Symmetric Groups" begin
     for n in 1:6
         Sₙ = Groups.get_symmetric_group(n)
         @test Groups.order(Sₙ) == factorial(n)
     end
-
 end
