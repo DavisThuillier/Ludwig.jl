@@ -6,7 +6,12 @@ using LinearAlgebra
 using StaticArrays
 using ..Groups
 
-const point_groups = Dict("Oblique" => "C₂", "Rectangular" => "D₂", "Square" => "D₄", "Hexagonal" => "D₆")
+const C₂ = get_cyclic_group(2)
+const D₂ = get_dihedral_group(2)
+const D₄ = get_dihedral_group(4)
+const D₆ = get_dihedral_group(6)
+
+const point_groups = Dict("Oblique" => C₂, "Rectangular" => D₂, "Square" => D₄, "Hexagonal" => D₆)
 
 struct Lattice
     primitives::Matrix
