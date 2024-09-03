@@ -3,9 +3,13 @@ module Ludwig
 include("constants.jl") # Physical constants
 
 ### Submodules ###
+include("Groups.jl");
+using .Groups
+
 include("Lattices.jl"); 
 using .Lattices
-export Lattices
+
+export Lattices, Groups
 
 import StaticArrays: SVector, MVector, MMatrix, SMatrix
 using LinearAlgebra

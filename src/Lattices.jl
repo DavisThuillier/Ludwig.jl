@@ -3,6 +3,8 @@ module Lattices
 export Lattice, primitives, reciprocal_lattice_vectors, point_group, lattice_type
 
 using LinearAlgebra
+using StaticArrays
+using ..Groups
 
 const point_groups = Dict("Oblique" => "C₂", "Rectangular" => "D₂", "Square" => "D₄", "Hexagonal" => "D₆")
 
@@ -54,7 +56,7 @@ function get_bz(l::Lattice)
     rlv = reciprocal_lattice_vectors(l)
     b1 = rlv[:, 1]
     b2 = rlv[:, 2] 
-    
+
     vertices = Vector{AbstractArray}(undef, 0)
 
     get_perpendicular_bisector_intersection(b1, b1 + b2) |> x -> push!(vertices, x)
@@ -77,7 +79,5 @@ function get_perpendicular_bisector_intersection(v1, v2)
     t = 0.5 * inv(V) * (v2 - v1)
     return (0.5 + t[1]) * v1
 end
-
-
 
 end # module
