@@ -51,6 +51,16 @@ function Base.iterate(m::Mesh, state=0)
     return Base.getfield(m, state+1), state+1
 end
 
+function get_bounding_box(points)
+    min_x = minimum(first.(points))
+    max_x = maximum(first.(points))
+
+    min_y = minimum(last.(points))
+    max_y = maximum(last.(points))
+
+    return ((min_x, max_x), (min_y, max_y))
+end
+
 """
     angular_slice(iso, n)
 

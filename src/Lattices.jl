@@ -79,6 +79,8 @@ function get_bz(l::Lattice)
     deleteat!(vertices, vertices .== [[0.0, 0.0]])
     deleteat!(vertices, vertices .== [[]])
 
+    sort!(vertices, by = x -> atan(x[2], x[1])) # Sort by angle
+
     return vertices
 end
 
@@ -89,24 +91,34 @@ function map_to_bz(k, rlv) #FIXME: Fails for hexagonal lattice
     return rlv * k1
 end
 
-function in_polygon(k, p)
-    w = _winding_number(p .- Ref(k)) # Winding number of polygon wrt k
-    return !(abs(w) < 0.1) # Returns false is w ≈ 0
+function in_polygon(k, p, atol = 1e-12)
+    is_vertex = false
+    for vertex in p
+        isapprox(k, vertex, atol = atol) && (is_vertex = true)
+    end
+    is_vertex && return true
+
+    w = _winding_number(p .- Ref(k), atol) # Winding number of polygon wrt k
+    return !(abs(w) < atol) # Returns false is w ≈ 0
 end
 
-function _winding_number(v)
+function _winding_number(v, atol = 1e-12)
     w = 0
     for i in eachindex(v)
         j = (i == length(v)) ? 1 : i + 1 
 
+        
         if v[i][2] * v[j][2] < 0 # [vᵢvⱼ] crosses the x-axis
-            r = v[i][1] + v[i][2] * (v[j][1] - v[i][1]) / (v[i][2] - v[j][2]) # x-coordinate of intersection of [vᵢvⱼ] with x-axis
-            if r > 0
+            m = (v[j][1] - v[i][1]) / (v[i][2] - v[j][2])
+            r = v[i][1] + m * v[i][2]  # x-coordinate of intersection of [vᵢvⱼ] with x-axis
+            if abs(r) < atol
+                m > 0 ? (w += 0.5) : (w -= 0.5)
+            elseif r > 0
                 v[i][2] < 0 ? (w += 1) : (w -= 1)
             end
-        elseif v[i][2] == 0 && v[i][1] > 0 # vᵢ on the positive x-axis
+        elseif abs(v[i][2]) < atol && abs(v[j][2]) > atol && v[i][1] > 0 # vᵢ on the positive x-axis
             v[j][2] > 0 ? (w += 0.5) : (w -= 0.5)
-        elseif v[j][2] == 0 && v[j][2] > 0 # vⱼ on the positive x-axis
+        elseif abs(v[i][2]) > atol && abs(v[j][2]) < atol && v[j][1] > 0 # vⱼ on the positive x-axis
             v[i][2] < 0 ? (w += 0.5) : (w -= 0.5)
         end
     end
