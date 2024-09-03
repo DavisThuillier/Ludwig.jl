@@ -3,7 +3,7 @@ module Groups
 # import Base: *
 
 export Group, PermutationGroup, PermutationGroupElement, GroupElement
-export inverse, is_identity
+export get_cyclic_group, get_dihedral_group, get_symmetric_group, get_table, inverse
 
 abstract type Group end
 abstract type GroupElement end
