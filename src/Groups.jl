@@ -47,8 +47,11 @@ function inverse(g::PermutationGroupElement)
 end
 
 is_identity(g::PermutationGroupElement) = g.permutation == collect(eachindex(g.permutation))
+get_identity_permutation(n::Int) = PermutationGroupElement(collect(1:n))
 
-function closure(generators)
+function closure(generators...)
+    length(generators) == 0 && error("At least one generator must be passed.")
+
     elements = Vector{typeof(first(generators))}(undef, 0)
 
     for g in generators
@@ -59,7 +62,6 @@ function closure(generators)
         end
 
         for h in elements
-
             prod = g*h 
             !(prod in elements) && push!(elements, prod)
         end
@@ -73,7 +75,7 @@ end
 
 struct PermutationGroup <:Group
     elements::Vector{PermutationGroupElement}
-    PermutationGroup(elements...) = new(closure(elements))
+    PermutationGroup(elements...) = new(closure(elements...))
 end
 
 function get_table(G::Group)
@@ -88,7 +90,6 @@ end
 
 function get_cyclic_group(n::Int)
     g = PermutationGroupElement(circshift(collect(1:n), -1))
-    display(g)
     return PermutationGroup(g)
 end
 
@@ -99,7 +100,19 @@ function get_dihedral_group(n::Int)
 end
 
 function get_symmetric_group(n::Int)
-
+    if n < 1
+        throw(DomainError("Sₙ not defined for n < 1."))
+    elseif n == 1
+        return PermutationGroup(get_identity_permutation(n))
+    else 
+        elements = Vector{PermutationGroupElement}(undef, 0)
+        for i in 1:n-1
+            for j in i+1:n
+                push!(elements, get_transposition(i, j, n))
+            end
+        end
+        return PermutationGroup(elements...)
+    end
 end
 
 end

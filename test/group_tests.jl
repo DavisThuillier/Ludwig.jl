@@ -24,7 +24,7 @@ using Ludwig.Groups
 
     for n in 1:6
         Sₙ = Groups.get_symmetric_group(n)
-        @test Group.order(Sₙ) == factorial(n)
+        @test Groups.order(Sₙ) == factorial(n)
     end
 
 end
