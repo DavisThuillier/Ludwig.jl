@@ -2,14 +2,16 @@ module Lattices
 
 export Lattice, primitives, reciprocal_lattice_vectors, point_group, lattice_type
 
+export get_bz
+
 using LinearAlgebra
 using StaticArrays
-using ..Groups
+using ..Ludwig: Groups
 
-const C₂ = get_cyclic_group(2)
-const D₂ = get_dihedral_group(2)
-const D₄ = get_dihedral_group(4)
-const D₆ = get_dihedral_group(6)
+const C₂ = Groups.get_cyclic_group(2)
+const D₂ = Groups.get_dihedral_group(2)
+const D₄ = Groups.get_dihedral_group(4)
+const D₆ = Groups.get_dihedral_group(6)
 
 const point_groups = Dict("Oblique" => C₂, "Rectangular" => D₂, "Square" => D₄, "Hexagonal" => D₆)
 const num_bz_points = Dict("Oblique" => 6, "Rectangular" => 4, "Square" => 4, "Hexagonal" => 6)
@@ -35,8 +37,29 @@ Lattice(a1::AbstractVector, a2::AbstractVector) = Lattice(hcat(a1, a2))
 ### Lattice Methods ###
 Base.:(==)(l1::Lattice, l2::Lattice) = primitives(l1) == primitives(l2)
 primitives(l::Lattice) = l.primitives
-reciprocal_lattice_vectors(l::Lattice) = inv(primitives(l))
+reciprocal_lattice_vectors(l::Lattice) = Array(inv(primitives(l))')
 point_group(l::Lattice) = point_groups[lattice_type(l)]
+
+# struct HalfSpace{T}
+#     n<:AbstractVector{T}
+#     d::T
+# end
+
+# https://en.wikipedia.org/wiki/Lattice_reduction
+function gauss_reduce(A, max_iter = 1e4)
+    i = 1
+    u = A[:, 1]
+    v = A[:, 2]
+    while norm(v) < norm(u) && i < max_iter
+        q = round(Int, dot(u, v) / norm(v)^2)
+        r = u - q * v
+        u = v
+        v = r
+        i += 1
+    end
+
+    return hcat(u, v)
+end
 
 function lattice_type(l::Lattice)
     p = primitives(l)
@@ -70,7 +93,7 @@ function get_bz(l::Lattice)
 
     sort!(nearest_neighbors, by = x -> atan(x[2], x[1])) # Sort by angle
 
-    vertices = Vector{SVector{2, Real}}(undef, num_points)
+    vertices = Vector{SVector{2, Float64}}(undef, num_points)
 
     for i in eachindex(nearest_neighbors)
         vertices[i] = get_perpendicular_bisector_intersection(nearest_neighbors[i], nearest_neighbors[mod(i, num_points) + 1])
@@ -125,27 +148,60 @@ function _winding_number(v, atol = 1e-12)
     return w
 end
 
-# function get_ibz(l::Lattice)
-#     G = point_group(l)
-#     bz = get_bz(l)
-#     ibz = bz
+function _signed_area(x, y, z)
+    return 0.5 * (-y[1] * x[2] + z[1] * x[2] + x[1] * y[2] - z[1] * y[2] - x[1]*z[2] + y[1] * z[2])
+end
 
-#     for vertex in bz
-#         for g in eachindex(G)
-#             if !(g*vertex ≈ vertex)
+function get_ibz(l::Lattice)
+    G = point_group(l)
+    bz = get_bz(l)
+    ibz = deepcopy(bz)
 
-#             end
-#         end
-#     end
+    ops = deepcopy(G.elements)
+    v = bz[1]
 
-# end
+    while length(ops) > 0
+        g = pop!(ops)
+        O = Groups.get_matrix_representation(g)
+        if !(O*v ≈ v) # Symmetry does not fix vertex
+            midpoint = (O*v + v) / 2.0
+            n = O*v - v
+
+            σ1 = sign(_signed_area(v, midpoint, [n[2], -n[1]]))
+
+            for (j, w) in enumerate(ibz)
+                σ2 = _signed_area(w, midpoint, [n[2], -n[1]])
+
+                if σ1 * σ2 < 0
+                    w ∈ ibz && deleteat!(ibz, findfirst(==(w), ibz))
+                end
+
+                k = (j == length(bz)) ? 1 : j + 1 
+                int = intersection(midpoint, [n[2], -n[1]], bz[j], bz[k] - bz[j])
+                (int == [0.0, 0.0] || !in_polygon(int, bz)) && continue
+
+                if !any(map(z -> int ≈ z, bz))
+
+                    push!(ibz, int)
+                end
+            end
+        end
+    end
+    push!(ibz, [0.0, 0.0])
+
+    return ibz
+end
+
+function intersection(a1, v1, a2, v2)
+    V = hcat(v1, -v2)
+    det(V) == 0 && return [0.0, 0.0] # No intersection
+
+    t = inv(V) * (a2 - a1)
+    return a1 + t[1] * v1
+end
 
 function get_perpendicular_bisector_intersection(v1, v2)
-    V = [v1[2] v2[2]; -v1[1] -v2[1]]
-    det(V) == 0 && return [0.0, 0.0] # No intersection
-    
-    t = 0.5 * inv(V) * (v2 - v1)
-    return 0.5 * v1 + t[1] * V[:, 1]
+    return intersection(0.5 * v1, [v1[2], -v1[1]], 0.5 * v2, [v2[2], -v2[1]])
 end
 
 end # module

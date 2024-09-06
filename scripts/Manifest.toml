@@ -2,7 +2,7 @@
 
 julia_version = "1.8.5"
 manifest_format = "2.0"
-project_hash = "ef192fc77817244badef28c76a1eb98231ee553b"
+project_hash = "f90117632ece98af1f70e06edfaa2746e500dfa2"
 
 [[deps.AbstractFFTs]]
 deps = ["ChainRulesCore", "LinearAlgebra", "Test"]
@@ -20,6 +20,11 @@ deps = ["LinearAlgebra", "Requires"]
 git-tree-sha1 = "6a55b747d1812e699320963ffde36f1ebdda4099"
 uuid = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 version = "4.0.4"
+
+[[deps.AdaptivePredicates]]
+git-tree-sha1 = "7d5da5dd472490d048b081ca1bda4a7821b06456"
+uuid = "35492f91-a3bd-45ad-95db-fcad7dcfedb7"
+version = "1.1.1"
 
 [[deps.AliasTables]]
 deps = ["PtrArrays", "Random"]
@@ -208,10 +213,10 @@ deps = ["Printf"]
 uuid = "ade2ca70-3891-5945-98fb-dc099432e06a"
 
 [[deps.DelaunayTriangulation]]
-deps = ["EnumX", "ExactPredicates", "Random"]
-git-tree-sha1 = "1755070db557ec2c37df2664c75600298b0c1cfc"
+deps = ["AdaptivePredicates", "EnumX", "ExactPredicates", "Random"]
+git-tree-sha1 = "46f12daa85e5acc0ea5d5f9f8c3f1fc679e0f7e5"
 uuid = "927a84f5-c5f4-47a5-9785-b46e178433df"
-version = "1.0.3"
+version = "1.2.0"
 
 [[deps.DensityInterface]]
 deps = ["InverseFunctions", "Test"]
@@ -729,7 +734,7 @@ uuid = "2fda8390-95c7-5789-9bda-21331edee243"
 version = "0.15.0"
 
 [[deps.Ludwig]]
-deps = ["DataStructures", "ForwardDiff", "Interpolations", "IterativeSolvers", "LinearAlgebra", "ProgressBars", "StaticArrays"]
+deps = ["DataStructures", "ForwardDiff", "Interpolations", "IterativeSolvers", "LinearAlgebra", "StaticArrays"]
 path = ".."
 uuid = "71a25704-ed10-46ea-9c76-1c441b891988"
 version = "0.1.0"

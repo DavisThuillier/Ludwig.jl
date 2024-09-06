@@ -9,7 +9,10 @@ using .Groups
 include("Lattices.jl"); 
 using .Lattices
 
-export Lattices, Groups
+include("MarchingTriangles.jl")
+using .MarchingTriangles
+
+export Lattices, Groups, MarchingTriangles
 
 import StaticArrays: SVector, MVector, MMatrix, SMatrix
 using LinearAlgebra
