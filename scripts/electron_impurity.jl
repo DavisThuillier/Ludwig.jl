@@ -50,12 +50,12 @@ function argument_handling()
     return T, n_ε, n_θ, band_file, out_dir
 end
 
-dir = joinpath("..", "data", "Sr2RuO4", "model_1")
+dir = joinpath("..", "data", "Sr2RuO4", "model_2")
 band_file = joinpath("materials", "Sr2RuO4.jl")
 include(joinpath(@__DIR__, band_file))
-n_ε = 12
-n_θ = 38
-for T in 2.0:0.5:14.0
+n_ε = 14
+T = 12.0
+for n_θ in 38:2:38
     @show T
     outfile = joinpath(@__DIR__, dir, "$(material)_unitary_imp_$(T)_$(n_ε)x$(n_θ).h5")
     main(T, n_ε, n_θ, outfile)
