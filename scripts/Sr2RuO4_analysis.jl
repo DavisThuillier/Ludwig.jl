@@ -4,6 +4,7 @@ using StaticArrays
 using CairoMakie, LaTeXStrings, Colors
 using LinearAlgebra
 using LsqFit
+using DelimitedFiles
 import Statistics: mean
 
 include("LudwigIO.jl")
@@ -37,9 +38,10 @@ function get_ρ(L, k, v, E, dV, T)
 end
 
 function get_ηB1g(L, k, v, E, dV, T)
+    ℓ = length(k)
     Dxx = zeros(Float64, ℓ)
     Dyy = zeros(Float64, ℓ)
-    for i in 1:ℓ
+    for i in eachindex(k)
         μ = (i-1)÷(ℓ÷3) + 1 # Band index
         Dxx[i] = dii_μ(k[i], 1, μ, δ)
         Dyy[i] = dii_μ(k[i], 2, μ, δ)
@@ -49,13 +51,14 @@ function get_ηB1g(L, k, v, E, dV, T)
 end
 
 function get_ηB2g(L, k, v, E, dV, T)
+    ℓ = length(k)
     Dxy = zeros(Float64, ℓ)
-    for i in 1:ℓ
+    for i in eachindex(k)
         μ = (i-1)÷(ℓ÷3) + 1 # Band index
         Dxy[i] = dxy_μ(k[i], μ)
     end
 
-    return Ludwig.ηB2g(Γ, E, dV, Dxy, T) / (a^2 * c)
+    return Ludwig.ηB2g(L, E, dV, Dxy, T) / (a^2 * c)
 end
 
 ###############################
@@ -529,7 +532,7 @@ function separate_band_conductivities(n_ε, n_θ, Uee, Vimp)
     # save(joinpath(plot_dir, "23 August 2024", "σ_band_contributions_with_total.png"),f)
 end 
 
-function ρ_fit(n_ε, n_θ)
+function ρ_fit(n_ε, n_θ, temps, model_1)
     # Fit to Lupien's data
     lupien_file = joinpath(exp_dir, "rhovT_Lupien_digitized.dat")
     lupien_data = readdlm(lupien_file)
@@ -537,18 +540,16 @@ function ρ_fit(n_ε, n_θ)
     lupien_T = lupien_data[11:60,1]
     lupien_ρ = lupien_data[11:60,2]
 
-    lupien_model(t, p) = p[1] .+ p[2] * t.^2 #p[3]
-    lupien_fit = curve_fit(lupien_model, lupien_T, lupien_ρ, [0.12, 0.003, 1.9])
+    lupien_fit = curve_fit(model_1, lupien_T, lupien_ρ, [0.12, 0.003, 1.9])
     @show lupien_fit.param 
 
-    temps = 2.0:2.0:14.0
     lupien_ρ = lupien_model(temps, lupien_fit.param)
 
     Vfit_model(t, p) = begin 
         @show p
         σ = Vector{Float64}(undef, length(t))
         for i in eachindex(t)
-            σ[i] = get_property(props["σ"], t[i], n_ε, n_θ, p[1], p[2])
+            σ[i] = get_property("σ", t[i], n_ε, n_θ, p[1], p[2])
             @show σ[i]
         end
 
@@ -609,164 +610,40 @@ function plot_ρ(n_ε, n_θ)
     # save(outfile, f)
 end
 
-function plot_η()
-    # Fit to Brad's data
+function plot_η(n_ε, n_θ)
+    # Fit to Brad Ramshaw's viscosity data
     visc_file = joinpath(exp_dir,"B1gViscvT_new.dat")
     data = readdlm(visc_file)
-    rmodel(t, p) = p[1] .+ 1 ./ (p[2] .+ p[3] * t.^p[4])#2)
-    rfit = curve_fit(rmodel, data[1:341, 1], data[1:341, 2], [0.1866, 1.2, 0.1, 2.0])
-    @show rfit.param
+    rfit = curve_fit(model_3, data[1:341, 1], data[1:341, 2], [0.1866, 1.2, 0.1, 2.0])
     data[:, 2] .-= rfit.param[1] # Subtract off systematic offset
-
-    ηB1g_file = joinpath(data_dir, "ηB1g_$(n_ε)x$(n_θ).dat")
-    ηB2g_file = joinpath(data_dir, "ηB2g_$(n_ε)x$(n_θ).dat")
-
-    t1 = []
-    ηB1g = []
-    open(ηB1g_file, "r") do f
-        for line in readlines(f)
-            startswith(line, '#') && continue
-            T, eta = map(x -> parse(Float64, x), split(line, ','))
-            push!(t1, T)
-            push!(ρ, eta)
-        end
-    end
-
-    t2 = []
-    ηB2g = []
-    open(ηB2g_file, "r") do f
-        for line in readlines(f)
-            startswith(line, '#') && continue
-            T, eta = map(x -> parse(Float64, x), split(line, ','))
-            push!(t2, T)
-            push!(ηB2g, eta)
-        end
-    end
-    
 
     f = Figure()
         ax = Axis(f[1,1], 
                 aspect = 1.0,
-                ylabel = L"\eta^{-1} ((\mathrm{Pa\,s})^{-1})",
-                xlabel = L"T^2(\mathrm{K^2})",
-                xticks = [4, 9, 16, 25, 36, 49, 64, 81, 100, 144, 169, 196],
-                xtickformat = values -> [L"%$(Int(sqrt(x)))^2" for x in values],
-                yticks = 0:2:40
+                ylabel = L"\eta / \eta_{B1g}^{(0)}",
+                xlabel = L"T(\mathrm{K^2})",
                 )
                 xlims!(0.0, 14^2)
-        ylims!(ax, 0.0, 40)
-        xlims!(ax, 0.0, 13^2)
-        domain = 0.0:0.1:14.0
-        scatter!(ax, data[:, 1].^2, 1 ./ data[:, 2], color = :black)
-        # lines!(ax, domain.^2, 1 ./ (rmodel(domain, rfit.param) .- rfit.param[1]))
+    # ylims!(ax, 0.0, 40)
+    xlims!(ax, 0.0, 13)
+    domain = 0.0:0.1:14.0
+    # scatter!(ax, data[:, 1], data[:, 2], color = :black)
 
-    for r in 0.1:0.1:1.0
-        data_file = joinpath(data_dir, "ηB1g_r_$(r)_δ_0.0.dat")
+    t, η, _  = LudwigIO.read_property_from_file(joinpath(data_dir, "ηB1g_$(n_ε)x$(n_θ).dat"))  
+    fit1 = curve_fit(model_1, t, 1 ./ η, [1.0, 0.1, 2.0])
+    η0 = 1 / fit1.param[1]
 
-        T = 14.0:-2.0:2.0
-        ηB1g = Float64[]
-        open(data_file, "r") do file
-            for line in readlines(file)
-                startswith(line, "#") && continue
-                push!(ηB1g, parse(Float64, line))
-            end
-        end
+    lines!(ax, domain, η0^-1 ./ model_1(domain, fit1.param))
+    scatter!(ax, t, η / η0)
 
-        model(t, p) = 1 ./ (p[1] .+ p[2] * t.^p[3])
-        fit = curve_fit(model, T, ηB1g, [1.0, 0.1, 2.0])
-        @show fit.param
-        @show fit.param[2] / fit.param[1]
-        
-        lines!(ax, domain.^2, 1 ./ (model(domain, fit.param)), color = r, colorrange = (0.1, 1.0), colormap = :thermal)
-        scatter!(ax, T.^2, 1 ./ ηB1g, color = r, colorrange = (0.1, 1.0), colormap = :thermal)
+    t, η, _  = LudwigIO.read_property_from_file(joinpath(data_dir, "ηB2g_$(n_ε)x$(n_θ).dat"))  
+    fit2 = curve_fit(model_1, t, 1 ./ η, [1.0, 0.1, 2.0])
 
-
-        display(f)
-
-    end
-        # outfile = joinpath(@__DIR__, "..", "plots", "η_unitary.png")
-        # save(outfile, f)
-
-end
-
-function η_fit(Uee, Vimp)
-    temps = 2.0:2.0:14.0
-
-    visc_file = joinpath(exp_dir,"B1gViscvT_new.dat")
-    data = readdlm(visc_file)
-    rmodel(t, p) = p[1] .+ 1 ./ (p[2] .+ p[3] * t.^p[4])
-    rfit = curve_fit(rmodel, data[1:341, 1], data[1:341, 2], [0.1866, 1.2, 0.1, 2.0])
-
-    model(t, p) = p[1] .+ p[2] * t.^p[3]
-
-    # @show model(temps, rfit.param[2:end])
-    # return nothing
-
-    Vfit_model(t, p) = begin 
-        @show p
-        ηinv = Vector{Float64}(undef, length(t))
-        for i in eachindex(t)
-            ηinv[i] = 1 / get_property(get_ηB1g, t[i], n_ε, n_θ, Uee, Vimp, p[1]; include_impurity = true)
-            @show ηinv[i]
-        end
-
-        χ = sqrt(sum((ηinv .- model(t, rfit.param[2:end])).^2) / length(t))
-        @show χ
-        ηinv
-    end
-
-    guess = [0.4]
-    Vfit = curve_fit(Vfit_model, temps, model(temps, rfit.param[2:end]), guess, lower = [0.0])
-    @show Vfit.param
-
-end
-
-function plot_spectrum(n_ε, n_θ, Uee, Vimp)
-    # τ_eff_file = joinpath(data_dir, "τ_eff.dat")
-   
-    # T = Float64[]
-    # τ_eff = Float64[]
-    # open(τ_eff_file, "r") do file
-    #     for line in readlines(file)
-    #         startswith(line, "#") && continue
-    #         t, τ = split(line, " ")
-    #         push!(T, parse(Float64, t))
-    #         push!(τ_eff, parse(Float64, τ))
-    #     end
-    # end
-
-    model(t,p) = p[1] .+ p[2] * t.^p[3]
-    # fit = curve_fit(model, T, τ_eff.^-1, [0.0, 1.0, 2.0], lower = [0.0, 0.0, 1.0])
-    # @show fit.param
-
-    f = Figure(fontsize = 20)
-    ax = Axis(f[1,1], 
-            xlabel = L"T^2(K^2)", 
-            ylabel = L"\tau^{-1}_\mathrm{eff}\, (\mathrm{ps}^{-1})")
-    # scatter!(ax, T.^2, 1 ./ τ_eff)
-    domain = 0.0:0.1:14
+    lines!(ax, domain, η0^-1 ./ model_1(domain, fit2.param))
+    scatter!(ax, t, η / η0)
     
-    
-    # Plot spectrum from file
-    aux_file = joinpath(data_dir, "spectrum.aux")
-    spectrum_T = vec(readdlm(aux_file, ',', Float64, comments = true, comment_char = '#'))
-
-    N = 324
-    spectrum_file = joinpath(data_dir, "spectrum.csv")
-    spectrum = readdlm(spectrum_file, ',', Float64)[:, 1:N]
-
-    for i in 1:N
-        scatter!(ax, spectrum_T.^2, 1e-12 * spectrum[:, i], color = :black)
-        # mode_fit = curve_fit(model, spectrum_T, 1e-12 * spectrum[:, i], [0.0, 1e-3, 2.0], lower = [0.0, 0.0, 0.0])
-        # @show mode_fit.param
-    end
-
-    # lines!(ax, domain.^2, model(domain, fit.param), color = :red)
-    display(f)
-   
-
-    # outfile = joinpath(plot_dir, "τ_eff.png")
-    # save(outfile, f)
+    outfile = joinpath(@__DIR__, "..", "plots", "ηB1g_vs_ηB2g.png")
+    save(outfile, f)
 end
 
 function plot_ρ_and_η(n_ε, n_θ, Uee, Vimp)
@@ -793,8 +670,6 @@ function plot_ρ_and_η(n_ε, n_θ, Uee, Vimp)
     lfit = curve_fit(l_model, lupien_data[10:60, 1], lupien_data[10:60, 2], [0.0, 0.0001, 2.0], lower = [0.0, 0.0, 0.0])
     @show lfit.param[2] / lfit.param[1]
     
-
-    ρ_model(t, p) = p[1] .+ p[2] * t.^2
     ρ_fit = curve_fit(ρ_model, T, ρ, [1e-2, 0.1, 2.0])
     @show ρ_fit.param[2] / ρ_fit.param[1]
 
@@ -842,18 +717,6 @@ end
 function lifetimes(n_ε, n_▓, Uee, Vimp)
     t = 2.0:0.5:14.0
 
-    # σ_τ = Vector{Float64}(undef, length(t))
-    # η_τ = Vector{Float64}(undef, length(t))
-    # for i in eachindex(t)
-    #     σ_τ[i], η_τ[i] = get_property("τ_eff", t[i], n_ε, n_θ, Uee, Vimp, include_impurity = false)
-    # end
-    # @show σ_τ
-    # @show η_τ
-
-    # With impurity 
-    # σ_τ = [1.5379426604419398e-11, 1.4153664096410503e-11, 1.2974288764480237e-11, 1.1868653223645244e-11, 1.085768150490269e-11, 9.941054095654228e-12, 9.113114627721576e-12, 8.366103226176869e-12, 7.690377533893804e-12, 7.081362547616889e-12, 6.53107027355719e-12, 6.033135019923649e-12, 5.582724094619536e-12, 5.174610054588276e-12, 4.8042319709706505e-12, 4.4664228478470644e-12, 4.158960002210765e-12, 3.8786306267985055e-12, 3.622692805796296e-12, 3.3884820801602004e-12, 3.1736591921403806e-12, 2.9761941634076086e-12, 2.794276054874725e-12, 2.6275855240600728e-12, 2.4721297922739584e-12]
-    # η_τ = [2.248378867683754e-11, 1.946472905613255e-11, 1.6795271439185808e-11, 1.447625912345739e-11, 1.2539689018403753e-11, 1.09303620359893e-11, 9.591979482517447e-12, 8.473947321202503e-12, 7.529911842016506e-12, 6.7337727226534815e-12, 6.055771930112863e-12, 5.474114416173493e-12, 4.972727140608846e-12, 4.537548807223898e-12, 4.156413631726802e-12, 3.818893787055368e-12, 3.5206570916361886e-12, 3.255576395242323e-12, 3.01897651414712e-12, 2.8062912217134144e-12, 2.613698490838313e-12, 2.438966209794292e-12, 2.279390037396542e-12, 2.1357649647625993e-12, 2.001359872133798e-12] 
-
     # Without impurity
     σ_τ = [1.6026181361056132e-10, 1.0257874532699684e-10, 7.122884944705212e-11, 5.231135463761146e-11, 4.003171850295472e-11, 3.161152212547963e-11, 2.558739567328745e-11, 2.1127772272118413e-11, 1.7728227576577122e-11, 1.5084432121081086e-11, 1.298584640055659e-11, 1.1291975448698414e-11, 9.906714199279813e-12, 8.75925855970228e-12, 7.798313437706531e-12, 6.983388764992457e-12, 6.288043711259425e-12, 5.689913133654263e-12, 5.171843460288032e-12, 4.719938197011751e-12, 4.3231518819058414e-12, 3.972660830595949e-12, 3.661360636080351e-12, 3.3853421254420406e-12, 3.135942743061621e-12]
     η_τ = [1.4601236133977752e-10, 9.341611693458268e-11, 6.483038412978151e-11, 4.7540576559707795e-11, 3.633253502772071e-11, 2.8654909104088672e-11, 2.3166338391120787e-11, 1.9104520287446257e-11, 1.6004547583011295e-11, 1.359607106660144e-11, 1.1684719218168684e-11, 1.0142255776852013e-11, 8.881562328189892e-12, 7.837937214022785e-12, 6.963471153891217e-12, 6.220614430388409e-12, 5.5871948493785754e-12, 5.042819826813676e-12, 4.571816415517399e-12, 4.160945361616479e-12, 3.799466277893721e-12, 3.480169068299188e-12, 3.1959823789679095e-12, 2.9454210472643614e-12, 2.718162848164906e-12]
@@ -885,12 +748,6 @@ function γ_lifetimes(n_ε, n_▓, Uee, Vimp, include_impurity)
         L, k, v, E, dV, corners, corner_ids = load(file, t[i]; symmetrized = true)
         ℓ = size(L)[1]
         L *= 0.5 * Uee^2
-
-        # if include_impurity
-        #     impfile = joinpath(data_dir, "Sr2RuO4_unitary_imp_$(T)_$(n_ε)x$(n_θ).h5")
-        #     Γimp, _, _, _, _, _, _ = load(impfile, T)
-        #     Γ += Γimp * Vimp^2
-        # end
 
         σ_τ[i] = Ludwig.σ_lifetime(L, v, E, dV, kb * t[i])
 
@@ -931,13 +788,13 @@ function main()
 
     temps = 2.0:0.5:14.0
 
-    LudwigIO.write_property_to_file("ρ", get_ρ, data_dir, material, n_ε, n_θ, Uee, Vimp, temps)
+    plot_η(n_ε, n_θ)
+    # LudwigIO.get_property("ηB2g", data_dir, material, 2.0, n_ε, n_θ, Uee, Vimp)
 end
 
 include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
 data_dir = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "model_2")
 plot_dir = joinpath(@__DIR__, "..", "plots", "Sr2RuO4")
 exp_dir  = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "experiment")
-
 
 main()

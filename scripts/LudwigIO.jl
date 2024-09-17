@@ -38,41 +38,54 @@ function load(file; symmetrized = false)
     end
 end
 
-function get_property(f::Function, data_dir, material::String, T::Real, n_ε::Int, n_θ::Int, Uee::Real, Vimp::Real; include_impurity::Bool = true)
-    eefile = joinpath(data_dir, material*"_$(Float64(T))_$(n_ε)x$(n_θ).h5")
-    
-    L, k, v, E, dV, _, _= load(eefile, symmetrized = true)
-    L *= 0.5 * Uee^2
-    ℓ = size(L)[1]
+function get_property(prop::String, data_dir, material::String, T::Real, n_ε::Int, n_θ::Int, Uee::Real, Vimp::Real; include_impurity::Bool = true)
 
-    if Vimp != 0.0 && include_impurity
-        impfile = joinpath(data_dir, material*"_imp_$(T)_$(n_ε)x$(n_θ).h5")
-        Limp, _, _, _, _, _, _ = load(impfile)
-        L += Limp * Vimp^2
+    s = Meta.parse("get_"*prop)
+    if isdefined(Main, s)
+        fn = getfield(Main, s) 
+
+        eefile = joinpath(data_dir, material*"_$(Float64(T))_$(n_ε)x$(n_θ).h5")
+        
+        L, k, v, E, dV, _, _= load(eefile, symmetrized = true)
+        L *= 0.5 * Uee^2
+
+        if Vimp != 0.0 && include_impurity
+            impfile = joinpath(data_dir, material*"_imp_$(T)_$(n_ε)x$(n_θ).h5")
+            Limp, _, _, _, _, _, _ = load(impfile)
+            L += Limp * Vimp^2
+        end
+
+        return fn(L, k, v, E, dV, kb * T)
+    else
+        error("Function $(s)() not defined in Main scope.")
     end
-
-    return f(L, k, v, E, dV, kb * T)
 end
 
-function write_property_to_file(prop, fn, data_dir, material, n_ε, n_θ, Uee, Vimp, temps; include_impurity=true)
+function write_property_to_file(prop, material, data_dir, n_ε, n_θ, Uee, Vimp, temps; include_impurity=true)
     file = joinpath(data_dir, prop*"_$(n_ε)x$(n_θ).dat")
 
-    open(file, "w") do f
-        println(f, "---")
-        println(f, "quantity: $(prop)")
-        println(f, "n_ε: $(n_ε)")
-        println(f, "n_θ: $(n_θ)")
-        println(f, "Uee: $(Uee)")
-        println(f, "Vimp: $(Vimp)")
-        println(f, "---")
-        println(f, "# T, $(prop)")
-        for T in temps
-            q = get_property(fn, data_dir, material, T, n_ε, n_θ, Uee, Vimp, include_impurity = include_impurity)
-            println("T = $(T), $(prop) = $(q)")
-            println(f, "$(T),$(q)")
-        end
-    end 
+    s = Meta.parse("get_"*prop)
+    if isdefined(Main, s)
+        fn = getfield(Main, s) 
 
+        open(file, "w") do f
+            println(f, "---")
+            println(f, "quantity: $(prop)")
+            println(f, "n_ε: $(n_ε)")
+            println(f, "n_θ: $(n_θ)")
+            println(f, "Uee: $(Uee)")
+            println(f, "Vimp: $(Vimp)")
+            println(f, "---")
+            println(f, "# T, $(prop)")
+            for T in temps
+                q = get_property(fn, data_dir, material, T, n_ε, n_θ, Uee, Vimp, include_impurity = include_impurity)
+                println("T = $(T), $(prop) = $(q)")
+                println(f, "$(T),$(q)")
+            end
+        end 
+    else
+        error("Function $(s)() not defined in Main scope.")
+    end
 end
 
 function read_property_from_file(file)
