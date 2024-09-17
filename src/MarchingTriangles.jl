@@ -4,7 +4,7 @@ using ..Ludwig: Lattices
 using StaticArrays
 using LinearAlgebra
 
-export lattice_to_mesh
+export lattice_to_mesh, ibz_mesh
 
 """
 Representation of a contour as an ordered set of discrete points
@@ -288,7 +288,7 @@ function find_contour(mesh, A, level::Real = 0.0, Δε = (maximum(A) - minimum(A
     return bundle
 end
 
-find_contour(mesh, A, level::Real = 0.0, Δε = (maximum(A) - minimum(A)) / 2.0) = contours(mesh, A, [level], Δε)
+# find_contour(mesh, A, level::Real = 0.0, Δε = (maximum(A) - minimum(A)) / 2.0) = contours(mesh, A, [level], Δε)
 
 function follow_contour!(cells, contour, vertices, triangles, cell_triangles, A, start_index, start_edge, level)
     index = start_index

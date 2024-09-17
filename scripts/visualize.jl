@@ -2,6 +2,7 @@ using Ludwig
 using CairoMakie, LaTeXStrings
 using LinearAlgebra
 using StaticArrays
+using ForwardDiff
 
 function rational_format(x)
     x = Rational(x)
@@ -67,6 +68,44 @@ function deformation_potentials()
     #  save(outfile, f)
 end
 
+function get_contour(k1, k2, x, N)
+    level = bands[3](k1) + bands[3](k2)
+
+    E = map(x -> bands[3]([x[1], x[2]]) + bands[3]([x[1], x[2]] .- k1 .- k2), collect(Iterators.product(x, x)))
+
+    c = Ludwig.find_contour(x, x, E, level)
+    return c
+end
+
+function delta(k1, k2, N)
+    x = LinRange(-0.5, 0.5, N)
+
+    f = Figure()
+    ax = Axis(f[1,1], aspect = 1.0)
+    xlims!(ax, -0.5, 0.5)
+    ylims!(ax, -0.5, 0.5)
+
+    for δkx = -0.005:0.005:0.005
+        for δky = -0.005:0.005:0.005
+            c = get_contour(k1 + [δkx, δky], k2, x, N)
+
+            for iso in c.isolines
+                lines!(ax, iso.points, color = map(x -> norm(ForwardDiff.gradient(bands[3], x)), iso.points), colorrange = (-1, 1))
+                @show iso.arclength
+            end
+
+            c = get_contour(k1, k2 + [δkx, δky], x, N)
+
+            for iso in c.isolines
+                lines!(ax, iso.points, color = map(x -> norm(ForwardDiff.gradient(bands[3], x)), iso.points), colorrange = (-1, 1))
+            end
+            # Colorbar(f[1,2], h)
+            display(f)
+        end
+    end
+end
+
+
 function main()
     T = 12 * kb
     n_ε = 12
@@ -107,5 +146,11 @@ include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
 plot_dir = joinpath(@__DIR__, "..", "plots", "Sr2RuO4")
 
 # form_factors()
-main()
+# main()
 # deformation_potentials()
+
+k1 = [0.4, 0.2]
+k2 = [-0.4, -0.2]
+
+delta(k1, k2, 100)
+

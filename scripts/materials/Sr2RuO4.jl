@@ -24,10 +24,6 @@ function dyy_γ(k)
     return 2 * alph * tγ * cos(2pi*k[2]) + 2 * alph_p * tpγ * cos(2pi*k[1]) * cos(2pi*k[2]) 
 end
 
-function dxy_γ(k)
-    return - 2 * alph_p * tpγ * sin(2pi*k[1]) * sin(2pi*k[2])
-end
-
 ###############
 ### α and β ###
 ###############
@@ -69,6 +65,22 @@ function dii_μ(k, i::Int, μ::Int, δ)
         (μ == 1) ? (return d*tα) : return (d*tβ) 
     elseif μ == 3 # γ band
         return 2 * alph * tγ * cos(2pi*k[i]) + 2 * alph_p * tpγ * cos(2pi*k[1]) * cos(2pi*k[2])
+    else
+        return 0 # Invalid band index
+    end
+end
+
+function dxy_μ(k, μ::Int)
+    if μ == 1 || μ == 2
+        x = exz(k)
+        y = eyz(k)
+        Δ = sqrt( 0.25 * (x - y)^2 + V(k)^2 ) # Twice the band gap between α and β
+
+        d = (-1)^(μ) * t5^2 * alph_p * cos(2pi*k[1]) * cos(2pi*k[2]) * sin(2pi*k[1]) * sin(2pi*k[2]) / Δ
+
+        (μ == 1) ? (return d*tα) : return (d*tβ) 
+    elseif μ == 3 # γ band
+        return - 4 * alph_p * tpγ * sin(2pi*k[1]) * sin(2pi*k[2])
     else
         return 0 # Invalid band index
     end

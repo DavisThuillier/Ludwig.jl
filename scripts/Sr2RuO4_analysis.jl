@@ -4,9 +4,63 @@ using StaticArrays
 using CairoMakie, LaTeXStrings, Colors
 using LinearAlgebra
 using LsqFit
-using DelimitedFiles
-using ProgressBars
 import Statistics: mean
+
+include("LudwigIO.jl")
+
+##################
+### Fit Models ###
+##################
+
+model_0(t, p) = p[1] .+ p[2] * t.^2
+model_1(t, p) = p[1] .+ p[2] * t.^p[3]
+model_2(t, p) = p[1] .+ 1 ./ (p[2] .+ p[3] * t.^2)
+model_3(t, p) = p[1] .+ 1 ./ (p[2] .+ p[3] * t.^p[4])
+
+##################################
+### Property Wrapper Functions ###
+##################################
+
+function get_σ(L, k, v, E, dV, T)
+    σ = Ludwig.conductivity(L, v, E, dV, T)
+    return σ / c
+end
+
+function get_σxx(L, k, v, E, dV, T)
+    σxx = Ludwig.longitudinal_conductivity(L, first.(v), E, dV, T)
+    return σxx / c
+end
+
+function get_ρ(L, k, v, E, dV, T)
+    σxx = Ludwig.longitudinal_conductivity(L, first.(v), E, dV, T)
+    return c / σxx
+end
+
+function get_ηB1g(L, k, v, E, dV, T)
+    Dxx = zeros(Float64, ℓ)
+    Dyy = zeros(Float64, ℓ)
+    for i in 1:ℓ
+        μ = (i-1)÷(ℓ÷3) + 1 # Band index
+        Dxx[i] = dii_μ(k[i], 1, μ, δ)
+        Dyy[i] = dii_μ(k[i], 2, μ, δ)
+    end
+
+    return Ludwig.ηB1g(L, E, dV, Dxx, Dyy, T) / (a^2 * c)
+end
+
+function get_ηB2g(L, k, v, E, dV, T)
+    Dxy = zeros(Float64, ℓ)
+    for i in 1:ℓ
+        μ = (i-1)÷(ℓ÷3) + 1 # Band index
+        Dxy[i] = dxy_μ(k[i], μ)
+    end
+
+    return Ludwig.ηB2g(Γ, E, dV, Dxy, T) / (a^2 * c)
+end
+
+###############################
+### Visualization Utilities ###
+###############################
 
 function rational_format(x)
     x = Rational(x)
@@ -47,13 +101,6 @@ function single_band_parity(v)
     end
 
     return 2 * p / ℓ 
-end
-
-function symmetrize(L, dV, E, T)
-    fd = f0.(E, T) # Fermi dirac on grid points
-    D = diagm(dV .* fd .* (1 .- fd))
-
-    return 0.5 * (L + inv(D) * L' * D)
 end
 
 function mirror_x(v, n_ε, n_θ)
@@ -102,7 +149,7 @@ function mirror_gamma_modes(T, n_ε, n_θ, Uee)
     file = joinpath(data_dir, "Sr2RuO4_γ_$(T)_$(n_ε)x$(n_θ).h5")
 
     L, k, v, E, dV, corners, corner_ids = load(file, T; symmetrized = true)
-    # L *= 0.5 * Uee^2
+    L *= 0.5 * Uee^2
 
     eigenvectors = eigvecs(L)
 
@@ -161,230 +208,15 @@ function mirror_gamma_modes(T, n_ε, n_θ, Uee)
     # save(outfile, f)
 end
 
-function load(file, T; symmetrized = false)
-    h5open(file, "r") do fid
-        g = fid["data"]
-
-        L = 2pi * read(g, "L") 
-        k = reinterpret(SVector{2,Float64}, vec(transpose(read(g, "momenta"))))
-        v = reinterpret(SVector{2,Float64}, vec(transpose(read(g, "velocities"))))
-        E = read(g, "energies")
-        dV = read(g, "dVs")
-        corners = read(g, "corners")
-        corner_ids = read(g, "corner_ids")
-
-        symmetrized && (L = symmetrize(L, dV, E, kb * T))
-
-        # Enforce particle conservation
-        for i in 1:size(L)[1]
-            L[i,i] -= sum(L[i, :])
-        end
-
-        return L, k, v, E, dV, corners, corner_ids
-    end
-end
-
-function convergence()
-    # -1 indicates missing data
-    ρ = #[4.7430 4.7674 4.7792 4.7844 -1     -1
-         [4.7862 4.7964 4.7928 4.8121 -1     -1
-         4.8340 4.8451 4.8478 4.8500 4.8533 4.8702;
-         4.8623 4.8759 4.8662 4.8843 4.8729 4.8886;
-         4.8853 4.8969 4.8933 4.8965 4.9004 4.9056;
-         4.9006 4.9150 4.9085 4.9152 -1     -1    ;
-         -1     -1 4.9218 -1     4.9216 4.93332]
-
-    n_θ = [34, 36, 38, 40, 42, 44]
-    n_ε = [8, 9, 10, 11, 12, 13]
-
-    f = Figure(fontsize = 20, size = (1600, 600))
-    ax = Axis(f[1,1], 
-        xlabel = L"n_\theta^{-1}",
-        ylabel= L"\rho (\mathrm{\mu\Omega cm})",
-        xlabelsize = 28,
-        ylabelsize = 28)
-    m(t, p) = p[1] .+ p[2] * t
-    domain = 0.0:0.01:0.04
-    ρ∞ = Vector{Float64}(undef, length(n_ε))
-    for i in eachindex(n_ε)
-        θs = n_θ[ρ[i, :] .> 0.0]
-        ρs = filter(x -> x>0, ρ[i,:])
-        @show θs, ρs
-        fit = curve_fit(m, 1 ./ θs, ρs, [4, -0.2])
-        scatter!(ax, 1 ./ θs, ρs, label = "$(n_ε[i])")
-        lines!(ax, domain, m(domain, fit.param))
-        ρ∞[i] = fit.param[1]
-    end
-    axislegend(ax, L"n_\theta")
-
-    ε_fit = curve_fit(m, 1 ./ n_ε, ρ∞, [5, -0.2])
-    ax2 = Axis(f[1,2],
-        xlabel = L"n_ε^{-1}",
-        ylabel= L"\rho |_{n_\theta \to \infty} (\mathrm{\mu\Omega cm})",
-        xlabelsize = 28,
-        ylabelsize = 28
-    )
-    domain = 0.0:0.01:0.15
-    scatter!(ax2, 1 ./ n_ε, ρ∞, color = Makie.wong_colors()[1:length(ρ∞)])
-    lines!(ax2, domain, m(domain, ε_fit.param))
-    display(f)
-    @show ε_fit.param
-
-    # outfile = joinpath(@__DIR__, "..", "plots", "interband_convergence.png")
-    # save(outfile, f)
-end
-
-function impurity_only(n_ε, n_θ, Vimp)
-    t = 2.0:0.5:14.0
-
-    σ = Vector{Float64}(undef, length(t))
-    η = Vector{Float64}(undef, length(t))
-    τ_σ = Vector{Float64}(undef, length(t))
-    τ_η = Vector{Float64}(undef, length(t))
-
-    for i in eachindex(t)
-        impfile = joinpath(data_dir, "Sr2RuO4_unitary_imp_$(t[i])_$(n_ε)x$(n_θ).h5")
-        Γ, k, v, E, dV, _, _ = load(impfile, t[i]; symmetrized = false)
-
-        Γ *= Vimp^2
-
-        Dxx = zeros(Float64, ℓ)
-        Dyy = zeros(Float64, ℓ)
-        for i in 1:ℓ
-            μ = (i-1)÷(ℓ÷3) + 1 # Band index
-            Dxx[i] = dii_μ(k[i], 1, μ, 0.0)
-            Dyy[i] = dii_μ(k[i], 2, μ, 0.0)
-        end
-
-        σ[i] = Ludwig.longitudinal_conductivity(Γ, first.(v), E, dV, kb * t[i]) / c
-        η[i] = Ludwig.ηB1g(Γ, E, dV, Dxx, Dyy, kb * t[i]) / (a^2 * c)
-        τ_σ[i] = Ludwig.σ_lifetime(Γ, v, E, dV, kb * t[i])
-        τ_η[i] = Ludwig.η_lifetime(Γ, Dxx, Dyy, E, dV, kb * t[i])
-        @show σ[i], η[i], τ_σ[i], τ_η[i]
-    end
-
-    @show σ
-    @show η
-    @show τ_σ
-    @show τ_η
-
-    f = Figure(fontsize = 20)
-    ax = Axis(f[1,1], ylabel = L"\tau_\text{eff}^{-1}\,(\mathrm{ps}^{-1})", xlabel = L"T\, (\mathrm{K})", 
-    xticks = [4, 16, 25, 36, 49, 64, 81, 100, 144, 169, 196],
-                xtickformat = values -> [L"%$(Int(sqrt(x)))^2" for x in values])
-                xlims!(ax, 0, 200)
-    scatter!(ax, t.^2, 1e-12 ./ σ_τ, label = L"\tau_\sigma")
-    scatter!(ax, t.^2, 1e-12 ./ η_τ, label = L"\tau_\eta")
-    axislegend(ax, position = :lt)
-    display(f)
-
-end
-
-function get_property(prop::String, T, n_ε::Int, n_θ::Int, Uee::Real, Vimp::Real, δ = 0.0; include_impurity::Bool = true)
-    eefile = joinpath(data_dir, "Sr2RuO4_$(Float64(T))_$(n_ε)x$(n_θ).h5")
-    
-    Γ, k, v, E, dV, _, _= load(eefile, T, symmetrized = true)
-    Γ *= 0.5 * Uee^2
-    ℓ = size(Γ)[1]
-
-    if include_impurity
-        impfile = joinpath(data_dir, "Sr2RuO4_unitary_imp_$(T)_$(n_ε)x$(n_θ).h5")
-        Γimp, _, _, _, _, _, _ = load(impfile, T)
-        Γ += Γimp * Vimp^2
-    end
-
-    T = kb*T
-
-    if prop == "σ"
-        σ = Ludwig.conductivity(Γ, v, E, dV, T)
-        return σ[1,1] / c
-    elseif prop == "σxx"
-        σ = Ludwig.longitudinal_conductivity(Γ, first.(v), E, dV, T)
-        return σ[1,1] / c
-    elseif prop == "ηB1g"
-        Dxx = zeros(Float64, ℓ)
-        Dyy = zeros(Float64, ℓ)
-        for i in 1:ℓ
-            μ = (i-1)÷(ℓ÷3) + 1 # Band index
-            Dxx[i] = dii_μ(k[i], 1, μ, δ)
-            Dyy[i] = dii_μ(k[i], 2, μ, δ)
-        end
-
-        return Ludwig.ηB1g(Γ, E, dV, Dxx, Dyy, T) / (a^2 * c)
-    elseif prop == "τ_eff"
-        # Effective lifetime as calculated from the conductivity
-        τ1 = Ludwig.σ_lifetime(Γ, v, E, dV, T)
-
-        Dxx = zeros(Float64, ℓ)
-        Dyy = zeros(Float64, ℓ)
-        for i in 1:ℓ
-            μ = (i-1)÷(ℓ÷3) + 1 # Band index
-            Dxx[i] = dii_μ(k[i], 1, μ, δ)
-            Dyy[i] = dii_μ(k[i], 2, μ, δ)
-        end
-        τ2 = Ludwig.η_lifetime(Γ, Dxx, Dyy, E, dV, T)
-        return τ1, τ2
-    elseif prop == "spectrum"
-        return Ludwig.spectrum(Γ, E, dV, T) ./ hbar
-    else
-        return nothing
-    end
-end
-
-function spectrum(n_ε, n_θ, Uee, Vimp)
-    # T = 2.0:0.5:14.0
-    T = 2.0:0.5:14.0
-    ℓ = 12 * (n_ε - 1) * (n_θ - 1) # Dimension of matrix
-
-    info_file = joinpath(data_dir, "spectrum.aux")
-    open(info_file, "w") do file
-        write(file, "#About spectrum.csv")
-        write(file, "\n#Uee = $(Uee) eV")
-        write(file, "\n#n_ε = $(n_ε), n_θ = $(n_θ)")
-        write(file, "\n#T(K) is row index\n")
-        writedlm(file, T', ",")
-    end
-
-    # return nothing
-
-    spectrum = Matrix{Float64}(undef, length(T), ℓ)
-    for i in ProgressBar(eachindex(T))
-        spectrum[i, :] .= real.(get_property("spectrum", T[i], n_ε, n_θ, Uee, Vimp; include_impurity = false))
-    end
-
-    file = joinpath(data_dir, "spectrum.csv")
-    writedlm(file, spectrum, ",")
-
-end
-
-# function τ_eff(n_ε, n_θ, Uee, Vimp)
-#     T = 2.0:0.5:14.0
-
-#     file = joinpath(data_dir, "τ_eff.dat")
-#     open(file, "w") do f
-#         write(f, "#τ_eff from conductivity")
-#         write(f, "\n#n_ε = $(n_ε), n_θ = $(n_θ)")
-#         write(f, "\n#Uee = $(Uee) eV")
-#         write(f, "\n#√n * Vimp = $(Vimp) eV m^{-3/2}")
-#         write(f, "\n#T(K) τ_eff (ps)")
-#         for i in eachindex(T)
-#             τ = get_property("τ_eff", T[i], n_ε, n_θ, Uee, Vimp, include_impurity = false) * 1e12
-#             write(f, "\n$(T[i]) $(τ)")
-#         end
-#     end 
-# end
-
 function display_heatmap(file, T)
-    Γ, k, v, E, dV, corners, corner_ids = load(file, T)
+    Γ, _, _, E, dV, _, _ = load(file, T)
 
     T = kb * T
-
 
     fd = f0.(E, T) # Fermi dirac on grid points
     D = diagm(sqrt.(dV .* fd .* (1 .- fd)))
     M = D * Γ * inv(D)
 
-    ℓ = size(Γ)[1]
     f = Figure(size = (2000, 2000))
     ax = Axis(f[1,1], aspect = 1.0, 
     backgroundcolor = :transparent,
@@ -410,13 +242,6 @@ function display_heatmap(file, T)
     # Colorbar(f[1,2], h)
     display(f)
     # save(joinpath(plot_dir,"23 August 2024","Sr2RuO4_interband_heatmap.png"), f)
-
-    # λ = eigvals(M)
-    # @show λ[1:4]
-    # f = Figure()
-    # ax = Axis(f[1,1])
-    # scatter!(ax, real.(λ))
-    # display(f)
 end
 
 function modes(T, n_ε, n_θ, Uee, Vimp; include_impurity = false)
@@ -436,37 +261,39 @@ function modes(T, n_ε, n_θ, Uee, Vimp; include_impurity = false)
     @time eigenvalues  = eigvals(L)
     eigenvalues *= 1e-9 / hbar
 
-    f = Figure(size = (700, 500), fontsize = 24)
-    ax = Axis(f[1,1],
-            xlabel = "Mode Index",
-            ylabel = L"\lambda \,(\mathrm{ps}^{-1})"
-    )
-    for i in 1:50
-        if i  < 5
-            scatter!(ax, i, eigenvalues[i], 
-            color = :gray, 
-            )
-        else
-            scatter!(ax, i, eigenvalues[i], 
-            #color = parities[i] > 0 ? :orange : :blue, 
-            )
-        end
-    end
+    @show eigenvalues[1:5]
 
-    orange_marker = MarkerElement(color = :orange, marker = :circle, markersize = 15,
-    strokecolor = :orange)
-    blue_marker = MarkerElement(color = :blue, marker = :circle, markersize = 15,
-    strokecolor = :blue)
-    gray_marker = MarkerElement(color = :gray, marker = :circle, markersize = 15,
-    strokecolor = :gray)
+    # f = Figure(size = (700, 500), fontsize = 24)
+    # ax = Axis(f[1,1],
+    #         xlabel = "Mode Index",
+    #         ylabel = L"\lambda \,(\mathrm{ps}^{-1})"
+    # )
+    # for i in 1:50
+    #     if i  < 5
+    #         scatter!(ax, i, eigenvalues[i], 
+    #         color = :gray, 
+    #         )
+    #     else
+    #         scatter!(ax, i, eigenvalues[i], 
+    #         #color = parities[i] > 0 ? :orange : :blue, 
+    #         )
+    #     end
+    # end
 
-    axislegend(ax, [orange_marker, blue_marker, gray_marker], ["Even", "Odd", L"\tau \to \infty"], position = :rb)
-    display(f)
+    # orange_marker = MarkerElement(color = :orange, marker = :circle, markersize = 15,
+    # strokecolor = :orange)
+    # blue_marker = MarkerElement(color = :blue, marker = :circle, markersize = 15,
+    # strokecolor = :blue)
+    # gray_marker = MarkerElement(color = :gray, marker = :circle, markersize = 15,
+    # strokecolor = :gray)
+
+    # axislegend(ax, [orange_marker, blue_marker, gray_marker], ["Even", "Odd", L"\tau \to \infty"], position = :rb)
+    # display(f)
 
     # outfile = joinpath(plot_dir, "23 August 2024", "Sr2RuO4_spectrum_1_to_50.png")
     # save(outfile, f)
 
-    # return nothing
+    return nothing
     
     @time eigenvectors = eigvecs(L)
     parities = Vector{Float64}(undef, length(eigenvalues))
@@ -474,14 +301,12 @@ function modes(T, n_ε, n_θ, Uee, Vimp; include_impurity = false)
         parities[i] = parity(eigenvectors[:, i])
     end
 
-    @show eigenvalues[1:4]
-
     quads = Vector{Vector{SVector{2, Float64}}}(undef, 0)
     for i in 1:size(corner_ids)[1]
         push!(quads, map(x -> SVector{2}(corners[x, :]), corner_ids[i, :]))
     end
 
-    N = 4
+    N = 5
     
     for i in eachindex(eigenvalues)
         if i < N
@@ -723,7 +548,7 @@ function ρ_fit(n_ε, n_θ)
         @show p
         σ = Vector{Float64}(undef, length(t))
         for i in eachindex(t)
-            σ[i] = get_property("σ", t[i], n_ε, n_θ, p[1], p[2])
+            σ[i] = get_property(props["σ"], t[i], n_ε, n_θ, p[1], p[2])
             @show σ[i]
         end
 
@@ -742,30 +567,28 @@ function ρ_fit(n_ε, n_θ)
     @show Vfit.param
 end
 
-function get_ρ(n_ε, n_θ, Uee, Vimp, T)
-    σ = get_property("σxx", T, n_ε, n_θ, Uee, Vimp; include_impurity = true)
-    println("ρ = $(1e8 / σ) μΩ-cm")
-end
+function plot_ρ(n_ε, n_θ)
+    data_file = joinpath(data_dir, "ρ_$(n_ε)x$(n_θ).dat")
+    t = []
+    ρ = []
+    open(data_file, "r") do f
+        for line in readlines(f)
+            startswith(line, '#') && continue
+            T, rho = map(x -> parse(Float64, x), split(line, ','))
+            push!(t, T)
+            push!(ρ, rho * 1e8)
+        end
+    end
+    lupien_file = joinpath(exp_dir, "rhovT_Lupien_digitized.dat")
+    lupien_data = readdlm(lupien_file)
 
-function plot_ρ(n_ε, n_θ, Uee, Vimp)
-    t = 2.0:0.5:12.0
-
-    # σ = Vector{Float64}(undef, length(t))
-    # for i in eachindex(t)
-    #     σ[i] = get_property("σxx", t[i], n_ε, n_θ, Uee, Vimp; include_impurity = true)
-    #     @show 10^8 / σ[i]
-    # end
-
-    # ρ = 10^8  ./ σ # Convert to μΩ-cm
-    # @show ρ
-
-    ρ = [0.10959056505116326, 0.12151019463132146, 0.13504856338798898, 0.15016845154757302, 0.16672467041152575, 0.1847198405479588, 0.2041851433762483, 0.22516814159799386, 0.24777750498999843, 0.27197760942785343, 0.29784506878946493, 0.32543193395073594, 0.35473522979103506, 0.38579389146608156, 0.4186462443045558, 0.4534385594028692, 0.49009715381486624, 0.5286627463900118, 0.5691567274598581, 0.6116340508555088, 0.6561653206886255]
-    
-
-    model(t, p) = p[1] .+ p[2] * t.^2
-
+    model = model_1
     fit = curve_fit(model, t, ρ, [0.0, 0.0001, 2.0], lower = [0.0, 0.0, 0.0])
-    # @show fit.param[2] / fit.param[1]
+    @show fit.param
+
+    l_model = model_0   
+    lfit = curve_fit(l_model, lupien_data[10:40, 1], lupien_data[10:40, 2], [0.0, 0.0001, 2.0], lower = [0.0, 0.0, 0.0])
+    @show lfit.param
 
     f = Figure(fontsize = 20)
     ax = Axis(f[1,1],
@@ -774,66 +597,52 @@ function plot_ρ(n_ε, n_θ, Uee, Vimp)
 
     xlims!(ax, 0.0, 14.0)
     ylims!(ax, 0.0, 1.0)
+    domain = 0.0:0.1:14.0
 
-    lupien_file = joinpath(exp_dir, "rhovT_Lupien_digitized.dat")
-    lupien_data = readdlm(lupien_file)
-    lfit = curve_fit(model, lupien_data[10:40, 1], lupien_data[10:40, 2], [0.0, 0.0001, 2.0], lower = [0.0, 0.0, 0.0])
-    @show lfit.param[2] / lfit.param[1]
     scatter!(ax, lupien_data[:, 1], lupien_data[:, 2], color = :black)
-    domain = 0.0:0.1:30.0
-
-    # for r in 0.1:0.1:1.0
-    #     data_file = joinpath(data_dir, "ρ_r_$(r).dat")
-
-    #     T = Float64[]
-    #     ρ = Float64[]
-    #     open(data_file, "r") do file
-    #         for line in readlines(file)
-    #             startswith(line, "#") && continue
-    #             Ti, ρi = split(line, ",")
-    #             push!(T, parse(Float64, Ti))
-    #             push!(ρ, parse(Float64, ρi))
-    #         end
-    #     end
-
-        
-    #     fit = curve_fit(model, T, ρ, [0.0, 0.0001, 2.0], lower = [0.0, 0.0, 0.0])
-        
-    #     lines!(ax, domain, (model(domain, fit.param)), color = r, colorrange = (0.0, 1.0), colormap = :thermal)
-    #     scatter!(ax, T, ρ, color = r, colorrange = (0.1, 1.0), colormap = :thermal)
-
-    #     display(f)
-
-    # end
-
-    # scatter!(ax, t, ρ, color = :red)
+    scatter!(ax, t, ρ, color = :red)
     lines!(ax, domain, model(domain, fit.param), color = :red)
-    # lines!(ax, domain, model(domain, lfit.param))
+    lines!(ax, domain, l_model(domain, lfit.param))
     display(f)
 
     outfile = joinpath(plot_dir, "23 August 2024", "ρ_with_fit.png")
     # save(outfile, f)
-
-end
-
-function get_η(n_ε, n_θ, Uee, Vimp, T)
-    δ = 0.0
-    η = get_property("ηB1g", T, n_ε, n_θ, Uee, Vimp, δ; include_impurity = true)
-    println("$(n_ε)x$(n_θ), $(η)")
 end
 
 function plot_η()
-    # data_file = joinpath(data_dir, "ηB1g_sans_crystal_field_splitting.dat")
-    
-
     # Fit to Brad's data
     visc_file = joinpath(exp_dir,"B1gViscvT_new.dat")
     data = readdlm(visc_file)
     rmodel(t, p) = p[1] .+ 1 ./ (p[2] .+ p[3] * t.^p[4])#2)
     rfit = curve_fit(rmodel, data[1:341, 1], data[1:341, 2], [0.1866, 1.2, 0.1, 2.0])
     @show rfit.param
-    @show rfit.param[3] / rfit.param[2]
     data[:, 2] .-= rfit.param[1] # Subtract off systematic offset
+
+    ηB1g_file = joinpath(data_dir, "ηB1g_$(n_ε)x$(n_θ).dat")
+    ηB2g_file = joinpath(data_dir, "ηB2g_$(n_ε)x$(n_θ).dat")
+
+    t1 = []
+    ηB1g = []
+    open(ηB1g_file, "r") do f
+        for line in readlines(f)
+            startswith(line, '#') && continue
+            T, eta = map(x -> parse(Float64, x), split(line, ','))
+            push!(t1, T)
+            push!(ρ, eta)
+        end
+    end
+
+    t2 = []
+    ηB2g = []
+    open(ηB2g_file, "r") do f
+        for line in readlines(f)
+            startswith(line, '#') && continue
+            T, eta = map(x -> parse(Float64, x), split(line, ','))
+            push!(t2, T)
+            push!(ηB2g, eta)
+        end
+    end
+    
 
     f = Figure()
         ax = Axis(f[1,1], 
@@ -871,8 +680,6 @@ function plot_η()
         lines!(ax, domain.^2, 1 ./ (model(domain, fit.param)), color = r, colorrange = (0.1, 1.0), colormap = :thermal)
         scatter!(ax, T.^2, 1 ./ ηB1g, color = r, colorrange = (0.1, 1.0), colormap = :thermal)
 
-        # mean_ratio = sum((rmodel(domain, rfit.param) .- rfit.param[1]) ./ (model(domain, fit.param))) / length(domain)
-        # @show mean_ratio
 
         display(f)
 
@@ -899,7 +706,7 @@ function η_fit(Uee, Vimp)
         @show p
         ηinv = Vector{Float64}(undef, length(t))
         for i in eachindex(t)
-            ηinv[i] = 1 / get_property("ηB1g", t[i], n_ε, n_θ, Uee, Vimp, p[1]; include_impurity = true)
+            ηinv[i] = 1 / get_property(get_ηB1g, t[i], n_ε, n_θ, Uee, Vimp, p[1]; include_impurity = true)
             @show ηinv[i]
         end
 
@@ -964,23 +771,6 @@ end
 
 function plot_ρ_and_η(n_ε, n_θ, Uee, Vimp)
     T = 2.0:0.5:12.0
-
-    # ρ = Vector{Float64}(undef, length(T))
-    # η = Vector{Float64}(undef, length(T))
-    # for i in eachindex(T)
-    #     ρ[i] = 1e8 / get_property("σxx", T[i], n_ε, n_θ, Uee, Vimp; include_impurity = true)
-    #     η[i] = get_property("ηB1g", T[i], n_ε, n_θ, Uee, Vimp; include_impurity = true)
-    # end
-
-    # @show ρ
-    # @show η
-
-    # ρ = [0.14572187053941366, 0.1583948568367494, 0.1728425862769762, 0.18901282110967638, 0.20667432212019982, 0.2257887321860733, 0.24635849964177697, 0.2684105636171452, 0.29204875574948685, 0.31721993847220736, 0.34400235558405456, 0.3724488327795807, 0.4025541823326671, 0.4343602379900469, 0.4679118286333832, 0.5033662819541096, 0.5406422926834203, 0.5797838939355607, 0.6208156109261806, 0.6637970814224016, 0.7088032591626268]
-    # η = [0.1632109937471985, 0.14104169141627979, 0.12153028700859449, 0.104572203676835, 0.09046997281210196, 0.07878866672121872, 0.06909612045431311, 0.06101620796348812, 0.054204113192094124, 0.04846692488169224, 0.043586830506469956, 0.03940454789543453, 0.035803078584045474, 0.03268040808617452, 0.029947369120300646, 0.027530396713247595, 0.02539869935048196, 0.02350404774632313, 0.021813544105868457, 0.020296558737697944, 0.01892834501990456]
-
-    ρ = [0.1184466057991059, 0.13021347042993292, 0.143596080709527, 0.15854907572090784, 0.17489943326990434, 0.19263351064614767, 0.21177117405749082, 0.2323511844774808, 0.2544772463142182, 0.27810943094383744, 0.3033228627991061, 0.33016842764032833, 0.3586429551527171, 0.38878524297657274, 0.4206348950232471, 0.45433677221108826, 0.48981748828118055, 0.527117413936166, 0.5662584554497896, 0.6072952203987327, 0.6502972674520632]
-    η = [0.1958796881072882, 0.16627525782177574, 0.14109624269862953, 0.11989784757382546, 0.10269560654437497, 0.08873094916369476, 0.07733182090541726, 0.06795287218998933, 0.06012861084233261, 0.05359280940948254, 0.04806950193915352, 0.043360191266380674, 0.03932100989922829, 0.03582971528067413, 0.032782009364159224, 0.030092616428403475, 0.027724258460274275, 0.02562214168020945, 0.023748640955960847, 0.022069190007005773, 0.020555898057792395]
-
     
     xticks = [4, 16, 36, 49, 64, 81, 100, 121, 144, 169, 196]
     domain = 0.0:0.1:14.0
@@ -1133,45 +923,21 @@ function γ_lifetimes(n_ε, n_▓, Uee, Vimp, include_impurity)
 
 end
 
+function main()
+    n_ε = 12
+    n_θ = 38
+    Uee = 0.07517388226660576
+    Vimp = 8.647920506354473e-5
+
+    temps = 2.0:0.5:14.0
+
+    LudwigIO.write_property_to_file("ρ", get_ρ, data_dir, material, n_ε, n_θ, Uee, Vimp, temps)
+end
+
 include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
 data_dir = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "model_2")
 plot_dir = joinpath(@__DIR__, "..", "plots", "Sr2RuO4")
 exp_dir  = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "experiment")
 
-n_ε = 14
-n_θ = 44
-Uee = 0.07517388226660576
-Vimp = 8.647920506354473e-5
 
-# get_ρ(14, 40, Uee, Vimp, 12.0)
-for n_θ ∈ 38:2:40
-    get_η(n_ε, n_θ, Uee, Vimp, 12.0)
-end
-
-# display_heatmap(joinpath(data_dir, "Sr2RuO4_12.0_12x38.h5"), 12)
-
-# modes(12.0, n_ε, n_θ, Uee, Vimp, include_impurity = false)
-# separate_band_conductivities(n_ε, n_θ, Uee, Vimp)
-# lifetimes(n_ε, n_θ, Uee, Vimp)
-# γ_lifetimes(n_ε, n_θ, Uee, Vimp, false)
-# impurity_only(n_ε, n_θ, Vimp)
-
-ℓ = 4 * (n_ε - 1) * (n_θ - 1)
-
-# i = 2 * ℓ + Int( ((n_ε - 1) + 1) * (n_θ ÷ 2 - 1.5))
-# @show i
-
-# ρ_fit(n_ε, n_θ)
-# plot_ρ_and_η(n_ε, n_θ, Uee, Vimp)
-
-# visualize_rows(3460, 12.0, n_ε, n_θ)
-
-# η_fit(Uee, Vimp)
-
-# plot_η()
-# get_η(n_ε, n_θ, Uee, Vimp)
-
-# get_ρ(n_ε, n_θ, Uee, Vimp)
-# plot_ρ(12, 38, Uee, Vimp)
-
-# mirror_gamma_modes(12.0, n_ε, n_θ, Uee)
+main()

@@ -1,16 +1,21 @@
-using CairoMakie
+using CairoMakie, LaTeXStrings
 using LinearAlgebra
 using GLM, StatsBase, DataFrames
 
 f1 = @formula(q ~ 1 + x + y)
 model1(x, y, p) = p[1] .+ p[2] * x .+ p[3] * y 
+
 f2 = @formula(q ~ 1 + x + y + x^2 + x*y + y^2)
 model2(x, y, p) = p[1] .+ p[2] .* x .+ p[3] .* y .+ p[4] .* x.^2 .+ p[5] .* y.^2 .+ p[6] .* x .* y
-f3 = @formula(q ~ 1 + x + y + x^2 + x*y + y^2 + x^3 + x^2*y + x*y^2 + y^3)
-model3(x, y, p) = p[1] .+ p[2] .* x .+ p[3] .* y .+ p[4] .* x.^2 .+ p[5] .* y.^2 .+ p[6] .* x .* y .+ p[7] .* x.^3 .+ p[8] .* p[8] .* y .^3 .+ p[9] .* x .^2 .* y .+ p[10] .* x .* y .^2
 
-formulae = [f1, f2, f3]
-models   = [model1, model2, model3]
+f3 = @formula(q ~ 1 + x + y + x^2 + x*y + y^2 + x^3 + x^2*y + x*y^2 + y^3)
+model3(x, y, p) = p[1] .+ p[2] .* x .+ p[3] .* y .+ p[4] .* x.^2 .+ p[5] .* y.^2 .+ p[6] .* x.^3 .+ p[7] .* y .^3 .+ p[8].* x .* y.+ p[9] .* x .^2 .* y .+ p[10] .* x .* y .^2
+
+f4 = @formula(q ~ 1 + x + y + x^2 + x*y + y^2 + x^3 + x^2*y + x*y^2 + y^3 + x^4 + x^3*y + x^2 * y^2 + x * y^3 + y^4)
+model4(x, y, p) = p[1] .+ p[2] .* x .+ p[3] .* y .+ p[4] .* x.^2 .+ p[5] .* y.^2 .+ p[6] .* x.^3 .+ p[7] .* y .^3 .+ p[8] .* x.^4 .+ p[9] .* y^4 .+ p[10].* x .* y.+ p[11] .* x .^2 .* y .+ p[12] .* x .* y .^2 .+ p[13] .* x^3 .* y .+ p[14] .* x^2 .* y .^2 .+ p[15] .* x .* y.^3
+
+formulae = [f1, f2, f3, f4]
+models   = [model1, model2, model3, model4]
 
 function fit(data, q_label, q_unit, order = 1, N = 100)
     fit = lm(formulae[order], data)
@@ -39,7 +44,16 @@ function fit(data, q_label, q_unit, order = 1, N = 100)
         end
     end
 
+    q = 0
+    for i in eachindex(data.q)
+        if data.x[i] == 1/12 && data.y[i] == 1/38
+            q = data.q[i]
+        end
+    end 
+    @show q
+
     scatter!(ax, data.x, data.y, data.q, color = :black)
+    scatter!(ax, 1/12, 1/38, q, color=:red)
     surface!(ax, x_domain, y_domain, fit_z, color = color)
 
     scatter!(ax, 0.0, 0.0, coef(fit)[1])
@@ -47,6 +61,11 @@ function fit(data, q_label, q_unit, order = 1, N = 100)
 
     display(f)
 end
+
+# function asymptotic_regression()
+#     fit = lm(, data)
+#     @show fit
+# end
 
 function main(file)
     
@@ -77,14 +96,35 @@ function main(file)
 
         data = DataFrame(x = 1 ./ n_ε, y = 1 ./ n_θ, q = q)
 
-        fit(data, q_label, q_unit, 1)
+        indices = findall(x -> x == 10, n_ε)
+
+        ζ = 0.7126
+        f = Figure()
+        ax = Axis(f[1,1])
+        xlims!(ax, 0, 48)
+        scatter!(ax, n_θ[indices], log.(ζ .- q[indices]))
+        # scatter!(ax, n_θ[indices], q[indices] .- ζ)
+        # display(f)
+
+        # return nothing
+
+        fit(data, q_label, q_unit, 3)
     else
         println("Please enter a valid data file.")
     end
 end
 
 data_dir = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "model_2")
+files = [x*"_convergence.dat" for x in 
+    [   "ρ",
+        #"η",
+        #"λ_dxz-dyz",
+        #"λ_ε"
+    ]
+         
+]
 
-for file in ["ρ_convergence.dat", "η_convergence.dat", "λ_dxz-dyz_convergence.dat"]
+
+for file in files 
     main(joinpath(data_dir, file))
 end
