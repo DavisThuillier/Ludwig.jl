@@ -61,8 +61,12 @@ function get_property(prop::String, data_dir, material::String, T::Real, n_ε::I
     end
 end
 
-function write_property_to_file(prop, material, data_dir, n_ε, n_θ, Uee, Vimp, temps; include_impurity=true)
-    file = joinpath(data_dir, prop*"_$(n_ε)x$(n_θ).dat")
+function write_property_to_file(prop, material, data_dir, n_ε, n_θ, Uee, Vimp, temps; include_impurity=true, addendum="")
+    if addendum == ""
+        file = joinpath(data_dir, prop*"_$(n_ε)x$(n_θ).dat")
+    else
+        file = joinpath(data_dir, prop*"_$(addendum)_$(n_ε)x$(n_θ).dat")
+    end
 
     s = Meta.parse("get_"*prop)
     if isdefined(Main, s)
@@ -78,7 +82,7 @@ function write_property_to_file(prop, material, data_dir, n_ε, n_θ, Uee, Vimp,
             println(f, "---")
             println(f, "# T, $(prop)")
             for T in temps
-                q = get_property(fn, data_dir, material, T, n_ε, n_θ, Uee, Vimp, include_impurity = include_impurity)
+                q = get_property(prop, data_dir, material, T, n_ε, n_θ, Uee, Vimp, include_impurity = include_impurity)
                 println("T = $(T), $(prop) = $(q)")
                 println(f, "$(T),$(q)")
             end
