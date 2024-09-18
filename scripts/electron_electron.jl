@@ -5,16 +5,16 @@ using StaticArrays
 using LinearAlgebra
 
 function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
-    T = kb * T # Convert K to eV
 
-    mesh = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
+    mesh = Ludwig.multiband_mesh(bands, orbital_weights, kb * T, n_ε, n_θ)
     ℓ = length(mesh.patches)
 
     # Initialize file - will error if
-    h5open(outfile, "cw") do fid
-        g = create_group(fid, "data")
-        write_attribute(g, "n_e", n_ε)
-        write_attribute(g, "n_theta", n_θ)
+    h5open(outfile, "cw") do f
+        g = create_group(f, "data")
+        write_attribute(g, "n_ε", n_ε)
+        write_attribute(g, "n_θ", n_θ)
+        write_attribute(g, "T", T)
         g["corners"] = copy(transpose(reduce(hcat, mesh.corners)))
         g["momenta"] = copy(transpose(reduce(hcat, map(x -> x.momentum, mesh.patches))))
         g["velocities"] = copy(transpose(reduce(hcat, map(x -> x.v, mesh.patches))))
@@ -22,6 +22,8 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
         g["dVs"] = map(x -> x.dV, mesh.patches)
         g["corner_ids"] = copy(transpose(reduce(hcat, map(x -> x.corners, mesh.patches))))
     end 
+
+    T = kb * T # Convert K to eV
 
     N = 1001
     x = LinRange(-0.5, 0.5, N)
@@ -41,10 +43,9 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
 
     Threads.@threads for i in 1:ℓ
         for j in 1:ℓ
-            L[i,j] = Ludwig.electron_electron(mesh.patches, f0s, i, j, itps, T, vertex_pp, vertex_pk)
+            L[i,j] = Ludwig.electron_electron(mesh.patches, f0s, i, j, itps, T, vertex_pp, vertex_pk, 36)
         end
     end
-
 
     # Write scattering operator out to file
     h5open(outfile, "cw") do fid
