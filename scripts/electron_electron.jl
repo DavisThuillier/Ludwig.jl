@@ -5,6 +5,10 @@ using StaticArrays
 using LinearAlgebra
 
 function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
+
+    mesh = Ludwig.multiband_mesh(bands, orbital_weights, kb * T, n_ε, n_θ)
+    ℓ = length(mesh.patches)
+
     # Initialize file - will error if
     h5open(outfile, "cw") do f
         g = create_group(f, "data")
@@ -19,13 +23,7 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
         g["corner_ids"] = copy(transpose(reduce(hcat, map(x -> x.corners, mesh.patches))))
     end 
 
-
     T = kb * T # Convert K to eV
-
-    mesh = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
-    ℓ = length(mesh.patches)
-
-    
 
     N = 1001
     x = LinRange(-0.5, 0.5, N)
