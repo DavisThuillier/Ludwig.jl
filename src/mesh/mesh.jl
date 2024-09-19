@@ -144,11 +144,21 @@ function generate_mesh(bands, orbital_weights::Function, band_index::Int, n_band
     x = LinRange(0.0, 0.5, N)
     E = map(x -> bands[band_index]([x[1], x[2]]), collect(Iterators.product(x, x)))
 
+    umklapp_edge_energy = bands[band_index]([0.0, 0.5])
+
     e_threshold = α*T # Half-width of Fermi tube
     e_min = max(-e_threshold, 0.999 * minimum(E))
     e_max = min(e_threshold, 0.999 * maximum(E))
     Δε = (e_max - e_min) / (n_levels - 1)
+
     energies = collect(LinRange(e_min, e_max, 2 * n_levels - 1))
+
+    if e_min < umklapp_edge_energy < e_max 
+        i = argmin(abs.(energies .- umklapp_edge_energy))
+        iseven(i) && (i = i + (-1)^argmin(abs.([energies[i - 1], energies[i + 1]] .- umklapp_edge_energy)) 
+        )
+        energies[i] = umklapp_edge_energy
+    end
 
     c = contours(x, x, E, energies) # Generate Fermi surface contours
     

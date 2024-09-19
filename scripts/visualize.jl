@@ -105,11 +105,14 @@ function delta(k1, k2, N)
     end
 end
 
-function main()
-    T = 37 * kb
-    n_ε = 12
-    n_θ = 60
-    mesh = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
+function main(ϵ)
+    T = 8 * kb
+    n_ε = 2
+    n_θ = 20
+
+    strain_bands = map(f -> (x -> f(x, ϵ)), bands)
+
+    mesh = Ludwig.multiband_mesh(strain_bands, orbital_weights, T, n_ε, n_θ)
     ℓ = length(mesh.patches)
 
     corner_ids = map(x -> x.corners, mesh.patches)
@@ -141,15 +144,12 @@ function main()
     # save(joinpath(plot_dir,"23 August 2024","SRO_mesh_no_colorbar.png"), f)
 end
 
-include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
+include(joinpath(@__DIR__, "materials", "Sr2RuO4_uniaxial_strain.jl"))
 plot_dir = joinpath(@__DIR__, "..", "plots", "Sr2RuO4")
 
-# form_factors()
-main()
+for ϵ ∈ 0.0:-0.01:-0.1
+    main(ϵ)
+end
 # deformation_potentials()
 
-# k1 = [0.4, 0.2]
-# k2 = [-0.4, -0.2]
-
-# delta(k1, k2, 100)
 
