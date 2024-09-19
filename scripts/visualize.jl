@@ -105,14 +105,12 @@ function delta(k1, k2, N)
     end
 end
 
-function main(ϵ)
+function main()
     T = 8 * kb
-    n_ε = 2
-    n_θ = 20
+    n_ε = 12
+    n_θ = 60
 
-    strain_bands = map(f -> (x -> f(x, ϵ)), bands)
-
-    mesh = Ludwig.multiband_mesh(strain_bands, orbital_weights, T, n_ε, n_θ)
+    mesh = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
     ℓ = length(mesh.patches)
 
     corner_ids = map(x -> x.corners, mesh.patches)
@@ -141,15 +139,13 @@ function main(ϵ)
     # Colorbar(f[1,2], p, label = L"\varepsilon - \mu (\mathrm{eV})", labelsize = 30)
     display(f)
 
-    # save(joinpath(plot_dir,"23 August 2024","SRO_mesh_no_colorbar.png"), f)
+    save(joinpath(plot_dir,"uniaxial_strain","SRO_$(ϵ)_8.0_K.png"), f)
 end
 
 include(joinpath(@__DIR__, "materials", "Sr2RuO4_uniaxial_strain.jl"))
 plot_dir = joinpath(@__DIR__, "..", "plots", "Sr2RuO4")
 
-for ϵ ∈ 0.0:-0.01:-0.1
-    main(ϵ)
-end
+main()
 # deformation_potentials()
 
 

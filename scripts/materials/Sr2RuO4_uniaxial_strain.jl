@@ -10,7 +10,7 @@ const tγ::Float64     = 0.07735      # γ band nearest hopping in eV
 const tpγ::Float64    = 0.0303212    # eV
 const μγ::Float64     = 0.114478     # eV
 
-function ham_γ(k, ϵ = 0.0)
+function ham_γ(k)
     return - 2.0 * tγ * ((1 - ϵ) * cos(2pi*k[1]) + (1 + νxy * ϵ / 2.0) * cos(2pi*k[2])) - 4 * tpγ * (1 - (1 - νxy) * ϵ / 2.0) * cos(2pi*k[1]) * cos(2pi*k[2]) - μγ
 end
 
@@ -25,19 +25,19 @@ const t3::Float64     = 0.08
 const t5::Float64     = 0.13
 const μαβ::Float64    = 1.08
 
-exz(k, ϵ = 0.0) = -2.0 * (1 - ϵ) * cos(2pi*k[1]) - 2.0 * t3 * (1 + νxy * ϵ) * cos(2pi*k[2]) - μαβ
-eyz(k, ϵ = 0.0) = -2.0 * t3 * (1 - ϵ) * cos(2pi*k[1]) - 2.0 * (1 + νxy * ϵ) * cos(2pi*k[2]) - μαβ
+exz(k) = -2.0 * (1 - ϵ) * cos(2pi*k[1]) - 2.0 * t3 * (1 + νxy * ϵ) * cos(2pi*k[2]) - μαβ
+eyz(k) = -2.0 * t3 * (1 - ϵ) * cos(2pi*k[1]) - 2.0 * (1 + νxy * ϵ) * cos(2pi*k[2]) - μαβ
 V(k, ϵ = 0.0)   = 4.0 * t5 * (1 - (1 - νxy) * ϵ / 2.0) * sin(2pi*k[1]) * sin(2pi*k[2])
 
-function ham_α(k, ϵ = 0.0)
-    x = exz(k, ϵ)
-    y = eyz(k, ϵ)
+function ham_α(k)
+    x = exz(k)
+    y = eyz(k)
     return 0.5 * ( (x + y) - sqrt( (x - y)^2 + 4 * V(k)^2 ) ) * tα
 end
 
-function ham_β(k, ϵ = 0.0)
-    x = exz(k, ϵ)
-    y = eyz(k, ϵ)
+function ham_β(k)
+    x = exz(k)
+    y = eyz(k)
     return 0.5 * ( (x + y) + sqrt( (x - y)^2 + 4 * V(k)^2 ) ) * tβ
 end
 
