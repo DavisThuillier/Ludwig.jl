@@ -52,7 +52,7 @@ function ham_β(k)
 end
 
 # Computes the xx or yy deformation potential for the α band. μ is a band index where 1 is α and 2 is β
-function dii_μ(k, i::Int, μ::Int, δ)
+function dii_μ(k, i::Int, μ::Int, δ = 0.0)
     if μ == 1 || μ == 2
         (μ == 1) ? (δ /= tα) : (δ /= tβ)
         x = exz(k)

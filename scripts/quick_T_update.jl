@@ -1,7 +1,7 @@
 using HDF5
 
 function main()
-    data_dir = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "model_2")
+    data_dir = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "gamma_only")
 
     files = filter(x -> endswith(x, "h5"), readdir(data_dir))
     for f in files

@@ -6,7 +6,7 @@ using StaticArrays
 function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
     T = kb * T # Convert K to eV
 
-    mesh = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
+    mesh = Ludwig.multiband_mesh(bands, k -> [1.0], T, n_ε, n_θ)
     ℓ = length(mesh.patches)
 
     # Initialize file - will error if
@@ -25,13 +25,7 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
 
     L = zeros(Float64, ℓ, ℓ) # Scattering operator
 
-    V_squared = Matrix{Float64}(undef, 3, 3)
-    Vs = [133.12, 42.209, 8.1114]
-    for i in 1:3
-        for j in 1:3
-            V_squared[i,j] = sqrt(Vs[i] * Vs[j]) # Geometric mean
-        end
-    end
+    V_squared = reshape([8.1114], 1, 1)
 
     Ludwig.electron_impurity!(L, mesh.patches, V_squared)
 
@@ -51,13 +45,15 @@ function argument_handling()
     return T, n_ε, n_θ, band_file, out_dir
 end
 
-dir = joinpath("..", "data", "Sr2RuO4", "model_2")
+dir = joinpath("..", "data", "Sr2RuO4", "gamma_only")
 band_file = joinpath("materials", "Sr2RuO4.jl")
 include(joinpath(@__DIR__, band_file))
-n_ε = 6
-T = 12.0
-for n_θ in 38:2:52
+n_ε = 12
+n_θ = 38
+
+bands = [bands[3]]
+for T in 2.0:0.5:14.0
     @show T
-    outfile = joinpath(@__DIR__, dir, "$(material)_imp_$(T)_$(n_ε)x$(n_θ).h5")
+    outfile = joinpath(@__DIR__, dir, "$(material)_γ_imp_$(T)_$(n_ε)x$(n_θ).h5")
     main(T, n_ε, n_θ, outfile)
 end 

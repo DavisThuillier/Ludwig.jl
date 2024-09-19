@@ -105,9 +105,8 @@ function delta(k1, k2, N)
     end
 end
 
-
 function main()
-    T = 12 * kb
+    T = 37 * kb
     n_ε = 12
     n_θ = 60
     mesh = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
@@ -146,11 +145,11 @@ include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
 plot_dir = joinpath(@__DIR__, "..", "plots", "Sr2RuO4")
 
 # form_factors()
-# main()
+main()
 # deformation_potentials()
 
-k1 = [0.4, 0.2]
-k2 = [-0.4, -0.2]
+# k1 = [0.4, 0.2]
+# k2 = [-0.4, -0.2]
 
-delta(k1, k2, 100)
+# delta(k1, k2, 100)
 

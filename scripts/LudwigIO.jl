@@ -70,8 +70,6 @@ function write_property_to_file(prop, material, data_dir, n_ε, n_θ, Uee, Vimp,
 
     s = Meta.parse("get_"*prop)
     if isdefined(Main, s)
-        fn = getfield(Main, s) 
-
         open(file, "w") do f
             println(f, "---")
             println(f, "quantity: $(prop)")
@@ -95,7 +93,7 @@ end
 function read_property_from_file(file)
     yaml = Dict{String, Any}()
     t = Float64[]
-    q = Float64[]
+    q = []
 
     open(file, "r") do f
         inyaml = false
@@ -112,7 +110,8 @@ function read_property_from_file(file)
                     end
                 else 
                     startswith(line, "#") && continue
-                    T, val = map(x -> parse(Float64, x), split(line, ','))
+                    T, val = map(x -> parse(ComplexF64, x), split(line, ','))
+                    imag(val) == 0.0 && (val = real(val))
                     push!(t, T)
                     push!(q, val)
                 end
