@@ -260,10 +260,9 @@ function generate_mesh(bands, orbital_weights::Function, band_index::Int, n_band
     )
 
     corners = hcat(corners,
-    map(x -> R * x, corners),
-    map(x -> R^2 * x, corners),
-    map(x -> R^3 * x, corners)
+    map(x -> My * x, corners),
     )
+    corners = hcat(corners, map(x -> Mx * x, corners))
 
     return Mesh(vec(patches), vec(corners), n_bands, α)
 end
