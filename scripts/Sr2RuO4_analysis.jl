@@ -33,22 +33,22 @@ model_3(t, p) = p[1] .+ 1 ./ (p[2] .+ p[3] * t.^p[4])
 ### Property Wrapper Functions ###
 ##################################
 
-function get_σ(L, k, v, E, dV, T)
+function get_σ(L, k, v, E, dV, T; kwargs)
     σ = Ludwig.conductivity(L, v, E, dV, T)
     return σ / c
 end
 
-function get_σxx(L, k, v, E, dV, T)
+function get_σxx(L, k, v, E, dV, T; kwargs)
     σxx = Ludwig.longitudinal_conductivity(L, first.(v), E, dV, T)
     return σxx / c
 end
 
-function get_ρ(L, k, v, E, dV, T)
+function get_ρ(L, k, v, E, dV, T; kwargs)
     σxx = Ludwig.longitudinal_conductivity(L, first.(v), E, dV, T)
     return c / σxx
 end
 
-function get_ηB1g(L, k, v, E, dV, T)
+function get_ηB1g(L, k, v, E, dV, T; kwargs)
     ℓ = length(k)
     Dxx = zeros(Float64, ℓ)
     Dyy = zeros(Float64, ℓ)
@@ -61,7 +61,7 @@ function get_ηB1g(L, k, v, E, dV, T)
     return Ludwig.ηB1g(L, E, dV, Dxx, Dyy, T) / (a^2 * c)
 end
 
-function get_ηB2g(L, k, v, E, dV, T)
+function get_ηB2g(L, k, v, E, dV, T; kwargs)
     ℓ = length(k)
     Dxy = zeros(Float64, ℓ)
     for i in eachindex(k)
@@ -72,11 +72,11 @@ function get_ηB2g(L, k, v, E, dV, T)
     return Ludwig.ηB2g(L, E, dV, Dxy, T) / (a^2 * c)
 end
 
-function get_τeff_σ(L, k, v, E, dV, T)
+function get_τeff_σ(L, k, v, E, dV, T; kwargs)
     return Ludwig.σ_lifetime(L, v, E, dV, T)
 end
 
-function get_τeff_η(L, k, v, E, dV, T)
+function get_τeff_η(L, k, v, E, dV, T; kwargs)
     ℓ = length(k)
     Dxx = zeros(Float64, ℓ)
     Dyy = zeros(Float64, ℓ)
@@ -89,17 +89,21 @@ function get_τeff_η(L, k, v, E, dV, T)
     return Ludwig.η_lifetime(L, Dxx, Dyy, E, dV, T)
 end
 
-function get_γ_ηB1g(L, k, v, E, dV, T)
+function get_γ_ηB1g(L, k, v, E, dV, T; kwargs)
     Dxx = dii_μ.(k, 1, 3)
     Dyy = dii_μ.(k, 2, 3)
 
     return Ludwig.ηB1g(L, E, dV, Dxx, Dyy, T) / (a^2 * c)
 end
 
-function get_γ_ηB2g(L, k, v, E, dV, T)
+function get_γ_ηB2g(L, k, v, E, dV, T; kwargs)
     Dxy = dxy_μ.(k, 3)
 
     return Ludwig.ηB2g(L, E, dV, Dxy, T) / (a^2 * c)
+end
+
+function get_Rh(L, k, v, E, dV, T; kwargs)
+    Ludwig.hall_coefficient(L, k, v, E, dV, T; kwargs)
 end
 
 ###############################
@@ -686,7 +690,7 @@ function fit_ρ(n_ε, n_θ, temps, model_1, Uee, Vimp)
         @show p
         ρ = Vector{Float64}(undef, length(t))
         for i in eachindex(t)
-            ρ[i] = LudwigIO.get_property("ρ", data_dir, material, t[i], n_ε, n_θ, p[1], p[2]) * 1e8
+            ρ[i] = LudwigIO.get_property("ρ", data_dir, material, t[i], n_ε, n_θ, p[1], p[2]; imp_stem = impurity_stem) * 1e8
             @show ρ[i]
         end
 
@@ -731,6 +735,40 @@ function plot_ρ(n_ε, n_θ)
     display(f)
 
     outfile = joinpath(plot_dir, "ρ_with_fit.png")
+    # save(outfile, f)
+end
+
+function plot_ρ_strain(n_ε, n_θ)
+
+    
+
+    strains = 0.0:-0.01:-0.03
+    scaling = Vector{Float64}(undef, length(strains))
+    for (i,ϵ) in enumerate(strains)
+        if ϵ == 0.0
+            file = "ρ_$(n_ε)x$(n_θ).dat"
+        else
+            file = "ρ_ϵ_$(ϵ)_$(n_ε)x$(n_θ).dat"
+        end 
+        t, ρ, _ = LudwigIO.read_property_from_file(joinpath(data_dir, file))  
+        ρ *= 1e8
+
+        model = model_1
+        fit = curve_fit(model, t, ρ, [0.0, 0.0001, 2.0], lower = [0.0, 0.0, 0.0])
+        scaling[i] = fit.param[3]
+
+        # scatter!(ax, t, ρ)
+        # lines!(ax, domain, model(domain, fit.param), label = latexstring("\$\\epsilon = $(ϵ)\$"))
+    end
+
+    f = Figure(fontsize = 20)
+    ax = Axis(f[1,1],
+              xlabel = L"\epsilon_{xx}",
+              ylabel = L"d\ln(\rho_{xx} - ρ_0) / d\ln T")
+    scatter!(ax, strains, scaling)
+    display(f)
+
+    outfile = joinpath(plot_dir, "ρ_strain.png")
     # save(outfile, f)
 end
 
@@ -930,7 +968,9 @@ function plot_lifetimes(n_ε, n_θ; addendum = "")
 
 end
 
-function scaled_impurity_model(n_ε, n_θ)
+function scaled_impurity_model(n_ε, n_θ; addendum = "")
+    addendum != "" && (addendum = addendum*"_")
+
     t, ρ, _ = LudwigIO.read_property_from_file(joinpath(data_dir, "ρ_impurity_only_$(n_ε)x$(n_θ).dat"))
     ρ *= 1e8
 
@@ -959,7 +999,7 @@ function scaled_impurity_model(n_ε, n_θ)
     scatter!(ax, t.^2, ρ .* λ / lfit.param[1], color = :grey)
 
     # Result from Ludwig.jl
-    t, ρ, _  = LudwigIO.read_property_from_file(joinpath(data_dir, "ρ_$(n_ε)x$(n_θ).dat"))
+    t, ρ, _  = LudwigIO.read_property_from_file(joinpath(data_dir, "ρ_"*addendum*"$(n_ε)x$(n_θ).dat"))
     ρ *= 1e8
     
     fit = curve_fit(model_1, t, ρ, [1.0, 0.1, 2.0])  
@@ -971,7 +1011,7 @@ function scaled_impurity_model(n_ε, n_θ)
     axislegend(ax, position = :lt)
     display(f)
 
-    outfile = joinpath(plot_dir, "rta_ρ.png")
+    outfile = joinpath(plot_dir, addendum*"rta_ρ.png")
     save(outfile, f)
 
     visc_file = joinpath(exp_dir,"B1gViscvT_new.dat")
@@ -985,7 +1025,7 @@ function scaled_impurity_model(n_ε, n_θ)
     @show fit.param
 
     η_model(t, p) = p[1] .+ p[2] * t.^rfit.param[4]
-    t1, η1, _  = LudwigIO.read_property_from_file(joinpath(data_dir, "ηB1g_$(n_ε)x$(n_θ).dat"))  
+    t1, η1, _  = LudwigIO.read_property_from_file(joinpath(data_dir, "ηB1g_"*addendum*"$(n_ε)x$(n_θ).dat"))  
     fit1 = curve_fit(model_1, t1, 1 ./ η1, [1.0, 0.1, 2.0])
 
     f = Figure(size = (700, 600), fontsize = 24)
@@ -1011,7 +1051,7 @@ function scaled_impurity_model(n_ε, n_θ)
     axislegend(ax, position = :lt)
 
     display(f)
-    outfile = joinpath(plot_dir, "rta_η.png")
+    outfile = joinpath(plot_dir, addendum*"rta_η.png")
     save(outfile, f)
 end
 
@@ -1134,7 +1174,7 @@ function main()
 
     fit_file = joinpath(data_dir, "Uee_Vimp_fit.info")
     if isfile(fit_file)
-        open(joinpath(data_dir, "Uee_Vimp_fit.info"), "r") do f
+        open(fit_file,"r") do f
             for line in eachline(f)
                 key, value = split(line, ':')
                 key == "Uee" && (Uee = parse(Float64, value))
@@ -1144,28 +1184,37 @@ function main()
     end
     Uee == 0.0 && Vimp == 0.0 && return nothing
 
-    temps = 2.0:0.5:14.0
+    temps = 2.0:1.0:14.0
 
-    plot_optical_conductivity(n_ε, n_θ, 8.0)
+    # LudwigIO.get_property("Rh", data_dir, material, 12.0, n_ε, n_θ, Uee, Vimp; n_ε = n_ε, n_θ = n_θ, n_bands = 3)
+
+    # plot_optical_conductivity(n_ε, n_θ, 8.0)
     # optical_conductivity(n_ε, n_θ, Uee, 4.7 * Vimp, 8.0)
     # for T in temps
     # end
 
     # fit_ρ(n_ε, n_θ, temps, model_1, Uee, Vimp)
     # plot_η(n_ε, n_θ)
-    # plot_ρ(n_ε, n_θ)
+    plot_ρ_strain(n_ε, n_θ)
     # plot_lifetimes(n_ε, n_θ; addendum = "ee_only")
     # plot_lifetime_matthiesen(n_ε, n_θ, "η")
-    # plot_matthiesen_violation(n_ε, n_θ, "σ")
     # scaled_impurity_model(n_ε, n_θ)
-    # deformation_overlap(n_ε, n_θ, Uee, Vimp, 12.0)
+    # scaled_impurity_model(n_ε, n_θ; addendum = "simple_impurity")
 
-    # LudwigIO.write_property_to_file("γ_ηB1g", material, data_dir, n_ε, n_θ, 0.0, Vimp, temps; addendum = "impurity_only")
+    # ϵ = -0.02
+    # LudwigIO.write_property_to_file("ρ", material*"_uniaxial_strain_ϵ_$(ϵ)", data_dir, n_ε, n_θ, Uee, Vimp, temps; addendum = "ϵ_$(ϵ)", imp_stem = impurity_stem)
+
+    # ϵ = -0.03
+    # LudwigIO.write_property_to_file("ρ", material*"_uniaxial_strain_ϵ_$(ϵ)", data_dir, n_ε, n_θ, Uee, Vimp, temps; addendum = "ϵ_$(ϵ)", imp_stem = impurity_stem)
+
+    # LudwigIO.write_property_to_file("ηB1g", material, data_dir, n_ε, n_θ, Uee, Vimp, temps; addendum = "simple_impurity", imp_stem = impurity_stem)
+    # LudwigIO.write_property_to_file("ηB2g", material, data_dir, n_ε, n_θ, Uee, Vimp, temps; addendum = "simple_impurity", imp_stem = impurity_stem)
 end 
 
 include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
 data_dir = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "model_2")
 plot_dir = joinpath(@__DIR__, "..", "plots", "Sr2RuO4")
 exp_dir  = joinpath(@__DIR__, "..", "data", "Sr2RuO4", "experiment")
+impurity_stem = ""
 
 main()
