@@ -12,9 +12,9 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
     # Initialize file - will error if
     h5open(outfile, "cw") do fid
         g = create_group(fid, "data")
-        write_attribute(g, "n_ε", n_ε)
-        write_attribute(g, "n_θ", n_θ)
-        write_attribute(g, "T", T)
+        g["n_ε"] = n_ε
+        g["n_θ"] = n_θ
+        g["T"] = T
         g["corners"] = copy(transpose(reduce(hcat, mesh.corners)))
         g["momenta"] = copy(transpose(reduce(hcat, map(x -> x.momentum, mesh.patches))))
         g["velocities"] = copy(transpose(reduce(hcat, map(x -> x.v, mesh.patches))))
@@ -32,6 +32,8 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
             V_squared[i,j] = sqrt(Vs[i] * Vs[j]) # Geometric mean
         end
     end
+
+    # V_squared = ones(Float64, 3, 3)
 
     Ludwig.electron_impurity!(L, mesh.patches, V_squared)
 
@@ -52,12 +54,14 @@ function argument_handling()
 end
 
 dir = joinpath("..", "data", "Sr2RuO4", "model_2")
-band_file = joinpath("materials", "Sr2RuO4.jl")
+band_file = joinpath("materials", "Sr2RuO4_uniaxial_strain.jl")
 include(joinpath(@__DIR__, band_file))
-n_ε = 6
-T = 12.0
-for n_θ in 38:2:52
+n_ε = 12
+n_θ = 38
+const ϵ = -0.03
+
+for T ∈ 2.0:1.0:14.0
     @show T
-    outfile = joinpath(@__DIR__, dir, "$(material)_imp_$(T)_$(n_ε)x$(n_θ).h5")
+    outfile = joinpath(@__DIR__, dir, "$(material)_ϵ_$(ϵ)_imp_$(T)_$(n_ε)x$(n_θ).h5")
     main(T, n_ε, n_θ, outfile)
 end 
