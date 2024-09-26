@@ -35,8 +35,6 @@ end
 
 """
     longitudinal_conductivity(L, vx, E, dV, T)
-
-Compute the ``\\sigma_xx`` component of the conductivity tensor.
 """
 function longitudinal_conductivity(L, vx, E, dV, T)
     fd = f0.(E, T) # Fermi dirac on grid points
@@ -121,4 +119,18 @@ function η_lifetime(L, Dxx, Dyy, E, dV, T)
     τ_eff = real( η / norm)
 
     return τ_eff * hbar
+end
+
+delta(i,j) = i == j ? 1.0 : 0.0
+delta(v::Vector, i::Int, j::Int) = v[i] == v[j] ? 1.0 : 0.0
+
+function _momentum_derivative(n_ε, n_θ, n_bands, k, v, E)
+    D = Matrix{Float64}(undef, length(k), length(k))
+    for _j in eachindex(k)
+        εi, θi 
+    end
+end
+
+function hall_coefficient(L, k, v, E, dV, T; kwargs)
+    _momentum_derivative(kwargs[:n_ε], kwargs[:n_θ], kwargs[:n_bands], k, v, E)
 end

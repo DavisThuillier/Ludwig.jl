@@ -15,6 +15,7 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
         g["n_ε"] = n_ε
         g["n_θ"] = n_θ
         g["T"] = T
+        g["ϵ"] = ϵ
         g["corners"] = copy(transpose(reduce(hcat, mesh.corners)))
         g["momenta"] = copy(transpose(reduce(hcat, map(x -> x.momentum, mesh.patches))))
         g["velocities"] = copy(transpose(reduce(hcat, map(x -> x.v, mesh.patches))))
@@ -58,12 +59,14 @@ function argument_handling()
     T   = parse(Float64, ARGS[1])
     n_ε = parse(Int, ARGS[2])
     n_θ = parse(Int, ARGS[3])
-    band_file = ARGS[4]
-    out_dir = ARGS[5]
-    return T, n_ε, n_θ, band_file, out_dir
+    strain = parse(Float64, ARGS[4])
+    band_file = ARGS[5]
+    out_dir = ARGS[6]
+    return T, n_ε, n_θ, strain, band_file, out_dir
 end
 
-T, n_ε, n_θ, band_file, dir = argument_handling()
+T, n_ε, n_θ, strain, band_file, dir = argument_handling()
+const ϵ::Float64 = strain
 include(joinpath(@__DIR__, band_file))
-outfile = joinpath(@__DIR__, dir, "$(material)_$(T)_$(n_ε)x$(n_θ).h5")
+outfile = joinpath(@__DIR__, dir, "$(material)_uniaxial_strain_ϵ_$(ϵ)_$(T)_$(n_ε)x$(n_θ).h5")
 main(T, n_ε, n_θ, outfile)
