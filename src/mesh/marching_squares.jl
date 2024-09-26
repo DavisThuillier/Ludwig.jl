@@ -1,3 +1,5 @@
+export Isoline, IsolineBundle
+
 """
 Representation of a contour as an ordered set of discrete points
 

@@ -2,7 +2,7 @@
 
 julia_version = "1.8.5"
 manifest_format = "2.0"
-project_hash = "3600bc6d854c6b09aa7d933cf9c51ac84617d45b"
+project_hash = "cc76fe71f0133985f3b21eef091b228209bb2d60"
 
 [[deps.Adapt]]
 deps = ["LinearAlgebra", "Requires"]
@@ -248,12 +248,6 @@ version = "1.4.3"
 [[deps.Printf]]
 deps = ["Unicode"]
 uuid = "de0858da-6303-5e67-8744-51eddeeeb8d7"
-
-[[deps.ProgressBars]]
-deps = ["Printf"]
-git-tree-sha1 = "b437cdb0385ed38312d91d9c00c20f3798b30256"
-uuid = "49802e3a-d2f1-5c88-81d8-b72133a6f568"
-version = "1.5.1"
 
 [[deps.REPL]]
 deps = ["InteractiveUtils", "Markdown", "Sockets", "Unicode"]
