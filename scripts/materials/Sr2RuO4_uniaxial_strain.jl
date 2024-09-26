@@ -1,7 +1,7 @@
-const material::String = "Sr2RuO4"
+const material::String = "Sr2RuO4_uniaxial_strain"
 const c::Float64  = 12.68e-10 # Interlayer distance in m
 const a::Float64  = 3.90e-10  # Lattice constant in m
-const νxy::Float64 = 0.39 # Poisson's ratio for Sr2RuO4
+const νxy::Float64 = 0.508 # Poisson's ratio for Sr2RuO4
 
 #########
 ### γ ###
@@ -11,7 +11,7 @@ const tpγ::Float64    = 0.0303212    # eV
 const μγ::Float64     = 0.114478     # eV
 
 function ham_γ(k)
-    return - 2.0 * tγ * ((1 - ϵ) * cos(2pi*k[1]) + (1 + νxy * ϵ / 2.0) * cos(2pi*k[2])) - 4 * tpγ * (1 - (1 - νxy) * ϵ / 2.0) * cos(2pi*k[1]) * cos(2pi*k[2]) - μγ
+    return - 2.0 * tγ * ((1 - ϵ) * cos(2pi*k[1]) + (1 + νxy * ϵ) * cos(2pi*k[2])) - 4 * tpγ * (1 - (1 - νxy) * ϵ / 2.0) * cos(2pi*k[1]) * cos(2pi*k[2]) - μγ
 end
 
 ###############
