@@ -1,79 +1,136 @@
 """
+    inner_product(a, b, L, w)
+
+Compute the weighted inner product ``\\langle a | L^(-1) | b\\rangle`` with the weight vector `w`.
+"""
+function inner_product(a, b, L, w)
+    ϕ = bicgstabl(L, b)
+    prod = 0.0
+    for i in eachindex(a)
+        prod += a[i] * w[i] * ϕ[i]
+    end
+    return prod
+end
+
+"""
     conductivity(L, v, E, dV, T)
+
+Compute the conductivity tensor using ``\\sigma_{ij} = 2 e^2 \\langle v_i | L^{-1} | v_j \\rangle``.
+
+For correct conversion to SI units, `E` and `T` must be expressed in units of eV, dV must be in units of ``(2pi / a)^2,`` where ``a`` is the lattice constant, and `v` must be in units of ``(a / h) eV``.
 """
 function conductivity(L, v, E, dV, T)
     fd = f0.(E, T) # Fermi dirac on grid points
-    w = fd .* (1 .- fd) # Energy derivative of FD on grid points
+    weight = fd .* (1 .- fd) .* dV
 
     σ = Matrix{ComplexF64}(undef, 2, 2)
 
-    ϕx = bicgstabl(L, first.(v))
-    ϕy = bicgstabl(L, last.(v))
+    σ[1,1] = inner_product(first.(v), first.(v), L, weight)
+    σ[1,2] = inner_product(first.(v), last.(v), L, weight)
+    σ[2,1] = inner_product(last.(v), first.(v), L, weight)
+    σ[2,2] = inner_product(last.(v), last.(v), L, weight)
 
-    σ[1,1] = dot(first.(v) .* w .* dV, ϕx)
-    σ[1,2] = dot(first.(v) .* w .* dV, ϕy)
-    σ[2,1] = dot(last.(v) .* w .* dV, ϕx)
-    σ[2,2] = dot(last.(v) .* w .* dV, ϕy)
+    return (G0 / (2π)) * (σ / T)
+end
 
-    return (G0 / (2π)) * (σ / T) 
+"""
+    longitudinal_conductivity(L, vx, E, dV, T)
+"""
+function longitudinal_conductivity(L, vx, E, dV, T)
+    fd = f0.(E, T) # Fermi dirac on grid points
+
+    σxx = inner_product(vx, vx, L, fd .* (1 .- fd) .* dV)
+
+    return (G0 / (2π)) * (σxx / T)
 end
 
 """
     ηB1g(L, E, dVs, Dxx, Dyy, T)
+
+Compute the B1g viscosity from the deformation potentials `Dxx` and `Dyy`.
+
+For correct conversion to SI units, `E`, `Dxx`, `Dyy`, and `T` must be expressed in units of eV and dV must be in units of ``(2pi / a)^2,`` where ``a`` is the lattice constant.
 """
 function ηB1g(L, E, dV, Dxx, Dyy, T)
     fd = f0.(E, T) # Fermi dirac on grid points
-    w = fd .* (1 .- fd) # Energy derivative of FD on grid points
 
-    Winv = diagm(1 ./ (w .* dV)) 
-    G = L * Winv # G is a symmetric matrix
-    geigvecs = eigvecs(G)
-    τ = 1 ./ eigvals(G) # Lifetimes of modes
-    τ[1] = 0.0 # Enforce that overlap with the particle-conserving mode is null
+    prefactor = 2 * hbar * e_charge / T # hbar * e_charge converts hbar to units of J.s
 
-    ϕxx = Vector{ComplexF64}(undef, length(τ))
-    ϕyy = Vector{ComplexF64}(undef, length(τ))
-    for i in eachindex(τ)
-        ϕxx[i] = dot(Dxx, geigvecs[:, i])
-        ϕyy[i] = dot(Dyy, geigvecs[:, i])
-    end
+    η = prefactor * 0.25 * inner_product(Dxx .- Dyy, Dxx .- Dyy, L, fd .* (1 .- fd) .* dV)
 
-    ηxxxx = dot(ϕxx, ϕxx .* τ)
-    ηxxyy = dot(ϕxx, ϕyy .* τ)
-    η = (ηxxxx - ηxxyy)/2
-
-    prefactor = 2 * hbar * e_charge / T
-
-    return real(η) * prefactor
+    return η
 end
 
 """
-    σ_lifetime(Γ, v, E, dV, T)
+    ηB2g(L, E, dVs, Dxy, T)
+
+Compute the B2g viscosity from the deformation potentials `Dxx` and `Dyy`.
+
+For correct conversion to SI units, `E`, `Dxy`, and `T` must be expressed in units of eV and dV must be in units of ``(2pi / a)^2,`` where ``a`` is the lattice constant.
 """
-function σ_lifetime(Γ, v, E, dV, T)
+function ηB2g(L, E, dV, Dxy, T)
     fd = f0.(E, T) # Fermi dirac on grid points
-    w = fd .* (1 .- fd) # Energy derivative of FD on grid points
+
+    prefactor = 2 * hbar * e_charge / T # hbar * e_charge converts hbar to units of J.s
+
+    η = prefactor * inner_product(Dxy, Dxy, L, fd .* (1 .- fd) .* dV)
+
+    return η
+end
+
+"""
+    σ_lifetime(L, v, E, dV, T)
+
+Compute the effective scattering lifetime corresponding the conductivity.
+"""
+function σ_lifetime(L, v, E, dV, T)
+    fd = f0.(E, T) # Fermi dirac on grid points
+    w = fd .* (1 .- fd)
     vx = first.(v)
 
     norm = 0.0
     for i in eachindex(vx)
         norm += w[i] * dV[i] * vx[i]^2
     end
-    ϕx = bicgstabl(Γ, vx)
-    σ = dot(vx .* w .* dVs, ϕx)
+    σ = inner_product(vx, vx, L, w .* dV)
 
     τ_eff = real( σ / norm)
-    
-    return τ_eff
+
+    return τ_eff * hbar
 end
 
-function spectrum(Γ, E, dVs, T)
+"""
+    η_lifetime(L, Dxx, Dyy, E, dV, T)
+
+Compute the effective scattering lifetime corresponding the conductivity.
+"""
+function η_lifetime(L, Dxx, Dyy, E, dV, T)
     fd = f0.(E, T) # Fermi dirac on grid points
-    w = fd .* (1 .- fd) # Energy derivative of FD on grid points
+    w = fd .* (1 .- fd)
 
-    M = diagm(sqrt.(w .* dVs)) * Γ * (diagm(1 ./ sqrt.(w .* dVs)))
+    D = Dxx .- Dyy
 
-    eigenvalues  = eigvals(M)
+    norm = 0.0
+    for i in eachindex(D)
+        norm += w[i] * dV[i] * D[i]^2
+    end
+    η = inner_product(D, D, L, w .* dV)
 
-    return eigenvalues
+    τ_eff = real( η / norm)
+
+    return τ_eff * hbar
+end
+
+delta(i,j) = i == j ? 1.0 : 0.0
+delta(v::Vector, i::Int, j::Int) = v[i] == v[j] ? 1.0 : 0.0
+
+function _momentum_derivative(n_ε, n_θ, n_bands, k, v, E)
+    D = Matrix{Float64}(undef, length(k), length(k))
+    for _j in eachindex(k)
+        εi, θi 
+    end
+end
+
+function hall_coefficient(L, k, v, E, dV, T; kwargs)
+    _momentum_derivative(kwargs[:n_ε], kwargs[:n_θ], kwargs[:n_bands], k, v, E)
 end

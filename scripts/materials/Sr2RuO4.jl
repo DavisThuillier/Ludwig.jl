@@ -24,10 +24,6 @@ function dyy_γ(k)
     return 2 * alph * tγ * cos(2pi*k[2]) + 2 * alph_p * tpγ * cos(2pi*k[1]) * cos(2pi*k[2]) 
 end
 
-function dxy_γ(k)
-    return - 2 * alph_p * tpγ * sin(2pi*k[1]) * sin(2pi*k[2])
-end
-
 ###############
 ### α and β ###
 ###############
@@ -56,16 +52,35 @@ function ham_β(k)
 end
 
 # Computes the xx or yy deformation potential for the α band. μ is a band index where 1 is α and 2 is β
-function dii_μ(k, i::Int, μ::Int)
+function dii_μ(k, i::Int, μ::Int, δ = 0.0)
+    if μ == 1 || μ == 2
+        (μ == 1) ? (δ /= tα) : (δ /= tβ)
+        x = exz(k)
+        y = eyz(k)
+        Δ = sqrt( 0.25 * (x - y)^2 + V(k)^2 ) # Twice the band gap between α and β
+
+        # d = alph * (1 + t3) * cos(2pi*k[i]) + (-1)^(μ+i) * (alph * (1 - t3)^2 * cos(2pi*k[i]) * (cos(2pi*k[1]) - cos(2pi*k[2])) ) / Δ
+        d = alph * (1 + t3) * cos(2pi*k[i]) + (-1)^(μ+1) * ((-1)^(i + 1) * (1 - t3) * ( alph * (1 - t3) * cos(2pi*k[i]) - δ) * (cos(2pi*k[1]) - cos(2pi*k[2])) + 8 * t5^2 * alph_p * (sin(2pi*k[1]) * sin(2pi*k[2]))^2) / Δ
+
+        (μ == 1) ? (return d*tα) : return (d*tβ) 
+    elseif μ == 3 # γ band
+        return 2 * alph * tγ * cos(2pi*k[i]) + 2 * alph_p * tpγ * cos(2pi*k[1]) * cos(2pi*k[2])
+    else
+        return 0 # Invalid band index
+    end
+end
+
+function dxy_μ(k, μ::Int)
     if μ == 1 || μ == 2
         x = exz(k)
         y = eyz(k)
         Δ = sqrt( 0.25 * (x - y)^2 + V(k)^2 ) # Twice the band gap between α and β
 
-        d = alph * (1 + t3) * cos(2pi*k[i]) + (-1)^(μ+i) * (alph * (1 - t3)^2 * cos(2pi*k[i]) * (cos(2pi*k[1]) - cos(2pi*k[2])) ) / Δ
+        d = (-1)^(μ) * t5^2 * alph_p * cos(2pi*k[1]) * cos(2pi*k[2]) * sin(2pi*k[1]) * sin(2pi*k[2]) / Δ
+
         (μ == 1) ? (return d*tα) : return (d*tβ) 
     elseif μ == 3 # γ band
-        return 2 * alph * tγ * cos(2pi*k[i]) + 2 * alph_p * tpγ * cos(2pi*k[1]) * cos(2pi*k[2])
+        return - 4 * alph_p * tpγ * sin(2pi*k[1]) * sin(2pi*k[2])
     else
         return 0 # Invalid band index
     end
@@ -85,15 +100,17 @@ end
 function orbital_weights(k)
     W = zeros(Float64, 3, 3)
 
-    W[3,3] = 2 * V(k)
-    W[3,2] = sign(W[3,3])
-    W[1,3] = exz(k) - eyz(k) # Store in cell of W which will be set to 0 later
-    W[2,3] = sqrt(W[3,3]^2 + W[1,3]^2) 
-    W[3,1] = sqrt(W[3,3]^2 + (W[1,3] - W[2,3])^2) # Norm of first eigenvector
+    Δ1 = exz(k) - eyz(k)
+    Δ2 = 2 * V(k)
+    ζ = sqrt(Δ1^2 + Δ2^2)
 
-    W[1,1] = W[3,2] * (W[1,3] - W[2,3]) / W[3,1]; W[2,1] = abs(W[3,3]) / W[3,1]; W[3,1] = 0.0
-    W[1,2] = W[2,1]; W[2,2] = - W[1,1]; W[3,2] = 0.0
-    W[1,3] = 0.0; W[2,3] = 0.0; W[3,3] = 1.0
+    nα = sqrt(Δ2^2 + (Δ1 - ζ)^2) # Norm of the eigenvector corresponding to α band
+
+    W[1,1] = sign(Δ2) * (Δ1 - ζ) / nα 
+    W[2,1] = abs(Δ2) / nα 
+    W[1,2] = W[2,1]
+    W[2,2] = - W[1,1]
+    W[3,3] = 1.0
 
     return W
 end
@@ -124,15 +141,14 @@ function vertex_pk(p::Patch, k, μ::Int)
         if μ < 3
             Δ1 = (exz(k) - eyz(k)) 
             Δ2 = 2 * V(k)
-            Δ3 = sqrt(Δ2^2 + Δ1^2) 
-            if μ == 1 
-                w1 = Δ1 - Δ3
-            else
-                w1 = Δ1 + Δ3
-            end
+            ζ = sqrt(Δ1^2 + Δ2^2) 
 
-            return sign(Δ2) * (p.w[1] * w1 + p.w[2] * Δ2) / sqrt(Δ2^2 + w1^2)
-            
+            w1 = Δ1 - ζ # First element of the α band weight
+            if μ == 1 # α band
+                return sign(Δ2) * (p.w[1] * w1 + p.w[2] * Δ2) / sqrt(Δ2^2 + w1^2)
+            else # β band
+                return sign(Δ2) * (p.w[1] * Δ2 - p.w[2] * w1) / sqrt(Δ2^2 + w1^2)
+            end
         else
             return 0.0
         end

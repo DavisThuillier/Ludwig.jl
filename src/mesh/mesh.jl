@@ -13,26 +13,22 @@ Representation of a patch in momentum space to be integrated over when calculati
 - `w`: The weights of the original orbital basis corresponding to the `band_index`th eigenvalue
 - `corners`: Indices of coordinates in parent `Mesh` struct of corners for plotting
 """
-struct Patch{D}
-    momentum::SVector{2,Float64} # Momentum in 1st BZ
-    energy::Float64 # Energy associated to band index and momentum
-    bounds::SVector{2,Float64}
+struct Patch{D, T}
+    momentum::SVector{2, T} # Momentum in 1st BZ
+    energy::T # Energy associated to band index and momentum
     band_index::Int 
-    v::SVector{2,Float64} # Group velocity
-    dV::Float64 # Patch area
-    de::Float64
-    jinv::Matrix{Float64} # Jacobian of transformation from (kx, ky) --> (E, θ)
-    djinv::Float64 # Absolute value of inverse jacobian determinant
-    w::SVector{D, Float64} # Weight vector of overlap with orbitals
+    v::SVector{2,T} # Group velocity
+    dV::T # Patch area
+    de::T 
+    jinv::Matrix{T} # Jacobian of transformation from (kx, ky) --> (E, θ)
+    djinv::T # Absolute value of inverse jacobian determinant
+    w::SVector{D, T} # Weight vector of overlap with orbitals
     corners::Vector{Int} # Coordinates of corners for plotting
 end
 
-"""
-    energy(p::Patch)
-
-Return the energy corresponding to the band for which `p` was generated.
-"""
-energy(p::Patch) = p.energy
+function get_energy_bounds(p::Patch)
+    return [p.energy - de/2.0, p.energy + de/2.0]
+end
 
 """
 Container struct for patches over which to integrate.
@@ -41,12 +37,18 @@ Container struct for patches over which to integrate.
 - `patches`: Vector of patches
 - `corners`: Vector of points on patch corners for plotting mesh
 - `n_bands`: Dimension of the generating Hamiltonian
+- `α`: Half the width of the Fermi tube
 """
 struct Mesh
     patches::Vector{Patch}
-    corners::Vector{SVector{2, Float64}} # Corners of patches for plotting
+    corners::Vector{SVector{2, Float64}} 
     n_bands::Int
-    α # Width of Fermi tube is 2α
+    α
+end
+
+function Base.iterate(m::Mesh, state=0)
+    state > nfields(m) && return
+    return Base.getfield(m, state+1), state+1
 end
 
 """
@@ -110,28 +112,17 @@ Generate a Mesh of (`n_angles` - 1) x (`n_levels` - 1) patches per quadrant per 
 `bands` is a vector of functions defining the eigenvalues of the single-electron Hamiltonian over the 1st Brillouin Zone. The function `W` is an array-valued function whose input is a momentum 2-vector, and whose output columns are the the eigenvectors corresponding to `bands`. 
 The width of the Fermi tube at each surface is ``\\pm`` `α T`. 
 """
-function multiband_mesh(bands::Vector, W::Function, T::Real, n_levels::Int, n_angles::Int; N::Int = 2001, α::Real = 6.0)
+function multiband_mesh(bands::Vector, orbital_weights::Function, T::Real, n_levels::Int, n_angles::Int; N::Int = 2001, α::Real = 6.0)
     grid = Vector{Patch}(undef, 0)
     corners = Vector{SVector{2, Float64}}(undef, 0)
     n_bands = length(bands)
     
     for i in eachindex(bands)
-        mesh = generate_mesh(bands, W, i, n_bands, T, n_levels, n_angles, N, α)
-        grid = vcat(grid, map(x -> Patch(
-                                    x.momentum, 
-                                    x.energy,
-                                    x.bounds,
-                                    x.band_index,
-                                    x.v,
-                                    x.dV,
-                                    x.de,
-                                    x.jinv, 
-                                    x.djinv,
-                                    x.w,
-                                    x.corners .+ length(corners)
-                                ), mesh.patches)
-        )
-        corners = vcat(corners, mesh.corners)
+        generate_mesh(bands, orbital_weights, i, n_bands, T, n_levels, n_angles, N, α, length(corners)) |> 
+        x -> begin 
+            append!(grid, x.patches)
+            append!(corners, x.corners)
+        end
     end
 
     return Mesh(grid, corners, n_bands, α)
@@ -143,21 +134,31 @@ end
 
 Generate a single-band `Mesh` in a multiband system; the mesh will have (`n_angles` - 1) x (`n_levels` - 1) patches per quadrant centered at the Fermi surface using marching squares to find energy contours of `bands[band_index]` evaluated on a regular grid of ``\\mathbf{k} \\in [0.0, 0.5]\\times[0.0, 0.5]``. The width of the Fermi tube is ``\\pm`` `α T`. 
 
-The function `W` is an array-valued function whose input is a momentum 2-vector, and whose output columns are the the eigenvectors of the single-electron Hamiltonian whose eigenvalues are the functions in `bands`.
+The function `orbital_weights` is an array-valued function whose input is a momentum 2-vector, and whose output columns are the the eigenvectors of the single-electron Hamiltonian whose eigenvalues are the functions in `bands`.
 """
-function generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Real, n_levels::Int, n_angles::Int, N::Int, α::Real)
-    n_levels = max(3, n_levels) # Enforce minimum of 1 patches in the energy direction
+function generate_mesh(bands, orbital_weights::Function, band_index::Int, n_bands::Int, T::Real, n_levels::Int, n_angles::Int, N::Int, α::Real, band_corner_shift::Int = 0)
+    n_levels = max(3, n_levels) # Enforce minimum of 2 patches in the energy direction
     n_angles = max(3, n_angles) # Enforce minimum of 2 patches in angular direction
     Δθ = (pi/2) / (n_angles - 1) 
 
     x = LinRange(0.0, 0.5, N)
     E = map(x -> bands[band_index]([x[1], x[2]]), collect(Iterators.product(x, x)))
 
+    umklapp_edge_energy = bands[band_index]([0.0, 0.5])
+
     e_threshold = α*T # Half-width of Fermi tube
     e_min = max(-e_threshold, 0.999 * minimum(E))
     e_max = min(e_threshold, 0.999 * maximum(E))
     Δε = (e_max - e_min) / (n_levels - 1)
+
     energies = collect(LinRange(e_min, e_max, 2 * n_levels - 1))
+
+    if e_min < umklapp_edge_energy < e_max 
+        i = argmin(abs.(energies .- umklapp_edge_energy))
+        iseven(i) && (i = i + (-1)^argmin(abs.([energies[i - 1], energies[i + 1]] .- umklapp_edge_energy)) 
+        )
+        energies[i] = umklapp_edge_energy
+    end
 
     c = contours(x, x, E, energies) # Generate Fermi surface contours
     
@@ -226,12 +227,11 @@ function generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Rea
             J[2,2] = 2 * A[1,1] / det(A) / Δθ # ∂θ/∂ky |kx
 
             ## Get weights from transformation matrix ##
-            w::SVector{n_bands, Float64} = W(k[i,j])[:, band_index]
+            w::SVector{n_bands, Float64} = orbital_weights(k[i,j])[:, band_index]
 
             patches[i, j] = Patch(
                 k[i,j], 
                 bands[band_index](k[i,j]),
-                SVector{2}(energies[2i - 1], energies[2i + 1]),
                 band_index,
                 v[i,j],
                 get_patch_area(corners, i, j),
@@ -239,7 +239,7 @@ function generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Rea
                 inv(J),
                 1/abs(det(J)), 
                 w,
-                [(j-1)*(n_levels) + i, (j-1)*(n_levels) + i+1, j*(n_levels) + i+1, j*(n_levels) + i]
+                [(j-1)*(n_levels) + i, (j-1)*(n_levels) + i+1, j*(n_levels) + i+1, j*(n_levels) + i] .+ band_corner_shift
             )
         end
     end
@@ -250,20 +250,19 @@ function generate_mesh(bands, W::Function, band_index::Int, n_bands::Int, T::Rea
 
     patches = hcat(patches,
         reverse(
-            map(x -> patch_op(x, My, mirror_perm, n_angles, n_levels, length(corners)), patches), dims=2
+            map(x -> patch_op(x, My, mirror_perm, n_angles, n_levels, length(corners), band_corner_shift), patches), dims=2
         )
     )
     patches = hcat(patches,
         reverse(
-            map(x -> patch_op(x, Mx, mirror_perm, 2 * n_angles, n_levels, 2 * length(corners)), patches), dims=2
+            map(x -> patch_op(x, Mx, mirror_perm, 2 * n_angles, n_levels, 2 * length(corners), band_corner_shift), patches), dims=2
         )
     )
 
     corners = hcat(corners,
-    map(x -> R * x, corners),
-    map(x -> R^2 * x, corners),
-    map(x -> R^3 * x, corners)
+    map(x -> My * x, corners),
     )
+    corners = hcat(corners, map(x -> Mx * x, corners))
 
     return Mesh(vec(patches), vec(corners), n_bands, α)
 end
@@ -282,11 +281,10 @@ Perform the symmetry operation of `M` on patch `p` to generate another patch.
 
 `corner_perm` is a permutation function that takes `n_col`, `n_row` and `p.corners` as input to determine the ids of the patch corners in a corresponding array. This is for plotting purposes only. 
 """
-function patch_op(p::Patch, M::Matrix, corner_perm::Function, n_col::Int, n_row::Int, corner_shift::Int)
+function patch_op(p::Patch, M::Matrix, corner_perm::Function, n_col::Int, n_row::Int, corner_shift::Int, band_corner_shift::Int)
     return Patch(
         SVector{2}(M * p.momentum), 
         p.energy,
-        p.bounds,
         p.band_index,
         SVector{2}(M * p.v),
         p.dV,
@@ -294,7 +292,7 @@ function patch_op(p::Patch, M::Matrix, corner_perm::Function, n_col::Int, n_row:
         M * p.jinv, 
         p.djinv,
         p.w,
-        corner_perm.(p.corners, n_col, n_row) .+ corner_shift,
+        corner_perm.(p.corners .- band_corner_shift, n_col, n_row) .+ (corner_shift + band_corner_shift),
     )
 end
 
