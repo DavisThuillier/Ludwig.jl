@@ -12,7 +12,7 @@ set_theme!(fonts = (
     bold = joinpath(mt_fonts_dir, "NewCM10-Bold.otf")
 ))
 
-
+using Interpolations
 using LinearAlgebra
 using LsqFit
 using DelimitedFiles
@@ -739,10 +739,7 @@ function plot_ρ(n_ε, n_θ)
 end
 
 function plot_ρ_strain(n_ε, n_θ)
-
-    
-
-    strains = 0.0:-0.01:-0.03
+    strains = 0.0:-0.01:-0.05
     scaling = Vector{Float64}(undef, length(strains))
     for (i,ϵ) in enumerate(strains)
         if ϵ == 0.0
@@ -761,11 +758,17 @@ function plot_ρ_strain(n_ε, n_θ)
         # lines!(ax, domain, model(domain, fit.param), label = latexstring("\$\\epsilon = $(ϵ)\$"))
     end
 
+    ϵ_vhs = -0.0460308 # For γ TBM, Lifschitz transition occurs at this value of ϵ for α = 1
+
+    itp = cubic_spline_interpolation(strains ./ ϵ_vhs, scaling)
+
     f = Figure(fontsize = 20)
     ax = Axis(f[1,1],
-              xlabel = L"\epsilon_{xx}",
+              xlabel = L"\epsilon_{xx} / \epsilon_\text{VHS}",
               ylabel = L"d\ln(\rho_{xx} - ρ_0) / d\ln T")
-    scatter!(ax, strains, scaling)
+    scatter!(ax, strains ./ ϵ_vhs, scaling)
+    domain = LinRange(strains[begin] / ϵ_vhs, 0.999 * strains[end] / ϵ_vhs, 100) 
+    # lines!(ax, domain, itp(domain))
     display(f)
 
     outfile = joinpath(plot_dir, "ρ_strain.png")
@@ -805,7 +808,7 @@ function plot_η(n_ε, n_θ)
     display(f)
     
     outfile = joinpath(plot_dir, "ηB1g_vs_ηB2g.png")
-    save(outfile, f)
+    # save(outfile, f)
 
     xticks = [4, 16, 36, 49, 64, 81, 100, 121, 144, 169, 196]
     domain = 0.0:0.1:14.0
@@ -827,7 +830,7 @@ function plot_η(n_ε, n_θ)
 
     display(f)
     outfile = joinpath(plot_dir, "ηB1g.png")
-    save(outfile, f)
+    # save(outfile, f)
 
 end
 
@@ -950,20 +953,42 @@ function plot_lifetimes(n_ε, n_θ; addendum = "")
         t_η, τeff_η, _  = LudwigIO.read_property_from_file(joinpath(data_dir, "τeff_η_"*addendum*"_$(n_ε)x$(n_θ).dat"))  
     end
 
+    start = 10
+    fit_1 = curve_fit(model_0, t_σ[start:end], 1e-12 ./ τeff_σ[start:end], [0.0, 1.0])
+    fit_2 = curve_fit(model_0, t_η[start:end], 1e-12 ./ τeff_η[start:end], [0.0, 1.0])
+
+    fit_3 = curve_fit(model_1, t_σ, 1 ./ τeff_σ, [0.0, 1.0, 2.0])
+    ρ_0 = 1 / fit_3.param[1]
+    fit_4 = curve_fit(model_1, t_η, 1 ./ τeff_η, [0.0, 1.0, 2.0])
+    η_0 = 1 / fit_4.param[1]
+
+    @show fit_1.param
+    @show fit_2.param
+    @show fit_2.param[2] / fit_1.param[2]
+
+    domain = 0.0:0.1:14.0
+
     f = Figure(fontsize = 20)
-    ax = Axis(f[1,1], ylabel = L"\tau_\text{eff}^{-1}\,(\mathrm{ps}^{-1})", xlabel = L"T\, (\mathrm{K})", 
-    xticks = [4, 16, 25, 36, 49, 64, 81, 100, 144, 169, 196],
-                xtickformat = values -> [L"%$(Int(sqrt(x)))^2" for x in values])
+    ax = Axis(f[1,1], 
+    # ylabel = L"\tau_\text{eff}^{-1}\,(\mathrm{ps}^{-1})", xlabel = L"T\, (\mathrm{K})",
+    ylabel = L"\tau^0_\text{eff} / \tau_\text{eff},", xlabel = L"T\, (\mathrm{K})", 
+    xticks = [0, 9, 16, 25, 36, 49, 64, 81, 100, 121, 144, 169, 196],
+                xtickformat = values -> [L"%$(Int(sqrt(x)))^2" for x in values]
+                )
                 xlims!(ax, 0, 200)
-    scatter!(ax, t_σ.^2, 1e-12 ./ τeff_σ, label = L"\tau_\sigma")
-    scatter!(ax, t_η.^2, 1e-12 ./ τeff_η, label = L"\tau_\eta")
+    # scatter!(ax, t_σ.^2, 1e-12 ./ τeff_σ, label = L"\tau_\sigma")
+    scatter!(ax, t_σ.^2, ρ_0 ./ τeff_σ, label = L"\tau_\sigma")
+    # lines!(ax, domain.^2, model_0(domain, fit_1.param))
+    # scatter!(ax, t_η.^2, 1e-12 ./ τeff_η, label = L"\tau_\eta")
+    scatter!(ax, t_η.^2, η_0 ./ τeff_η, label = L"\tau_\eta")
+    # lines!(ax, domain.^2, model_0(domain, fit_2.param))
     axislegend(ax, position = :lt)
     display(f)
 
     if addendum == ""
-        save(joinpath(plot_dir, "τ_eff.png"), f)
+        save(joinpath(plot_dir, "τ_eff_scaled.png"), f)
     else
-        save(joinpath(plot_dir, "τ_eff_"*addendum*".png"), f)
+        # save(joinpath(plot_dir, "τ_eff_"*addendum*".png"), f)
     end
 
 end
@@ -1012,47 +1037,69 @@ function scaled_impurity_model(n_ε, n_θ; addendum = "")
     display(f)
 
     outfile = joinpath(plot_dir, addendum*"rta_ρ.png")
-    save(outfile, f)
+    # save(outfile, f)
 
     visc_file = joinpath(exp_dir,"B1gViscvT_new.dat")
     data = readdlm(visc_file)
     rfit = curve_fit(model_3, data[1:300, 1], data[1:300, 2], [0.1866, 1.2, 0.1, 2.0])
     data[:, 2] .-= rfit.param[1] # Subtract off systematic offset
 
+    rfit1 = curve_fit(model_0, data[191:441, 1], 1 ./ data[191:441, 2], [0.1866, 1.2, 0.1, 2.0])
+    @show rfit1.param
+
     t, η, _ = LudwigIO.read_property_from_file(joinpath(data_dir, "ηB1g_impurity_only_$(n_ε)x$(n_θ).dat"))
     η ./= λ
     fit = curve_fit(model_0, t, 1 ./ η, [1.0, 1.0], lower = [0.0, 0.0])
     @show fit.param
 
+    start = 10
+    
+    α_scale = 3.64
+    @show sqrt(α_scale) * alph
+
     η_model(t, p) = p[1] .+ p[2] * t.^rfit.param[4]
     t1, η1, _  = LudwigIO.read_property_from_file(joinpath(data_dir, "ηB1g_"*addendum*"$(n_ε)x$(n_θ).dat"))  
-    fit1 = curve_fit(model_1, t1, 1 ./ η1, [1.0, 0.1, 2.0])
+    η1 *= α_scale
+    fit1 = curve_fit(model_0, t1[start:end], 1 ./ η1[start:end], [1.0, 0.1, 2.0])
+    @show fit1.param
+
+    t2, η2, _  = LudwigIO.read_property_from_file(joinpath(data_dir, "ηB1g_$(n_ε)x$(n_θ).dat"))  
+    η2 *= α_scale
+    fit2 = curve_fit(model_0, t2[start:end], 1 ./ η2[start:end], [1.0, 0.1, 2.0])
+    
+    @show fit2.param
 
     f = Figure(size = (700, 600), fontsize = 24)
     ax = Axis(f[1,1],
                xlabel = L"T^2\,(\mathrm{K}^2)",
-               ylabel = L"\eta_0 / \eta",
+               ylabel = L"\eta^{-1} (\mathrm{Pa \, s})^{-1}",
                xticks = [4, 16, 36, 49, 64, 81, 100, 121, 144, 169, 196],
                xtickformat = values -> [L"%$(Int(sqrt(x)))^2" for x in values],
-               yticks = vcat([1], 2:2:24),
+               yticks = vcat(2:4:80),
                aspect = 1.0
     )
     xlims!(ax, 0.0, 14^2)
-    ylims!(ax, 0.0, 18.0)
+    # ylims!(ax, 0.0, 18.0)
     domain = 0.0:0.1:14.0
-    scatter!(ax, data[:, 1].^2, rfit.param[2] ./ data[:, 2], color = :black, label = "Experiment")
+    # scatter!(ax, data[:, 1].^2, rfit.param[2] ./ data[:, 2], color = :black, label = "Experiment")
+    scatter!(ax, data[:, 1].^2, 1 ./ data[:, 2], color = :black, label = "Experiment")
+    # lines!(ax, domain.^2, model_0(domain, rfit1.param), color = :black)
 
-    lines!(ax, domain.^2, model_0(domain, fit.param) / fit.param[1], color = :grey, label = "RTA")
-    scatter!(ax, t.^2, 1 ./ (fit.param[1] * η), color = :grey)
+    # lines!(ax, domain.^2, model_0(domain, fit.param) / fit.param[1], color = :grey, label = "RTA")
+    # scatter!(ax, t.^2, 1 ./ (fit.param[1] * η), color = :grey)
 
-    lines!(ax, domain.^2, model_1(domain, fit1.param) / fit1.param[1], color = :red, label = "Ludwig.jl")
-    scatter!(ax, t1.^2, fit1.param[1]^(-1) ./ η1, color = :red)
+    # lines!(ax, domain.^2, model_1(domain, fit1.param) / fit1.param[1], color = :red, label = "Ludwig.jl")
+    # scatter!(ax, t1.^2, fit1.param[1]^(-1) ./ η1, color = :red)
 
+    # scatter!(ax, t1.^2, 1 ./ η1, color = :blue, label = "Simple")
+    scatter!(ax, t2.^2, 1 ./ η2, color = :red, label = "Ludwig.jl")
+    # lines!(ax, domain.^2, model_1(domain, fit1.param), color = :blue)
+    lines!(ax, domain.^2, model_1(domain, fit2.param), color = :red)
     axislegend(ax, position = :lt)
 
     display(f)
     outfile = joinpath(plot_dir, addendum*"rta_η.png")
-    save(outfile, f)
+    # save(outfile, f)
 end
 
 function deformation_overlap(n_ε, n_θ, Uee, Vimp, T; include_impurity = true) 
@@ -1091,6 +1138,7 @@ function deformation_overlap(n_ε, n_θ, Uee, Vimp, T; include_impurity = true)
                 xlabel = "Mode Index",
                 ylabel = L"|\langle \phi | D \rangle |^2" 
     )
+    xlims!(ax, 0, 40)
     scatter!(ax, b1g_weight, label = L"D_{xx} - D_{yy}")
     scatter!(ax, b2g_weight, label = L"D_{xy}")
     axislegend(ax)
@@ -1186,6 +1234,8 @@ function main()
 
     temps = 2.0:1.0:14.0
 
+    # deformation_overlap(n_ε, n_θ, Uee, Vimp, 12.0)
+
     # LudwigIO.get_property("Rh", data_dir, material, 12.0, n_ε, n_θ, Uee, Vimp; n_ε = n_ε, n_θ = n_θ, n_bands = 3)
 
     # plot_optical_conductivity(n_ε, n_θ, 8.0)
@@ -1195,20 +1245,15 @@ function main()
 
     # fit_ρ(n_ε, n_θ, temps, model_1, Uee, Vimp)
     # plot_η(n_ε, n_θ)
-    plot_ρ_strain(n_ε, n_θ)
-    # plot_lifetimes(n_ε, n_θ; addendum = "ee_only")
+    # plot_ρ_strain(n_ε, n_θ)
+    plot_lifetimes(n_ε, n_θ; addendum = "")
     # plot_lifetime_matthiesen(n_ε, n_θ, "η")
     # scaled_impurity_model(n_ε, n_θ)
     # scaled_impurity_model(n_ε, n_θ; addendum = "simple_impurity")
 
-    # ϵ = -0.02
+    # ϵ = -0.05
     # LudwigIO.write_property_to_file("ρ", material*"_uniaxial_strain_ϵ_$(ϵ)", data_dir, n_ε, n_θ, Uee, Vimp, temps; addendum = "ϵ_$(ϵ)", imp_stem = impurity_stem)
 
-    # ϵ = -0.03
-    # LudwigIO.write_property_to_file("ρ", material*"_uniaxial_strain_ϵ_$(ϵ)", data_dir, n_ε, n_θ, Uee, Vimp, temps; addendum = "ϵ_$(ϵ)", imp_stem = impurity_stem)
-
-    # LudwigIO.write_property_to_file("ηB1g", material, data_dir, n_ε, n_θ, Uee, Vimp, temps; addendum = "simple_impurity", imp_stem = impurity_stem)
-    # LudwigIO.write_property_to_file("ηB2g", material, data_dir, n_ε, n_θ, Uee, Vimp, temps; addendum = "simple_impurity", imp_stem = impurity_stem)
 end 
 
 include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))

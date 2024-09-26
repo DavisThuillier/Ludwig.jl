@@ -123,7 +123,7 @@ function main()
     f = Figure(size = (1200,1200), fontsize = 24)
     ax = Axis(f[1,1],
               aspect = 1.0,
-              limits = (0.0,0.5,0.0,0.5),
+              limits = (-0.5,0.5,-0.5,0.5),
               xlabel = L"k_x",
               xticks = map(x -> (x // 8), 0:1:16),
               xtickformat = values -> rational_format.(values),
@@ -139,12 +139,12 @@ function main()
     # Colorbar(f[1,2], p, label = L"\varepsilon - \mu (\mathrm{eV})", labelsize = 30)
     display(f)
 
-    save(joinpath(plot_dir,"uniaxial_strain","SRO_$(ϵ)_8.0_K.png"), f)
+    # save(joinpath(plot_dir,"uniaxial_strain","SRO_$(ϵ)_8.0_K.png"), f)
 end
 
 include(joinpath(@__DIR__, "materials", "Sr2RuO4_uniaxial_strain.jl"))
 plot_dir = joinpath(@__DIR__, "..", "plots", "Sr2RuO4")
-
+const ϵ = -0.05
 main()
 # deformation_potentials()
 

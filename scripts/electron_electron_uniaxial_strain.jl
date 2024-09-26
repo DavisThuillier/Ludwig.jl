@@ -12,10 +12,10 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
     # Initialize file - will error if
     h5open(outfile, "cw") do f
         g = create_group(f, "data")
-        write_attribute(g, "n_ε", n_ε)
-        write_attribute(g, "n_θ", n_θ)
-        write_attribute(g, "T", T)
-        write_attribute(g, "ϵ", ϵ)
+        g["n_ε"] = n_ε
+        g["n_θ"] = n_θ
+        g["T"] = T
+        g["ϵ"] = ϵ
         g["corners"] = copy(transpose(reduce(hcat, mesh.corners)))
         g["momenta"] = copy(transpose(reduce(hcat, map(x -> x.momentum, mesh.patches))))
         g["velocities"] = copy(transpose(reduce(hcat, map(x -> x.v, mesh.patches))))

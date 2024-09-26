@@ -58,7 +58,7 @@ band_file = joinpath("materials", "Sr2RuO4_uniaxial_strain.jl")
 include(joinpath(@__DIR__, band_file))
 n_ε = 12
 n_θ = 38
-const ϵ = -0.03
+const ϵ = -0.05
 
 for T ∈ 2.0:1.0:14.0
     @show T

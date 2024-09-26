@@ -38,7 +38,7 @@ function load(file; symmetrized = false)
     end
 end
 
-function get_property(prop::String, data_dir, material::String, T::Real, n_ε::Int, n_θ::Int, Uee::Real, Vimp::Real; include_impurity::Bool = true)
+function get_property(prop::String, data_dir, material::String, T::Real, n_ε::Int, n_θ::Int, Uee::Real, Vimp::Real; include_impurity::Bool = true, imp_stem = "", kwargs...)
 
     s = Meta.parse("get_"*prop)
     if isdefined(Main, s)
@@ -50,18 +50,18 @@ function get_property(prop::String, data_dir, material::String, T::Real, n_ε::I
         L *= 0.5 * Uee^2
 
         if Vimp != 0.0 && include_impurity
-            impfile = joinpath(data_dir, material*"_imp_$(T)_$(n_ε)x$(n_θ).h5")
+            impfile = joinpath(data_dir, material*"_"*imp_stem*"imp_$(T)_$(n_ε)x$(n_θ).h5")
             Limp, _, _, _, _, _, _ = load(impfile)
             L += Limp * Vimp^2
         end
 
-        return fn(L, k, v, E, dV, kb * T)
+        return fn(L, k, v, E, dV, kb * T; kwargs)
     else
         error("Function $(s)() not defined in Main scope.")
     end
 end
 
-function write_property_to_file(prop, material, data_dir, n_ε, n_θ, Uee, Vimp, temps; include_impurity=true, addendum="")
+function write_property_to_file(prop, material, data_dir, n_ε, n_θ, Uee, Vimp, temps; include_impurity=true, addendum="", imp_stem = "")
     if addendum == ""
         file = joinpath(data_dir, prop*"_$(n_ε)x$(n_θ).dat")
     else
@@ -80,7 +80,7 @@ function write_property_to_file(prop, material, data_dir, n_ε, n_θ, Uee, Vimp,
             println(f, "---")
             println(f, "# T, $(prop)")
             for T in temps
-                q = get_property(prop, data_dir, material, T, n_ε, n_θ, Uee, Vimp, include_impurity = include_impurity)
+                q = get_property(prop, data_dir, material, T, n_ε, n_θ, Uee, Vimp, include_impurity = include_impurity, imp_stem = imp_stem)
                 println("T = $(T), $(prop) = $(q)")
                 println(f, "$(T),$(q)")
             end
@@ -122,6 +122,5 @@ function read_property_from_file(file)
 
     return t, q, yaml
 end
-
 
 end
