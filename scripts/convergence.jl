@@ -62,11 +62,6 @@ function fit(data, q_label, q_unit, order = 1, N = 100)
     display(f)
 end
 
-# function asymptotic_regression()
-#     fit = lm(, data)
-#     @show fit
-# end
-
 function main(file)
     
     if isfile(file)

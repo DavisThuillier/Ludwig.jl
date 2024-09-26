@@ -105,11 +105,11 @@ function delta(k1, k2, N)
     end
 end
 
-
 function main()
-    T = 12 * kb
+    T = 8 * kb
     n_ε = 12
     n_θ = 60
+
     mesh = Ludwig.multiband_mesh(bands, orbital_weights, T, n_ε, n_θ)
     ℓ = length(mesh.patches)
 
@@ -123,7 +123,7 @@ function main()
     f = Figure(size = (1200,1200), fontsize = 24)
     ax = Axis(f[1,1],
               aspect = 1.0,
-              limits = (0.0,0.5,0.0,0.5),
+              limits = (-0.5,0.5,-0.5,0.5),
               xlabel = L"k_x",
               xticks = map(x -> (x // 8), 0:1:16),
               xtickformat = values -> rational_format.(values),
@@ -139,18 +139,12 @@ function main()
     # Colorbar(f[1,2], p, label = L"\varepsilon - \mu (\mathrm{eV})", labelsize = 30)
     display(f)
 
-    # save(joinpath(plot_dir,"23 August 2024","SRO_mesh_no_colorbar.png"), f)
+    # save(joinpath(plot_dir,"uniaxial_strain","SRO_$(ϵ)_8.0_K.png"), f)
 end
 
-include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
+include(joinpath(@__DIR__, "materials", "Sr2RuO4_uniaxial_strain.jl"))
 plot_dir = joinpath(@__DIR__, "..", "plots", "Sr2RuO4")
-
-# form_factors()
-# main()
+const ϵ = -0.05
+main()
 # deformation_potentials()
-
-k1 = [0.4, 0.2]
-k2 = [-0.4, -0.2]
-
-delta(k1, k2, 100)
 
