@@ -148,4 +148,3 @@ const ϵ = -0.05
 main()
 # deformation_potentials()
 
-

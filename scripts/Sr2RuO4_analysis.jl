@@ -458,7 +458,6 @@ function γ_modes(T, n_ε, n_θ, Uee)
 
     eigenvalues *= 1e-12 / hbar
 
-
     quads = Vector{Vector{SVector{2, Float64}}}(undef, 0)
     for i in 1:size(corner_ids)[1]
         push!(quads, map(x -> SVector{2}(corners[x, :]), corner_ids[i, :]))
@@ -577,6 +576,7 @@ function γ_deformation_overlap(n_ε, n_θ, Uee, Vimp, T; include_impurity = tru
     display(f)
 
     outfile = joinpath(plot_dir, "γ_B1g_B2g_overlaps.png")
+
     # save(outfile, f)
 end 
 
@@ -705,9 +705,9 @@ function fit_ρ(n_ε, n_θ, temps, model_1, Uee, Vimp)
 end
 
 function plot_ρ(n_ε, n_θ)
+
     t, ρ, _ = LudwigIO.read_property_from_file(joinpath(data_dir, "ρ_$(n_ε)x$(n_θ).dat"))  
     ρ *= 1e8
-
     lupien_file = joinpath(exp_dir, "rhovT_Lupien_digitized.dat")
     lupien_data = readdlm(lupien_file)
 
@@ -774,7 +774,7 @@ function plot_ρ_strain(n_ε, n_θ)
     outfile = joinpath(plot_dir, "ρ_strain.png")
     # save(outfile, f)
 end
-
+  
 function plot_η(n_ε, n_θ)
     # Fit to Brad Ramshaw's viscosity data
     visc_file = joinpath(exp_dir,"B1gViscvT_new.dat")
@@ -918,6 +918,7 @@ function plot_lifetime_matthiesen(n_ε, n_θ, prop)
     scatter!(ax, t.^2, 1e-12 ./ τ_matthiesen, label = L"\tau_\text{Matthiesen}", color = :grey)
     axislegend(ax, position = :lt)
     display(f)
+    # save(joinpath(plot_dir, "23 August 2024", "τ_eff.png"),f)
 
     outfile = joinpath(plot_dir, "τeff_$(prop)_matthiesen_comparison.png")
     save(outfile, f)
@@ -1132,6 +1133,12 @@ function deformation_overlap(n_ε, n_θ, Uee, Vimp, T; include_impurity = true)
         b1g_weight[i] = abs2(dot(eigenvectors[:, i], D))
         b2g_weight[i] = abs2(dot(eigenvectors[:, i], Dxy))
     end
+    @show σ_τ
+    @show η_τ
+
+    @show σ_τ ./ η_τ
+
+    # With impurity 
 
     f = Figure()
     ax = Axis(f[1,1],

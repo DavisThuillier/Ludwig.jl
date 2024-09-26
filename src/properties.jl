@@ -35,8 +35,6 @@ end
 
 """
     longitudinal_conductivity(L, vx, E, dV, T)
-
-Compute the ``\\sigma_xx`` component of the conductivity tensor.
 """
 function longitudinal_conductivity(L, vx, E, dV, T)
     fd = f0.(E, T) # Fermi dirac on grid points
@@ -135,6 +133,4 @@ end
 
 function hall_coefficient(L, k, v, E, dV, T; kwargs)
     _momentum_derivative(kwargs[:n_ε], kwargs[:n_θ], kwargs[:n_bands], k, v, E)
-
-
 end
