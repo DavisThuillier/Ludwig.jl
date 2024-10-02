@@ -1,4 +1,1 @@
-data/
-.vscode/
-plots/
-scripts/get_vhs_strain.jl
+*.png
