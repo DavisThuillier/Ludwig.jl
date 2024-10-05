@@ -7,14 +7,7 @@ using Ludwig
 using LinearAlgebra
 import StaticArrays: SVector
 
-function symmetrize(L, dV, E, T)
-    fd = f0.(E, T) # Fermi dirac on grid points
-    D = diagm(dV .* fd .* (1 .- fd))
-
-    return 0.5 * (L + inv(D) * L' * D)
-end
-
-function load(file; symmetrized = false)
+function load(file; symmetrized = true)
     h5open(file, "r") do fid
         g = fid["data"]
 
@@ -38,33 +31,36 @@ function load(file; symmetrized = false)
     end
 end
 
-function get_property(prop::String, data_dir, material::String, T::Real, n_ε::Int, n_θ::Int, Uee::Real, Vimp::Real; include_impurity::Bool = true, imp_stem = "", kwargs...)
+function assemble_collision_operator(n_ε::Int, n_θ::Int, Uee::Real, Vimp::Real, T::Real; kwargs...)
+    eefile = joinpath(kwargs[:data_dir], kwargs[:material]*"_$(Float64(T))_$(n_ε)x$(n_θ).h5")
+        
+    L, k, v, E, dV, _, _= load(eefile)
+    L *= 0.5 * Uee^2
 
+    if Vimp != 0.0 && kwargs[:include_impurity]
+
+        impfile = joinpath(kwargs[:data_dir], kwargs[:material]*"_"*kwargs[:imp_stem]*"imp_$(T)_$(n_ε)x$(n_θ).h5")
+
+        Limp, _, _, _, _, _, _ = load(impfile)
+        L += Limp * Vimp^2
+    end
+
+    return L, k, v, E, dV
+end
+
+function get_property(prop::String, data_dir, material::String, T::Real, n_ε::Int, n_θ::Int, Uee::Real, Vimp::Real; kwargs...)
     s = Meta.parse("get_"*prop)
     if isdefined(Main, s)
         fn = getfield(Main, s) 
-
-        eefile = joinpath(data_dir, material*"_$(Float64(T))_$(n_ε)x$(n_θ).h5")
         
-        L, k, v, E, dV, _, _= load(eefile, symmetrized = true)
-        L *= 0.5 * Uee^2
-
-        if Vimp != 0.0 && include_impurity
-
-            impfile = joinpath(data_dir, material*"_"*imp_stem*"imp_$(T)_$(n_ε)x$(n_θ).h5")
-
-            Limp, _, _, _, _, _, _ = load(impfile)
-            L += Limp * Vimp^2
-        end
-
-
+        L, k, v, E, dV = assemble_collision_operator(n_ε, n_θ, Uee, Vimp, T; material = material, data_dir = data_dir, kwargs)
+        
         return fn(L, k, v, E, dV, kb * T; kwargs)
 
     else
         error("Function $(s)() not defined in Main scope.")
     end
 end
-
 
 function write_property_to_file(prop, material, data_dir, n_ε, n_θ, Uee, Vimp, temps; include_impurity=true, addendum="", imp_stem = "")
     if addendum == ""
