@@ -250,12 +250,12 @@ function generate_mesh(bands, orbital_weights::Function, band_index::Int, n_band
 
     patches = hcat(patches,
         reverse(
-            map(x -> patch_op(x, My, mirror_perm, n_angles, n_levels, length(corners), band_corner_shift), patches), dims=2
+            map(x -> patch_op(x, My, length(corners)), patches), dims=2
         )
     )
     patches = hcat(patches,
         reverse(
-            map(x -> patch_op(x, Mx, mirror_perm, 2 * n_angles, n_levels, 2 * length(corners), band_corner_shift), patches), dims=2
+            map(x -> patch_op(x, Mx, 2 * length(corners)), patches), dims=2
         )
     )
 
@@ -281,7 +281,7 @@ Perform the symmetry operation of `M` on patch `p` to generate another patch.
 
 `corner_perm` is a permutation function that takes `n_col`, `n_row` and `p.corners` as input to determine the ids of the patch corners in a corresponding array. This is for plotting purposes only. 
 """
-function patch_op(p::Patch, M::Matrix, corner_perm::Function, n_col::Int, n_row::Int, corner_shift::Int, band_corner_shift::Int)
+function patch_op(p::Patch, M::Matrix, corner_shift::Int)
     return Patch(
         SVector{2}(M * p.momentum), 
         p.energy,
@@ -292,7 +292,7 @@ function patch_op(p::Patch, M::Matrix, corner_perm::Function, n_col::Int, n_row:
         M * p.jinv, 
         p.djinv,
         p.w,
-        corner_perm.(p.corners .- band_corner_shift, n_col, n_row) .+ (corner_shift + band_corner_shift),
+        p.corners .+ corner_shift
     )
 end
 
