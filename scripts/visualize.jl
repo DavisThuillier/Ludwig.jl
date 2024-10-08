@@ -106,7 +106,7 @@ function delta(k1, k2, N)
 end
 
 function main()
-    T = 8 * kb
+    T = 12 * kb
     n_ε = 12
     n_θ = 60
 
@@ -139,12 +139,15 @@ function main()
     # Colorbar(f[1,2], p, label = L"\varepsilon - \mu (\mathrm{eV})", labelsize = 30)
     display(f)
 
-    # save(joinpath(plot_dir,"uniaxial_strain","SRO_$(ϵ)_8.0_K.png"), f)
+    save(joinpath(plot_dir,"SRO_t5_$(t5)_12.0_K.png"), f)
 end
 
-include(joinpath(@__DIR__, "materials", "Sr2RuO4_uniaxial_strain.jl"))
+include(joinpath(@__DIR__, "materials", "Sr2RuO4.jl"))
 plot_dir = joinpath(@__DIR__, "..", "plots", "Sr2RuO4")
-const ϵ = -0.05
-main()
+
+for p in 0.02:0.01:0.13
+    global t5 = p 
+    main()
+end
 # deformation_potentials()
 
