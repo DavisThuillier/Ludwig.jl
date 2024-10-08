@@ -116,7 +116,7 @@ function η_lifetime(L, Dxx, Dyy, E, dV, T)
     end
     η = inner_product(D, D, L, w .* dV)
 
-    τ_eff = real( η / norm)
+    τ_eff = η / norm
 
     return τ_eff * hbar
 end
