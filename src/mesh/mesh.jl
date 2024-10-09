@@ -26,10 +26,6 @@ struct Patch{D, T}
     corners::Vector{Int} # Coordinates of corners for plotting
 end
 
-function get_energy_bounds(p::Patch)
-    return [p.energy - de/2.0, p.energy + de/2.0]
-end
-
 """
 Container struct for patches over which to integrate.
 
@@ -294,10 +290,6 @@ function patch_op(p::Patch, M::Matrix, corner_shift::Int)
         p.w,
         p.corners .+ corner_shift
     )
-end
-
-function mirror_perm(i::Int, n_col::Int, n_row::Int)
-    return Int( (n_col - ceil(i / n_row)) * n_row + mod(i - 1, n_row) + 1 )
 end
 
 """
