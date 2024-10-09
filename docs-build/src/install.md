@@ -1,6 +1,6 @@
 # Installation
 
-Ludwig is not yet registered on the [general Julia package registry](https://github.com/JuliaRegistries/General). 
+Ludwig.jl is not yet registered on the [general Julia package registry](https://github.com/JuliaRegistries/General). 
 To run the latest version of Ludwig.jl, clone the repository. In the root folder of the project, 
 ```
 julia> ]

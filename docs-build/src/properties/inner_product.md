@@ -1,8 +1,8 @@
 # Inner Product
 
-The linearized Boltzmann collision operator computed by `electron_electron()` is not symmetric. However, we can define the auxiliary matrix
+The linearized Boltzmann collision operator computed by `electron_electron()` is not Hermitian. However, we can define the auxiliary matrix
 ```math
-    \mathbb{L}_{ij} = f^{(0)}_i (1 - f^{(0)}_i) \frac{dV_i} \mathbf{L}_{ij}
+    L^\text{(s)}_{ij} = f^{(0)}_i (1 - f^{(0)}_i) \frac{dV_i} \mathbf{L}_{ij}
 ```
 which is symmetric. By defining the inner product as
 ```math
