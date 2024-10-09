@@ -5,7 +5,7 @@ using Ludwig
 import Interpolations: ScaledInterpolation 
 
 makedocs(
-    sitename="Ludwig",
+    sitename="Ludwig.jl",
     build = "../docs/",
     pages = Any[
         "Home" => "index.md",
@@ -16,6 +16,7 @@ makedocs(
         "Multiband Meshes"=> "mesh/mesh_mb.md",
         ],
         "Collision Operator" => "collision_operator.md",
+        "Properties" => "properties.md",
         "Example" => "example.md"
     ]
 )
