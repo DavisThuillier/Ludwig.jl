@@ -27,7 +27,8 @@ function load(file; symmetrized = true)
 end
 
 function assemble_collision_operator(n_ε::Int, n_θ::Int, Uee::Real, Vimp::Real, T::Real; symmetrized = true, kwargs...)
-    eefile = kwargs[:addendum] == "" ? kwargs[:material] : kwargs[:material]*"_"*kwargs[:addendum]
+    eefile = !haskey(kwargs, :addendum) ? kwargs[:material] : kwargs[:material]*"_"*kwargs[:addendum]
+
     eefile = joinpath(kwargs[:data_dir], eefile*"_$(Float64(T))_$(n_ε)x$(n_θ).h5")
         
     L, k, v, E, dV, _, _= load(eefile; symmetrized = symmetrized)
