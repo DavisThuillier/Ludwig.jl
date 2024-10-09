@@ -13,31 +13,45 @@ function inner_product(a, b, L, w)
 end
 
 """
-    conductivity(L, v, E, dV, T)
+    conductivity(L, v, E, dV, T [, ω = 0.0, q = [0.0, 0.0]])
 
-Compute the conductivity tensor using ``\\sigma_{ij} = 2 e^2 \\langle v_i | L^{-1} | v_j \\rangle``.
+Compute the conductivity tensor using ``\\sigma_{ij}(ω, \\mathbf{q}) = 2 e^2 \\langle v_i | (L - i\\omega + i\\mathbf{q}\\cdot\\mathbf{v})^{-1} | v_j \\rangle``.
 
 For correct conversion to SI units, `E` and `T` must be expressed in units of eV, dV must be in units of ``(2pi / a)^2,`` where ``a`` is the lattice constant, and `v` must be in units of ``(a / h) eV``.
 """
-function conductivity(L, v, E, dV, T)
+function conductivity(L, v, E, dV, T, ω = 0.0, q = [0.0, 0.0])
     fd = f0.(E, T) # Fermi dirac on grid points
     weight = fd .* (1 .- fd) .* dV
 
     σ = Matrix{ComplexF64}(undef, 2, 2)
 
-    σ[1,1] = inner_product(first.(v), first.(v), L, weight)
-    σ[1,2] = inner_product(first.(v), last.(v), L, weight)
-    σ[2,1] = inner_product(last.(v), first.(v), L, weight)
-    σ[2,2] = inner_product(last.(v), last.(v), L, weight)
+    if ω != 0.0 || q != [0.0, 0.0]
+        L′ = L - im*ω*I + im * diagm(dot.(Ref(q), v))
+    else
+        L′ = L
+    end
+
+    σ[1,1] = inner_product(first.(v), first.(v), L′, weight)
+    σ[1,2] = inner_product(first.(v), last.(v), L′, weight)
+    σ[2,1] = inner_product(last.(v), first.(v), L′, weight)
+    σ[2,2] = inner_product(last.(v), last.(v), L′, weight)
 
     return (G0 / (2π)) * (σ / T)
 end
 
 """
-    longitudinal_conductivity(L, vx, E, dV, T)
+    longitudinal_conductivity(L, vx, E, dV, T [, ω])
+
+Compute only the ``\\sigma_{xx}`` component of the conductivity tensor.
 """
-function longitudinal_conductivity(L, vx, E, dV, T)
+function longitudinal_conductivity(L, vx, E, dV, T, ω = 0.0)
     fd = f0.(E, T) # Fermi dirac on grid points
+
+    if ω != 0.0 || q != [0.0, 0.0]
+        L′ = L - im*ω*I
+    else
+        L′ = L
+    end
 
     σxx = inner_product(vx, vx, L, fd .* (1 .- fd) .* dV)
 
