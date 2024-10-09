@@ -43,9 +43,5 @@ Moreover, all crystal momenta are normalized by ``2\pi / a_i`` where ``a_i`` den
 Ludwig.map_to_first_bz
 ```
 
-```@docs
-Ludwig.get_bands
-``` 
-
 ## References
 

@@ -16,7 +16,6 @@ makedocs(
         "Multiband Meshes"=> "mesh/mesh_mb.md",
         ],
         "Collision Operator" => "collision_operator.md",
-        "Properties" => "properties.md",
         "Example" => "example.md"
     ]
 )
