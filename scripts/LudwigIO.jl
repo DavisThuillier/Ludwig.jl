@@ -77,10 +77,14 @@ function write_property_to_file(X::String, Y::String, X_range, material::String,
         open(file, "w") do f
             println(f, "---")
             println(f, "quantity: $(Y)")
+            println(f, "index: $(X)")
             println(f, "n_ε: $(n_ε)")
             println(f, "n_θ: $(n_θ)")
             println(f, "Uee: $(Uee)")
             println(f, "Vimp: $(Vimp)")
+            for (key, val) in kwargs
+                println(f, "$(key): $(val)")
+            end
             if X != "T"
                 T = kwargs[:T]
                 println(f, "T: $(T)")
