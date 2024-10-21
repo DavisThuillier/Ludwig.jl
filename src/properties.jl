@@ -47,7 +47,7 @@ Compute only the ``\\sigma_{xx}`` component of the conductivity tensor.
 function longitudinal_conductivity(L, vx, E, dV, T, ω = 0.0)
     fd = f0.(E, T) # Fermi dirac on grid points
 
-    if ω != 0.0 || q != [0.0, 0.0]
+    if ω != 0.0
         L′ = L - im*ω*I
     else
         L′ = L
