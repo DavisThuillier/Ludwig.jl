@@ -1,17 +1,12 @@
 # Installation
 
 Ludwig.jl is not yet registered on the [general Julia package registry](https://github.com/JuliaRegistries/General). 
-To run the latest version of Ludwig.jl, clone the repository. In the root folder of the project, 
+The latest version of Ludwig.jl can be installed from the Julia REPL by running  
 ```
-julia> ]
-(@v1.8) pkg> activate .
-(Ludwig) pkg> instantiate
+julia> import Pkg
+julia> Pkg.add(url="https://github.com/DavisThuillier/Ludwig.jl/")
 ```
-To run scripts using Ludwig, you must check out Ludwig for development in your scripting environment.
+The above will clone the repository and make the package available locally via 
 ```
-julia> ]
-(@v1.8) pkg> activate PATH_TO_SCRIPT_DIR
-(SCRIPT_DIR) pkg> dev PATH_TO_LUDWIG_ROOT
-(SCRIPT_DIR) pkg> instantiate
+julia> using Ludwig
 ```
-Functionality provided by Ludwig can now be accessed with `using Ludwig`.
