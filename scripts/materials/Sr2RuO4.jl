@@ -1,3 +1,5 @@
+using ForwardDiff
+
 const material::String = "Sr2RuO4"
 const c::Float64  = 12.68e-10 # Interlayer distance in m
 const a::Float64  = 3.90e-10  # Lattice constant in m
@@ -15,14 +17,6 @@ end
 
 const alph::Float64 = 7.604
 const alph_p::Float64 = 7.604
-
-function dxx_γ(k)
-    return 2 * alph * tγ * cos(2pi*k[1]) + 2 * alph_p * tpγ * cos(2pi*k[1]) * cos(2pi*k[2])
-end
-
-function dyy_γ(k)
-    return 2 * alph * tγ * cos(2pi*k[2]) + 2 * alph_p * tpγ * cos(2pi*k[1]) * cos(2pi*k[2]) 
-end
 
 ###############
 ### α and β ###
@@ -51,8 +45,8 @@ function ham_β(k)
     return 0.5 * ( (x + y) + sqrt( (x - y)^2 + 4 * V(k)^2 ) ) * tβ
 end
 
-# Computes the xx or yy deformation potential for the α band. μ is a band index where 1 is α and 2 is β
-function dii_μ(k, i::Int, μ::Int, δ = 0.0)
+# Computes the xx or yy band structure deformation potential for the α band. μ is a band index where 1 is α, 2 is β, and 3 in γ
+function dbs_ii_μ(k, i::Int, μ::Int, δ = 0.0)
     if μ == 1 || μ == 2
         (μ == 1) ? (δ /= tα) : (δ /= tβ)
         x = exz(k)
@@ -69,7 +63,14 @@ function dii_μ(k, i::Int, μ::Int, δ = 0.0)
     end
 end
 
-function dxy_μ(k, μ::Int)
+function dep_ii_μ(k, i::Int, μ::Int, δ = 0.0)
+    dbs = dbs_ii_μ(k, i, μ, δ)
+    v = ForwardDiff.gradient(bands[μ], k)
+    dep = dbs + Ludwig.e_mass * (a/Ludwig.hc)^2 * v[i]^2
+    return dep
+end
+
+function dbs_xy_μ(k, μ::Int)
     if μ == 1 || μ == 2
         x = exz(k)
         y = eyz(k)
