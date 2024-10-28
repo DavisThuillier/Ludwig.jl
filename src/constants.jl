@@ -12,3 +12,9 @@ const hbar::Float64 = 6.582119569e-16
 "Electron charge in C"
 const e_charge::Float64 = 1.602176634e-19
 
+"Electron mass in eV"
+const e_mass::Float64 = 0.51099895069e6
+
+"Planck constant times speed of light in eV.m"
+const hc::Float64 = 1.239841984e-6
+
