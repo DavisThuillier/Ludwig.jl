@@ -97,12 +97,13 @@ end
 function _polygon_mesh(p, basis, N)
     T = inv(basis)
 
-    p_prime = Ref(T) .* p
+    p_prime = Ref(T) .* p # Transform to orthogonal basis
     x_range, y_range = get_bounding_box(p_prime)
 
     x_step = (x_range[2] - x_range[1]) / (N -1)
     y_step = (y_range[2] - y_range[1]) / (N -1)
 
+    # Find all points in polygon
     vertices = Tuple{Int, Int}[]
     points = SVector{2,Float64}[]
     for j in 1:N
