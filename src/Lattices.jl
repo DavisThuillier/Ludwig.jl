@@ -40,11 +40,6 @@ primitives(l::Lattice) = l.primitives
 reciprocal_lattice_vectors(l::Lattice) = Array(inv(primitives(l))')
 point_group(l::Lattice) = point_groups[lattice_type(l)]
 
-# struct HalfSpace{T}
-#     n<:AbstractVector{T}
-#     d::T
-# end
-
 # https://en.wikipedia.org/wiki/Lattice_reduction
 function gauss_reduce(A, max_iter = 1e4)
     i = 1
@@ -107,13 +102,6 @@ function get_bz(l::Lattice)
     return vertices
 end
 
-function map_to_bz(k, rlv) #FIXME: Fails for hexagonal lattice
-    k1 = inv(rlv) * k # k in reciprocal lattice basis
-    k1 = mod.(k1 .+ 0.5, 1.0) .- 0.5
-    @show k1
-    return rlv * k1
-end
-
 function in_polygon(k, p, atol = 1e-12)
     is_vertex = false
     for vertex in p
@@ -148,6 +136,23 @@ function _winding_number(v, atol = 1e-12)
     return w
 end
 
+"""
+    diameter(p)
+
+Return the maximal distance between two points in `p`.
+"""
+function _diameter(p)
+    diameter = 0.0
+    for i in eachindex(p)
+        for j in i:length(p)
+            d = norm(p[i]-p[j])
+            d > diameter && (diameter = d) 
+        end
+    end
+
+    return diameter
+end
+
 function _signed_area(x, y, z)
     return 0.5 * (-y[1] * x[2] + z[1] * x[2] + x[1] * y[2] - z[1] * y[2] - x[1]*z[2] + y[1] * z[2])
 end
@@ -157,44 +162,68 @@ function get_ibz(l::Lattice)
     bz = get_bz(l)
     ibz = deepcopy(bz)
 
-    ops = deepcopy(G.elements)
-    v = bz[1]
+    ops = deepcopy(G.elements) 
 
-    while length(ops) > 0
-        g = pop!(ops)
-        O = Groups.get_matrix_representation(g)
-        if !(O*v ≈ v) # Symmetry does not fix vertex
-            midpoint = (O*v + v) / 2.0
-            n = O*v - v
+    tol = 1e-4 * _diameter(bz) # Tolerance for comparing whether two points are equivalent scaled by size of BZ
+    
+    for v in bz
+        ops_to_delete = [] 
+        for (i,g) in enumerate(ops)
+            Groups.is_identity(g) && continue
+            
+            O = Groups.get_matrix_representation(g)
 
-            σ1 = sign(_signed_area(v, midpoint, [n[2], -n[1]]))
+            if !(O*v ≈ v) # Symmetry does not fix vertex
+                push!(ops_to_delete, i)
 
-            for (j, w) in enumerate(ibz)
-                σ2 = _signed_area(w, midpoint, [n[2], -n[1]])
+                midpoint = (O*v + v) / 2.0
+                n = O*v - v
 
-                if σ1 * σ2 < 0
-                    w ∈ ibz && deleteat!(ibz, findfirst(==(w), ibz))
+                σ1 = sign(Lattices._signed_area(v, midpoint, [n[2], -n[1]]))
+
+                to_add = [] # Intersections to add to IBZ
+                to_delete = Int[] # Indices of points in IBZ to delete
+                for (j, w) in enumerate(ibz)
+                    norm(w) < tol && continue
+
+                    σ2 = Lattices._signed_area(w, midpoint, [n[2], -n[1]])
+
+                    if σ1 * σ2 < 0
+                        push!(to_delete, findfirst(==(w), ibz))
+                    end
+
+                    k = (j == length(ibz)) ? 1 : j + 1 
+                    int = Lattices.intersection(midpoint, [n[2], -n[1]], ibz[j], ibz[k] - ibz[j])
+
+                    any(isnan.(int)) && continue
+                    !Lattices.in_polygon(int, ibz) && continue
+
+                    # Check if intersection coincides with a vertex of IBZ or an edge
+                    if !any(map(z -> norm(int-z) < tol, vcat(ibz, to_add))) && abs(σ2) > tol^2
+                        push!(to_add, int)
+                    end
                 end
 
-                k = (j == length(bz)) ? 1 : j + 1 
-                int = intersection(midpoint, [n[2], -n[1]], bz[j], bz[k] - bz[j])
-                (int == [0.0, 0.0] || !in_polygon(int, bz)) && continue
+                deleteat!(ibz, to_delete)
+                append!(ibz, to_add)
 
-                if !any(map(z -> int ≈ z, bz))
-
-                    push!(ibz, int)
-                end
+                sort!(ibz, by = x -> atan(x[2] - ibz[1][2], x[1] - ibz[1][1])) 
             end
+            
         end
+        deleteat!(ops, ops_to_delete)
     end
-    push!(ibz, [0.0, 0.0])
+
+    # Enforce that origin is in IBZ
+    !any(norm.(ibz) .< tol) && push!(ibz, [0.0, 0.0])
+    sort!(ibz, by = x -> atan(x[2], x[1])) # Sort by angle
 
     return ibz
 end
 
 function intersection(a1, v1, a2, v2)
     V = hcat(v1, -v2)
-    det(V) == 0 && return [0.0, 0.0] # No intersection
+    det(V) == 0 && return [NaN, NaN] # No intersection
 
     t = inv(V) * (a2 - a1)
     return a1 + t[1] * v1
