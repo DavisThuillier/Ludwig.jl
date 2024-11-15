@@ -1,3 +1,5 @@
+module MarchingSquares
+
 export Isoline, IsolineBundle
 
 """
@@ -146,5 +148,4 @@ function contours(x, y, A, levels)
     return bundles
 end
 
-
-
+end # module MarchingSquares
