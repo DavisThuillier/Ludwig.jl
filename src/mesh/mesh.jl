@@ -430,7 +430,7 @@ function generate_ibz_mesh(l::Lattices.Lattice, ε::Function, T, n_levels::Int, 
 end
 
 function generate_bz_mesh(l::Lattices.Lattice, ε::Function, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0)
-    @time patches, corners = _ibz_mesh(l, ε, T, n_levels, n_cuts, N, α)
+    patches, corners = _ibz_mesh(l, ε, T, n_levels, n_cuts, N, α)
 
     G = Lattices.point_group(l)
     bz = Lattices.get_bz(l)
@@ -441,14 +441,10 @@ function generate_bz_mesh(l::Lattices.Lattice, ε::Function, T, n_levels::Int, n
     θs = Vector{Float64}(undef, length(G.elements))
     for i in eachindex(G.elements)
         O = Groups.get_matrix_representation(G.elements[i])
-        Oibz = map(x -> O*x, ibz[norm.(ibz) .> tol])
-        θs[i] = sum(map(x -> atan(x[2], x[1]), Oibz)) / length(Oibz)
+        k = sum(map(x -> O*x, ibz)) # Central direction vector of IBZ
+        θs[i] = mod(atan(k[2], k[1]), 2pi)
     end
-
-    θperm = sortperm(mod.(θs, 2pi))
-
-    println("Building full BZ mesh...")
-
+    θperm = sortperm(θs)
 
     full_patches = deepcopy(patches)
     full_corners = deepcopy(corners)
@@ -456,9 +452,15 @@ function generate_bz_mesh(l::Lattices.Lattice, ε::Function, T, n_levels::Int, n
         Groups.is_identity(G.elements[i]) && continue
 
         O = Groups.get_matrix_representation(G.elements[i])
-        full_patches = hcat(full_patches, 
-            map(x -> patch_op(x, O, length(full_corners)), patches) 
-        )
+        if det(O) < 0.0 # Improper rotation
+            full_patches = hcat(full_patches, 
+                reverse( map(x -> patch_op(x, O, length(full_corners)), patches), dims = 2)
+            )
+        else
+            full_patches = hcat(full_patches, 
+                map(x -> patch_op(x, O, length(full_corners)), patches) 
+            )
+        end
         full_corners = hcat(full_corners, map(x -> O*x, corners))
     end
 
