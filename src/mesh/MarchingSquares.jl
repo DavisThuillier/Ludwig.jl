@@ -1,5 +1,9 @@
 module MarchingSquares
 
+import StaticArrays: SVector
+import DataStructures: OrderedDict
+import LinearAlgebra: norm
+
 export Isoline, IsolineBundle
 
 """
@@ -35,9 +39,14 @@ crossing_lookup = [L|B, B|R, L|R, T|R, 0x0, T|B, L|T, L|T, T|B, 0x0, T|R, L|R, B
 function get_cells(A::AbstractMatrix, level::Real = 0.0)
     x, y = axes(A)
     cells = OrderedDict{Tuple{Int, Int}, UInt8}()
+    border_cells = Vector{Tuple{Int, Int}}(undef, 0)
 
     @inbounds for i in first(x):last(y)-1
         for j in first(y):last(y)-1
+            if any(isnan.([A[i, j], A[i+1, j], A[i+1,j+1], A[i,j+1]]))
+                push!(border_cells, (i,j))
+                continue
+            end
             intersect = (A[i, j] > level) ? 0x01 : 0x00
             (A[i + 1, j] > level) && (intersect |= 0x02)
             (A[i + 1, j + 1] > level) && (intersect |= 0x04)
@@ -50,7 +59,7 @@ function get_cells(A::AbstractMatrix, level::Real = 0.0)
         end
     end 
 
-    return cells
+    return cells, border_cells
 end
 
 shift = [(0,1), (0,-1), (1,0), (-1,0)] # Next cell to check given crossing
@@ -68,14 +77,14 @@ function find_contour(x, y, A::AbstractMatrix, level::Real = 0.0)
     is = first(xax):last(xax)-1
     js = first(yax):last(yax)-1
 
-    cells = get_cells(A, level)
+    cells, border_cells = get_cells(A, level)
 
     while Base.length(cells) > 0
         segment = Vector{SVector{2,Float64}}(undef, 0)
         start_index, case = first(cells)
         start_edge = 0x01 << trailing_zeros(case)
 
-        end_index = follow_contour!(cells, segment, x, y, A, is, js, start_index, start_edge, level)
+        end_index = follow_contour!(cells, border_cells, segment, x, y, A, is, js, start_index, start_edge, level)
 
         # Check if the contour forms a loop
         isclosed = end_index == start_index ? true : false
@@ -85,7 +94,7 @@ function find_contour(x, y, A::AbstractMatrix, level::Real = 0.0)
             edge, index = get_next_cell(start_edge, start_index)
             !haskey(cells, index) && break 
 
-            follow_contour!(cells, reverse!(segment), x, y, A, is, js, index, edge, level)
+            follow_contour!(cells, border_cells, reverse!(segment), x, y, A, is, js, index, edge, level)
         end
 
         seg_length = 0.0
@@ -101,7 +110,7 @@ function find_contour(x, y, A::AbstractMatrix, level::Real = 0.0)
     return bundle
 end
 
-function follow_contour!(cells, contour, x, y, A, is, js, start_index, start_edge, level)
+function follow_contour!(cells, border_cells, contour, x, y, A, is, js, start_index, start_edge, level)
     index = start_index
     edge = start_edge
 
@@ -114,7 +123,7 @@ function follow_contour!(cells, contour, x, y, A, is, js, start_index, start_edg
         edge, index = get_next_cell(edge, index)
 
 
-        (!(index[1] ∈ is) || !(index[2] ∈ js) || index == start_index) && (break)
+        (!(index[1] ∈ is) || !(index[2] ∈ js) || index == start_index || index ∈ border_cells) && (break)
     end
 
     return index
@@ -146,6 +155,16 @@ function contours(x, y, A, levels)
     end
     
     return bundles
+end
+
+function get_bounding_box(points)
+    min_x = minimum(first.(points))
+    max_x = maximum(first.(points))
+
+    min_y = minimum(last.(points))
+    max_y = maximum(last.(points))
+
+    return ((min_x, max_x), (min_y, max_y))
 end
 
 end # module MarchingSquares
