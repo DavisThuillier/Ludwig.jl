@@ -9,20 +9,21 @@ using .Groups
 include("Lattices.jl"); 
 using .Lattices
 
-include("MarchingTriangles.jl")
+include(joinpath("mesh","MarchingTriangles.jl"))
 using .MarchingTriangles
 
-export Lattices, Groups, MarchingTriangles
+include(joinpath("mesh","MarchingSquares.jl"))
+using .MarchingTriangles
+
+export Lattices, Groups, MarchingTriangles, MarchingSquares
 
 import StaticArrays: SVector, MVector, MMatrix, SMatrix
 using LinearAlgebra
 using ForwardDiff
-import DataStructures: OrderedDict
 using Interpolations
 using IterativeSolvers
 
 include("utilities.jl")
-include("mesh/marching_squares.jl")
 include("mesh/mesh.jl")
 include("integration.jl")
 include("properties.jl")
