@@ -216,6 +216,23 @@ function get_ibz(l::Lattice)
 
     # Enforce that origin is in IBZ
     !any(norm.(ibz) .< tol) && push!(ibz, [0.0, 0.0])
+
+    ## Map IBZ to have minimal average angle
+    imin = 1
+    θmin = 2pi
+    for i in eachindex(G.elements)
+        O = Groups.get_matrix_representation(G.elements[i])
+        Oibz = map(x -> O*x, ibz[norm.(ibz) .> tol])
+        θ = sum(map(x -> atan(x[2], x[1]), Oibz)) / length(Oibz) # Average angle of IBZ points
+        if abs(θ) < θmin
+            θmin = abs(θ)
+            imin = i
+        end
+    end
+    
+    O = Groups.get_matrix_representation(G.elements[imin])
+    ibz = map(x -> SVector{2}(O*x), ibz)
+
     sort!(ibz, by = x -> atan(x[2], x[1])) # Sort by angle
 
     return ibz
