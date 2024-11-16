@@ -339,6 +339,17 @@ function _ibz_mesh(l::Lattices.Lattice, ε::Function, T, n_levels::Int, n_cuts::
 
     energies = collect(LinRange(e_min, e_max, 2 * n_levels - 1))
 
+    # Shift energy levels to include corner energy if there is a crossing
+    for k in ibz
+        corner_e = ε(k)
+        if e_min < corner_e < e_max 
+            i = argmin(abs.(energies .- corner_e))
+            iseven(i) && (i = i + (-1)^argmin(abs.([energies[i - 1], energies[i + 1]] .- corner_e)) 
+            )
+            energies[i] = corner_e
+        end
+    end
+
     c = MarchingSquares.contours(X, Y, E, energies) # Generate Fermi surface contours
     
     # Slice contours to generate patch corners
