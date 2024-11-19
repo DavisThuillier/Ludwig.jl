@@ -9,13 +9,11 @@ using .Groups
 include("Lattices.jl"); 
 using .Lattices
 
-include(joinpath("mesh","MarchingTriangles.jl"))
-using .MarchingTriangles
-
 include(joinpath("mesh","MarchingSquares.jl"))
-using .MarchingTriangles
+using .MarchingSquares
 
-export Lattices, Groups, MarchingTriangles, MarchingSquares
+
+export Lattices, Groups, MarchingSquares
 
 import StaticArrays: SVector, MVector, MMatrix, SMatrix
 using LinearAlgebra
