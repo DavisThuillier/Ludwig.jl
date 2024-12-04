@@ -4,9 +4,9 @@ using Interpolations
 using StaticArrays
 using LinearAlgebra
 
-function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
+function main(T::Real, n_ε::Int, n_θ::Int, outfile::String, α::Real = 6.0)
 
-    mesh = Ludwig.multiband_mesh(bands, orbital_weights, kb * T, n_ε, n_θ)
+    mesh = Ludwig.multiband_mesh(bands, orbital_weights, kb * T, n_ε, n_θ; α = α)
     ℓ = length(mesh.patches)
 
     # Initialize file - will error if
@@ -58,12 +58,13 @@ function argument_handling()
     T   = parse(Float64, ARGS[1])
     n_ε = parse(Int, ARGS[2])
     n_θ = parse(Int, ARGS[3])
+    α = parse(Float64, ARGS[4])
     band_file = ARGS[4]
     out_dir = ARGS[5]
-    return T, n_ε, n_θ, band_file, out_dir
+    return T, n_ε, n_θ, α, band_file, out_dir
 end
 
-T, n_ε, n_θ, band_file, dir = argument_handling()
+T, n_ε, n_θ, α, band_file, dir = argument_handling()
 include(joinpath(@__DIR__, band_file))
-outfile = joinpath(@__DIR__, dir, "$(material)_$(T)_$(n_ε)x$(n_θ).h5")
-main(T, n_ε, n_θ, outfile)
+outfile = joinpath(@__DIR__, dir, "$(material)_$(T)_$(n_ε)x$(n_θ)_$(α).h5")
+main(T, n_ε, n_θ, outfile, α)
