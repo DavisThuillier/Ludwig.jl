@@ -59,8 +59,8 @@ function argument_handling()
     n_ε = parse(Int, ARGS[2])
     n_θ = parse(Int, ARGS[3])
     α = parse(Float64, ARGS[4])
-    band_file = ARGS[4]
-    out_dir = ARGS[5]
+    band_file = ARGS[5]
+    out_dir = ARGS[6]
     return T, n_ε, n_θ, α, band_file, out_dir
 end
 
