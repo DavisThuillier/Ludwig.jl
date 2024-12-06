@@ -40,10 +40,12 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String, α::Real = 6.0)
 
     L = zeros(Float64, ℓ, ℓ) # Scattering operator
     f0s = map(x -> f0(x.energy, T), mesh.patches) # Fermi-Dirac Grid
+    vertices = (map(x -> SVector{6, UInt8}(digits(x, base=2, pad = 6)), 0:63))
 
     Threads.@threads for i in 1:ℓ
         for j in 1:ℓ
-            L[i,j] = Ludwig.electron_electron(mesh.patches, f0s, i, j, itps, T, vertex_pp, vertex_pk, 36)
+            # L[i,j] = Ludwig.electron_electron(mesh.patches, f0s, i, j, itps, T, vertex_pp, vertex_pk, 36)
+            L[i,j] = Ludwig.electron_electron(mesh.patches, f0s, i, j, itps, T, vertex_pp, vertex_pk, vertices)
         end
     end
 
