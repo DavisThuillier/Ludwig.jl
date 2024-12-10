@@ -133,30 +133,38 @@ function Jabc!(ζ, u, nonzero_indices, a::Patch, b::Patch, c::Patch, T::Real, k,
             nonzero_indices[i] = 0
         end
     end
-    d < 3 && @show α
-    
     β = - δ + sum(u)
-    volume = 0.0
-    for v in vertices
-        σ = 0
-        αv = 0.0 
-        for i in 1:6
-            if nonzero_indices[i] == 1
-                σ += v[i]
-                αv += α[i]*v[i]
-            end
+    
+    if d == 1
+        # Then, prod_α == α_i, the nonzero element
+        if 0 ≤ β/prod_α ≤ 1
+            return 32 * a.djinv * b.djinv * c.djinv * (1 - f0(εabc + Δε, T))
+        else
+            return 0.0
         end
-        if αv ≤ β
-            if iseven(σ)
-                volume += (β - αv)^(d-1)
-            else
-                volume -= (β - αv)^(d-1)
+    else
+        volume = 0.0
+        for v in vertices
+            σ = 0
+            αv = 0.0 
+            for i in 1:6
+                if nonzero_indices[i] == 1
+                    σ += v[i]
+                    αv += α[i]*v[i]
+                end
+            end
+            if αv ≤ β
+                if iseven(σ)
+                    volume += (β - αv)^(d-1)
+                else
+                    volume -= (β - αv)^(d-1)
+                end 
             end 
-        end 
-    end
-    volume *= (2^d / factorial(d - 1)) / prod_α # Really, volume / norm(u)
+        end
+        volume *= (2^d / factorial(d - 1)) / prod_α # Really, volume / norm(u)
 
-    return volume * a.djinv * b.djinv * c.djinv * (1 - f0(εabc + Δε, T))
+        return volume * a.djinv * b.djinv * c.djinv * (1 - f0(εabc + Δε, T))
+    end
 end
 
 """
