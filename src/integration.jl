@@ -96,7 +96,7 @@ end
 Compute ``\\mathcal{K}_{abc} ``, calculating the intersection volume exactly.
 
 """
-function Jabc!(ζ, u, nonzero_indices, a::Patch, b::Patch, c::Patch, T::Real, k, εabc, itp::ScaledInterpolation, vertices, Ω = 1e-16)
+function Jabc!(ζ, u, nonzero_indices, a::Patch, b::Patch, c::Patch, T::Real, k, εabc, itp::ScaledInterpolation, vertices)
     δ = a.energy + b.energy - c.energy - εabc # Energy conservation violations
 
     @inbounds v::SVector{2,Float64} = Interpolations.gradient(itp, k[1], k[2])
@@ -153,7 +153,7 @@ function Jabc!(ζ, u, nonzero_indices, a::Patch, b::Patch, c::Patch, T::Real, k,
             end 
         end 
     end
-    volume *= (64 / factorial(d - 1)) / prod_α # Really, volume / norm(u)
+    volume *= (2^d / factorial(d - 1)) / prod_α # Really, volume / norm(u)
 
     return volume * a.djinv * b.djinv * c.djinv * (1 - f0(εabc + Δε, T))
 end
@@ -271,7 +271,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         w123 = Weff_squared_123(grid[i], grid[j], grid[m], Fpp, Fpk, kijm, μ4)
 
         if w123 != 0
-            Lij += w123 * Jabc!(ζ, u, nonzero_indices, grid[i], grid[j], grid[m], T, kijm, energies[μ4], itps[μ4], vertices, Ω) * f0s[j] * (1 - f0s[m])
+            Lij += w123 * Jabc!(ζ, u, nonzero_indices, grid[i], grid[j], grid[m], T, kijm, energies[μ4], itps[μ4], vertices) * f0s[j] * (1 - f0s[m])
         end
 
         qimj .= mod.(qij .+ grid[m].momentum .+ 0.5, 1.0) .- 0.5
