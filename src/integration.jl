@@ -122,10 +122,10 @@ function Jabc!(ζ, u, nonzero_indices, a::Patch, b::Patch, c::Patch, T::Real, k,
     Δε = - δ * dot(ζ, u) / dot(u,u)
 
     α = 2 * u
-    prod_α::Float64 = 1.0
-    d::Int = 0
+    prod_α::Float64 = 1.0 
+    d::Int = 0 # Number of nonzero elements of α
     for i in 1:6
-        if abs(ζ[i] / a.de) > 1e-6 #FIXME: Add predicted cutoff
+        if abs(u[i] / a.de) > 1e-6 #FIXME: Add predicted cutoff
             nonzero_indices[i] = 1 
             prod_α *= α[i]
             d += 1
@@ -133,6 +133,7 @@ function Jabc!(ζ, u, nonzero_indices, a::Patch, b::Patch, c::Patch, T::Real, k,
             nonzero_indices[i] = 0
         end
     end
+    d < 3 && @show α
     
     β = - δ + sum(u)
     volume = 0.0
