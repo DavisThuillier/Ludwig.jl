@@ -134,15 +134,8 @@ function Jabc!(ζ, u, nonzero_indices, a::Patch, b::Patch, c::Patch, T::Real, k,
         end
     end
     β = - δ + sum(u)
-    
-    if d == 1
-        # Then, prod_α == α_i, the nonzero element
-        if 0 ≤ β/prod_α ≤ 1
-            return 32 * a.djinv * b.djinv * c.djinv * (1 - f0(εabc + Δε, T))
-        else
-            return 0.0
-        end
-    else
+
+    if d > 1
         volume = 0.0
         for v in vertices
             σ = 0
@@ -164,6 +157,15 @@ function Jabc!(ζ, u, nonzero_indices, a::Patch, b::Patch, c::Patch, T::Real, k,
         volume *= (2^d / factorial(d - 1)) / prod_α # Really, volume / norm(u)
 
         return volume * a.djinv * b.djinv * c.djinv * (1 - f0(εabc + Δε, T))
+    elseif d == 1
+        # Then, prod_α == α_i, the nonzero element
+        if 0 ≤ β/prod_α ≤ 1
+            return 32 * a.djinv * b.djinv * c.djinv * (1 - f0(εabc + Δε, T))
+        else
+            return 0.0
+        end
+    else
+        return 0.0
     end
 end
 
