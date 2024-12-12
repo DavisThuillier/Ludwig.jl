@@ -180,12 +180,10 @@ Compute the element (`i`,`j`) of the linearized Boltzmann collision operator for
 The bands used to construct `grid` are callable using the interpolated dispersion in `itps`. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center an can be calculated independent of `i` and `j`. The functions `Fpp` and `Fpk` are vertex factors defined for two patch variables and for one patch and one momentum vector respectively.
 
 """
-function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, itps::Vector{ScaledInterpolation}, T::Real, Fpp::Function, Fpk::Function, Ω)
+function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, itps::Vector{ScaledInterpolation}, T::Real, Fpp::Function, Fpk::Function)
     Lij::Float64 = 0.0
     w123::Float64 = 0.0
     w124::Float64 = 0.0
-
-    cutoff = - Ω * T
 
     ζ  = MVector{6,Float64}(undef)
     u  = MVector{6,Float64}(undef)
@@ -213,14 +211,10 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
             end
         end
         
-        if energies[μ4] > cutoff
+        w123 = Weff_squared_123(grid[i], grid[j], grid[m], Fpp, Fpk, kijm, μ4)
 
-            w123 = Weff_squared_123(grid[i], grid[j], grid[m], Fpp, Fpk, kijm, μ4)
-
-            if w123 != 0
-                Lij += w123 * Kabc!(ζ, u, grid[i], grid[j], grid[m], T, kijm, energies[μ4], itps[μ4]) * f0s[j] * (1 - f0s[m])
-            end
-
+        if w123 != 0
+            Lij += w123 * Kabc!(ζ, u, grid[i], grid[j], grid[m], T, kijm, energies[μ4], itps[μ4]) * f0s[j] * (1 - f0s[m])
         end
 
         qimj .= mod.(qij .+ grid[m].momentum .+ 0.5, 1.0) .- 0.5
@@ -234,15 +228,11 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
             end
         end
 
-        if energies[μ4] > cutoff
+        w123 = Weff_squared_123(grid[i], grid[m], grid[j], Fpp, Fpk, qimj, μ34)
+        w124 = Weff_squared_124(grid[i], grid[m], grid[j], Fpp, Fpk, qimj, μ34)
 
-            w123 = Weff_squared_123(grid[i], grid[m], grid[j], Fpp, Fpk, qimj, μ34)
-            w124 = Weff_squared_124(grid[i], grid[m], grid[j], Fpp, Fpk, qimj, μ34)
-
-            if w123 + w124 != 0
-                Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], T, qimj, energies[μ34], itps[μ34]) * f0s[m] * (1 - f0s[j])
-            end
-
+        if w123 + w124 != 0
+            Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], T, qimj, energies[μ34], itps[μ34]) * f0s[m] * (1 - f0s[j])
         end
 
     end
