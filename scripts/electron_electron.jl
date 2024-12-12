@@ -44,8 +44,8 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String, α::Real = 6.0)
 
     Threads.@threads for i in 1:ℓ
         for j in 1:ℓ
-            # L[i,j] = Ludwig.electron_electron(mesh.patches, f0s, i, j, itps, T, vertex_pp, vertex_pk, 36)
-            L[i,j] = Ludwig.electron_electron(mesh.patches, f0s, i, j, itps, T, vertex_pp, vertex_pk, vertices)
+            L[i,j] = Ludwig.electron_electron(mesh.patches, f0s, i, j, itps, T, vertex_pp, vertex_pk, 36)
+            # L[i,j] = Ludwig.electron_electron(mesh.patches, f0s, i, j, itps, T, vertex_pp, vertex_pk, vertices)
         end
     end
 
