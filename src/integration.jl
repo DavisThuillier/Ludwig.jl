@@ -121,8 +121,8 @@ function Jabc!(ζ, u, nonzero_indices, a::Patch, b::Patch, c::Patch, T::Real, k,
 
     Δε = - δ * dot(ζ, u) / dot(u,u)
 
-    α = 2 * u
-    prod_α::Float64 = 1.0 
+    α = 2 * u / a.de # Normalize by de to reduce numerical errors in the product of α
+    prod_α::Float64 = 1.0
     d::Int = 0 # Number of nonzero elements of α
     for i in 1:6
         if abs(u[i] / a.de) > 1e-6 #FIXME: Add predicted cutoff
@@ -133,7 +133,8 @@ function Jabc!(ζ, u, nonzero_indices, a::Patch, b::Patch, c::Patch, T::Real, k,
             nonzero_indices[i] = 0
         end
     end
-    β = - δ + sum(u)
+
+    β = (- δ + sum(u)) / a.de
 
     if d > 1
         volume = 0.0
@@ -154,7 +155,9 @@ function Jabc!(ζ, u, nonzero_indices, a::Patch, b::Patch, c::Patch, T::Real, k,
                 end 
             end 
         end
-        volume *= (2^d / factorial(d - 1)) / prod_α # Really, volume / norm(u)
+        
+        volume *= (2^d / factorial(d - 1)) / (a.de * prod_α) # Really, volume / norm(u)
+        volume = max(0.0, volume) # Set to zero if small negative error accumulated from sign oscillation
 
         return volume * a.djinv * b.djinv * c.djinv * (1 - f0(εabc + Δε, T))
     elseif d == 1
