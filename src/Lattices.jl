@@ -254,51 +254,26 @@ function map_to_bz(k, bz, rlv)
     if in_polygon(k, bz)
         return k
     else 
-        # Get projection of k onto basis vectors
-        P = copy(rlv)
-        P[:, 1] /= dot(rlv[:, 1], rlv[:, 1])
-        P[:, 2] /= dot(rlv[:, 2], rlv[:, 2])
-        n = round.(Int, P' * k)
-        if n == [0, 0]
-            min_overlap = - Inf
-            for i in [-1,1]
-                for j in [-1,1]
-                    overlap = dot(k, rlv * [i,j])
-                    if overlap > min_overlap
+        n = round.(inv(rlv) * k)
+        k -= rlv * n
+    
+        if !in_polygon(k, bz)
+            min_d = norm(k)
+            for i in -1:1
+                for j in -1:1
+                    i == 0 && j == 0 && continue
+                    d = norm(k - rlv * [i,j])
+                    if d < min_d
                         n = [i,j]
-                        min_overlap = overlap
+                        min_d = d
                     end
                 end
             end
-        end
-        return SVector{2}(k - rlv * n)
-    end
-end
 
-function map_to_bz(k, bz, rlv, P)
-    if in_polygon(k, bz)
-        return k
-    else 
-        # Get projection of k onto basis vectors
-        n = round.(Int, P * k)
-        if n == [0, 0]
-            n = [-1,1]
-            min_overlap = - Inf
-            for i in [-1,1]
-                for j in [-1,1]
-                    overlap = dot(k, rlv * [i,j])
-                    if overlap > min_overlap
-                        n = [i,j]
-                        min_overlap = overlap
-                    end
-                end
-            end
+            return SVector{2}(k - rlv * n)
+        else
+            return k
         end
-        if !in_polygon(k - rlv * n, bz)
-            @show P * k, n
-        end
-
-        return SVector{2}(k - rlv * n)
     end
 end
 
