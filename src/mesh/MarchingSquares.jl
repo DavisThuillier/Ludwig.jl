@@ -72,6 +72,9 @@ end
 
 function find_contour(x, y, A::AbstractMatrix, level::Real = 0.0)
     bundle = IsolineBundle(Isoline[], level)
+    # if level > maximum(A[.!isnan.(A)]) || level < minimum(A[.!isnan.(A)])
+    #     return bundle # No contours to be found
+    # end
 
     xax, yax = axes(A) # Valid indices for iterating over
     is = first(xax):last(xax)-1
