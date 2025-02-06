@@ -131,7 +131,7 @@ function vertex_pp(p1::Patch, p2::Patch)
         if p2.band_index < 3
             return 0.0
         else
-            return 1.0 # \gamma \gamma
+            return 1.0 # γγ
         end
     end
 end
