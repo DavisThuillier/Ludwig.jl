@@ -22,7 +22,7 @@ struct Patch{D, T}
     de::T 
     jinv::Matrix{T} # Jacobian of transformation from (kx, ky) --> (E, θ)
     djinv::T # Absolute value of inverse jacobian determinant
-    w::SVector{D, T} # Weight vector of overlap with orbitals
+    w::SVector{D} # Weight vector of overlap with orbitals
     corners::Vector{Int} # Coordinates of corners for plotting
 end
 
@@ -308,9 +308,10 @@ function arclength_slice(iso::MarchingSquares.Isoline, n::Int)
     return grid, collect(τ)   
 end
 
-function _ibz_mesh(l::Lattices.Lattice, ε::Function, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0)
+function _ibz_mesh(l::Lattices.Lattice, bands, orbital_weights, band_index::Int, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0, band_corner_shift::Int = 0)
     n_levels = max(3, n_levels) # Enforce minimum of 2 patches in the energy direction
     n_cuts = max(3, n_cuts) # Enforce minimum of 2 patches in angular direction 
+    n_bands = length(bands)
 
     ibz = Lattices.get_ibz(l)
 
@@ -325,7 +326,7 @@ function _ibz_mesh(l::Lattices.Lattice, ε::Function, T, n_levels::Int, n_cuts::
         for (j,y) in enumerate(Y)
             k = [x,y]
             if Lattices.in_polygon(k, ibz)
-                E[i,j] = ε(k)
+                E[i,j] = bands[band_index](k)
             else
                 E[i,j] = NaN # Identify point as living outside of IBZ
             end
@@ -335,13 +336,18 @@ function _ibz_mesh(l::Lattices.Lattice, ε::Function, T, n_levels::Int, n_cuts::
     e_threshold = α*T # Half-width of Fermi tube
     e_min = max(-e_threshold, 0.999 * minimum(E[.!isnan.(E)]))
     e_max = min(e_threshold, 0.999 * maximum(E[.!isnan.(E)]))
-    Δε = (e_max - e_min) / (n_levels - 1)
 
+    if e_min >= 0.0 || e_max <= 0.0
+        return Matrix{Patch}(undef, n_levels - 1, 0), Matrix{SVector{2, Float64}}(undef, n_levels, 0)
+    end
+
+    Δε = (e_max - e_min) / (n_levels - 1)
+    
     energies = collect(LinRange(e_min, e_max, 2 * n_levels - 1))
 
     # Shift energy levels to include corner energy if there is a crossing
     for k in ibz
-        corner_e = ε(k)
+        corner_e = bands[band_index](k)
         if e_min < corner_e < e_max 
             i = argmin(abs.(energies .- corner_e))
             iseven(i) && (i = i + (-1)^argmin(abs.([energies[i - 1], energies[i + 1]] .- corner_e)) 
@@ -377,7 +383,7 @@ function _ibz_mesh(l::Lattices.Lattice, ε::Function, T, n_levels::Int, n_cuts::
         end
     end
 
-    v = map(x -> ForwardDiff.gradient(ε, x), k)
+    v = map(x -> ForwardDiff.gradient(bands[band_index], x), k)
 
     A = zeros(Float64, 2, 2) # Finite Difference Jacobian
     k1 = SVector{2, Float64}([0.0,0.0])
@@ -392,7 +398,7 @@ function _ibz_mesh(l::Lattices.Lattice, ε::Function, T, n_levels::Int, n_cuts::
             else
                 i2 = i+1; i1 = i-1 # Backward difference
             end 
-            ΔE = ε(k[i2,j]) - ε(k[i1,j])
+            ΔE = bands[band_index](k[i2,j]) - bands[band_index](k[i1,j])
             A[1,1] = (k[i2,j][1] - k[i1,j][1]) / ΔE # ∂kx/∂ε |θ
             A[1,2] = (k[i2,j][2] - k[i1,j][2]) / ΔE # ∂ky/∂ε |θ
 
@@ -415,17 +421,20 @@ function _ibz_mesh(l::Lattices.Lattice, ε::Function, T, n_levels::Int, n_cuts::
             J[2,1] = - 2 * A[1,2] / det(A) / Δs[i]   # ∂s/∂kx |ky
             J[2,2] = 2 * A[1,1] / det(A) / Δs[i] # ∂s/∂ky |kx
 
+            w = orbital_weights(k[i,j])[:, band_index]
+            w = SVector{length(w), ComplexF64}(w)
+
             patches[i, j] = Patch(
                 k[i,j], 
-                ε(k[i,j]),
-                1,
+                bands[band_index](k[i,j]),
+                band_index,
                 v[i,j],
                 get_patch_area(corners, i, j),
                 Δε,
                 inv(J),
                 1/abs(det(J)), 
-                SVector{1, Float64}([1]),
-                [(j-1)*(n_levels) + i, (j-1)*(n_levels) + i+1, j*(n_levels) + i+1, j*(n_levels) + i]
+                w,
+                [(j-1)*(n_levels) + i, (j-1)*(n_levels) + i+1, j*(n_levels) + i+1, j*(n_levels) + i] .+ band_corner_shift
             )
         end
     end
@@ -433,21 +442,26 @@ function _ibz_mesh(l::Lattices.Lattice, ε::Function, T, n_levels::Int, n_cuts::
     return patches, corners
 end
 
-function generate_ibz_mesh(l::Lattices.Lattice, ε::Function, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0)
-    patches, corners = _ibz_mesh(l, ε, T, n_levels, n_cuts, N, α)
+function generate_ibz_mesh(l::Lattices.Lattice, bands::Vector{Function}, orbital_weights, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0)
+    grid = Vector{Patch}(undef, 0)
+    corners = Vector{SVector{2, Float64}}(undef, 0)
+    n_bands = length(bands)
+    
+    for i in eachindex(bands)
+        _ibz_mesh(l, bands, orbital_weights, i, T, n_levels, n_cuts, N, α, length(corners)) |> 
+        x -> begin 
+            append!(grid, x[1])
+            append!(corners, x[2])
+        end
+    end
 
-    return Mesh(vec(patches), vec(corners), 1, α)
+    return Mesh(grid, corners, n_bands, α)
 
 end
 
-function generate_bz_mesh(l::Lattices.Lattice, ε::Function, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0)
-    patches, corners = _ibz_mesh(l, ε, T, n_levels, n_cuts, N, α)
-
+function generate_bz_mesh(l::Lattices.Lattice, bands, orbital_weights, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0)
     G = Lattices.point_group(l)
-    bz = Lattices.get_bz(l)
     ibz = Lattices.get_ibz(l)
-
-    tol = 1e-4 * Lattices._diameter(bz) # Tolerance for comparing whether two points are equivalent scaled by size of BZ
 
     θs = Vector{Float64}(undef, length(G.elements))
     for i in eachindex(G.elements)
@@ -457,25 +471,30 @@ function generate_bz_mesh(l::Lattices.Lattice, ε::Function, T, n_levels::Int, n
     end
     θperm = sortperm(θs)
 
-    full_patches = deepcopy(patches)
-    full_corners = deepcopy(corners)
-    for i in θperm
-        Groups.is_identity(G.elements[i]) && continue
+    full_patches = Matrix{Patch}(undef, n_levels - 1, 0)
+    full_corners = Matrix{SVector{2,Float64}}(undef, n_levels, 0)
 
-        O = Groups.get_matrix_representation(G.elements[i])
-        if det(O) < 0.0 # Improper rotation
-            full_patches = hcat(full_patches, 
-                reverse( map(x -> patch_op(x, O, length(full_corners)), patches), dims = 2)
-            )
-        else
-            full_patches = hcat(full_patches, 
-                map(x -> patch_op(x, O, length(full_corners)), patches) 
-            )
+    for j in eachindex(bands)
+        patches, corners = _ibz_mesh(l, bands, orbital_weights, j, T, n_levels, n_cuts, N, α)
+
+        size(patches)[2] == 0 && continue # No Fermi surface
+
+        for i in θperm
+            O = Groups.get_matrix_representation(G.elements[i])
+            if det(O) < 0.0 # Improper rotation
+                full_patches = hcat(full_patches, 
+                    reverse( map(x -> patch_op(x, O, length(full_corners)), patches), dims = 2)
+                )
+            else
+                full_patches = hcat(full_patches, 
+                    map(x -> patch_op(x, O, length(full_corners)), patches) 
+                )
+            end
+            full_corners = hcat(full_corners, map(x -> O*x, corners))
         end
-        full_corners = hcat(full_corners, map(x -> O*x, corners))
     end
 
-    return Mesh(vec(full_patches), vec(full_corners), 1, α)
+    return Mesh(vec(full_patches), vec(full_corners), length(bands), α)
 end
 
 """
