@@ -19,10 +19,10 @@ with dispersion `ε` at temperature `T`.
 is an integral over momenta in patch ``\\mathcal{P}_i``.
 
 """
-function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, T::Real, εabc, ε::Function)
+function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, T::Real, k, εabc, ε)
     δ = a.energy + b.energy - c.energy - εabc # Energy conservation violations
 
-    v::SVector{2,Float64} = ForwardDiff.gradient(x -> ε(x + b.momentum - c.momentum), a.momentum)
+    v::SVector{2,Float64} = ForwardDiff.gradient(ε, k)
 
     # ζ[1], ζ[2] = v' * a.jinv
     # ζ[3], ζ[4] = v' * b.jinv
@@ -41,7 +41,6 @@ function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, T::Real, εabc, ε::Function
     u[4] = - ζ[4]
     u[5] = (- c.de/2.0) - ζ[5]
     u[6] = - ζ[6]
-
 
     # εabc ≈ ε0 + ζ . x
     ρ < δ^2 / dot(u,u) && return 0.0 # Check for intersection of energy conserving 5-plane with coordinate space
@@ -63,6 +62,37 @@ function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, T::Real, k, εabc, itp::Scal
     δ = a.energy + b.energy - c.energy - εabc # Energy conservation violations
 
     @inbounds v::SVector{2,Float64} = Interpolations.gradient(itp, k[1], k[2])
+
+    # ζ[1], ζ[2] = v' * a.jinv
+    # ζ[3], ζ[4] = v' * b.jinv
+    # ζ[5], ζ[6] = - v' * c.jinv
+    ζ[1] = v[1] * a.jinv[1,1] + v[2] * a.jinv[2,1]
+    ζ[2] = v[1] * a.jinv[1,2] + v[2] * a.jinv[2,2]
+    ζ[3] = v[1] * b.jinv[1,1] + v[2] * b.jinv[2,1]
+    ζ[4] = v[1] * b.jinv[1,2] + v[2] * b.jinv[2,2]
+    ζ[5] = - (v[1] * c.jinv[1,1] + v[2] * c.jinv[2,1])
+    ζ[6] = - (v[1] * c.jinv[1,2] + v[2] * c.jinv[2,2])
+
+    # u = [a.de/2.0, 0.0, b.de/2.0, 0.0, -c.de/2.0, 0.0] - ζ
+    u[1] = a.de/2.0 - ζ[1]
+    u[2] = - ζ[2]
+    u[3] = b.de/2.0 - ζ[3]
+    u[4] = - ζ[4]
+    u[5] = (- c.de/2.0) - ζ[5]
+    u[6] = - ζ[6]
+
+    ρ < δ^2 / dot(u,u) && return 0.0 # Check for intersection of energy conserving 5-plane with coordinate space
+
+    Δε = - δ * dot(ζ, u) / dot(u,u)
+    r5 = (ρ - δ^2 / dot(u,u) )^(5/2)
+
+    return vol * a.djinv * b.djinv * c.djinv * r5 * (1 - f0(εabc + Δε, T)) / norm(u)
+end
+
+function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, T::Real, k, εabc, itp::ScaledInterpolation, invrlv)
+    δ = a.energy + b.energy - c.energy - εabc # Energy conservation violations
+
+    @inbounds v::SVector{2,Float64} = invrlv * Interpolations.gradient(itp, k[1], k[2])
 
     # ζ[1], ζ[2] = v' * a.jinv
     # ζ[3], ζ[4] = v' * b.jinv
@@ -233,6 +263,70 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
 
         if w123 + w124 != 0
             Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], T, qimj, energies[μ34], itps[μ34]) * f0s[m] * (1 - f0s[j])
+        end
+
+    end
+
+    return Lij / (grid[i].dV * (1 - f0s[i]))
+end
+
+function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, itps::Vector{ScaledInterpolation}, T::Real, Fpp::Function, Fpk::Function, rlv)
+    Lij::Float64 = 0.0
+    w123::Float64 = 0.0
+    w124::Float64 = 0.0
+
+    ζ  = MVector{6,Float64}(undef)
+    u  = MVector{6,Float64}(undef)
+
+    kij = grid[i].momentum + grid[j].momentum
+    qij = grid[i].momentum - grid[j].momentum
+    kijm = Vector{Float64}(undef, 2)
+    qimj = Vector{Float64}(undef, 2)
+
+    energies = Vector{Float64}(undef, length(itps))
+
+    μ4::Int = 0
+    μ34::Int = 0
+    min_e::Float64 = 0
+
+    invrlv = inv(rlv)
+
+    for m in eachindex(grid)
+        # kijm .= Lattices.map_to_bz(kij - grid[m].momentum, bz, rlv)
+        kijm = mod.(invrlv * (kij .- grid[m].momentum), 1.0)
+
+        min_e = 1e3
+        μ4 = 1
+        for μ in eachindex(itps)
+            energies[μ] = itps[μ](kijm[1], kijm[2])
+            if abs(energies[μ]) < min_e
+                min_e = abs(energies[μ]); μ4 = μ
+            end
+        end
+        
+        w123 = Weff_squared_123(grid[i], grid[j], grid[m], Fpp, Fpk, kijm, μ4)
+
+        if w123 != 0
+            Lij += w123 * Kabc!(ζ, u, grid[i], grid[j], grid[m], T, kijm, energies[μ4], itps[μ4], invrlv) * f0s[j] * (1 - f0s[m])
+        end
+
+        # qimj .= Lattices.map_to_bz(qij + grid[m].momentum, bz, rlv)
+        qimj = mod.(invrlv * (qij .+ grid[m].momentum), 1.0)
+
+        min_e = 1e3
+        μ34 = 1
+        for μ in eachindex(itps)
+            energies[μ] = itps[μ](qimj[1], qimj[2])
+            if abs(energies[μ]) < min_e
+                min_e = abs(energies[μ]); μ34 = μ
+            end
+        end
+
+        w123 = Weff_squared_123(grid[i], grid[m], grid[j], Fpp, Fpk, qimj, μ34)
+        w124 = Weff_squared_124(grid[i], grid[m], grid[j], Fpp, Fpk, qimj, μ34)
+
+        if w123 + w124 != 0
+            Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], T, qimj, energies[μ34], itps[μ34], invrlv) * f0s[m] * (1 - f0s[j])
         end
 
     end
