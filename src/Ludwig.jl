@@ -12,6 +12,11 @@ using .Lattices
 include(joinpath("mesh","MarchingSquares.jl"))
 using .MarchingSquares
 
+include(joinpath("mesh", "FSMesh.jl"))
+using .FSMesh
+
+include("Integration.jl")
+using .Integration
 
 export Lattices, Groups, MarchingSquares
 
@@ -23,7 +28,6 @@ using IterativeSolvers
 
 include("utilities.jl")
 include("mesh/mesh.jl")
-include("integration.jl")
 include("properties.jl")
 include("vertex_factors.jl")
 
