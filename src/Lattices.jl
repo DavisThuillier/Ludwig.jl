@@ -250,11 +250,11 @@ function get_perpendicular_bisector_intersection(v1, v2)
     return intersection(0.5 * v1, [v1[2], -v1[1]], 0.5 * v2, [v2[2], -v2[1]])
 end
 
-function map_to_bz(k, bz, rlv)
+function map_to_bz(k, bz, rlv, invrlv)
     if in_polygon(k, bz)
         return k
     else 
-        n = round.(inv(rlv) * k)
+        n = round.(invrlv * k)
         k -= rlv * n
     
         if !in_polygon(k, bz)
@@ -276,5 +276,8 @@ function map_to_bz(k, bz, rlv)
         end
     end
 end
+
+map_to_bz(k, bz, rlv) = map_to_bz(k, bz, rlv, inv(rlv))
+map_to_bz(k, l::Lattice) = map_to_bz(k, get_bz(l), reciprocal_lattice_vectors(l))
 
 end # module
