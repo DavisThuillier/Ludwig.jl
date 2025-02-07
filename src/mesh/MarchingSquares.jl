@@ -2,9 +2,9 @@ module MarchingSquares
 
 import StaticArrays: SVector
 import DataStructures: OrderedDict
-import LinearAlgebra: norm
+import LinearAlgebra: norm, det, dot
 
-export Isoline, IsolineBundle
+export Isoline, IsolineBundle, contour_intersection
 
 """
 Representation of a contour as an ordered set of discrete points
@@ -168,6 +168,46 @@ function get_bounding_box(points)
     max_y = maximum(last.(points))
 
     return ((min_x, max_x), (min_y, max_y))
+end
+
+function contour_intersection(a, v, iso::Isoline, i = 1)
+    imax = lastindex(iso.points)
+    oldsign = 0 # Flag to indicate first iteration
+    area = 0.0
+    while i <= imax
+        w = iso.points[i] - a 
+        area = w[1] * v[2] - w[2]*v[1]
+        newsign = sign(area) # Sign of cross product area
+        if oldsign != 0 && newsign*oldsign < 0 
+            i -= 1
+            break
+        end
+
+        oldsign = newsign
+        i += 1
+    end
+
+    if i == imax + 1
+        θmax = atan(abs(area), abs(dot(v, iso.points[imax] - a)))
+        θ1 = atan(abs((iso.points[1][1] - a[1]) * v[2] - (iso.points[1][2] - a[2])*v[1]), abs(dot(v, iso.points[1] - a)))
+        
+        if abs(θmax) < abs(θ1)
+            return iso.points[imax], (imax, imax)
+        else
+            return iso.points[1], (1,1)
+        end 
+    else
+        p1 = iso.points[i]; p2 = iso.points[i+1]
+        return _intersection(a, v, p1, p2-p1), (i, i+1)
+    end
+end
+
+function _intersection(a1, v1, a2, v2)
+    V = hcat(v1, -v2)
+    det(V) == 0 && return [NaN, NaN] # No intersection
+
+    t = inv(V) * (a2 - a1)
+    return SVector{2}(a1 + t[1] * v1)
 end
 
 end # module MarchingSquares
