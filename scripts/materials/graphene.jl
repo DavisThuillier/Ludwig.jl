@@ -2,6 +2,7 @@ const material::String = "graphene"
 
 const a::Float64 = 2.46e-10  # Lattice constant in m
 const t::Float64 = 2.8 # Nearest neighbor hopping in eV
+const graphene = Ludwig.Lattices.Lattice([1.0, 0.0], [0.5, 0.5*sqrt(3)])
 
 function Δ(k)
     return exp(-2π * im * k[1]) * (1 + 2 * exp(3π * im * k[1]) * cos(sqrt(3) * π * k[2]))
