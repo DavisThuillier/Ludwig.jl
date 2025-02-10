@@ -1,8 +1,7 @@
 module Lattices
 
 export Lattice, primitives, reciprocal_lattice_vectors, point_group, lattice_type
-
-export get_bz
+export get_bz, map_to_bz
 
 using LinearAlgebra
 using StaticArrays
