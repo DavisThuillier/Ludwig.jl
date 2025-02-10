@@ -4,9 +4,10 @@ import StaticArrays: SVector, SMatrix
 using LinearAlgebra
 import ..MarchingSquares: Isoline, get_bounding_box, contours, contour_intersection
 import ..Lattices: Lattice, get_ibz, in_polygon, point_group
+import ..Groups: get_matrix_representation
 import ForwardDiff: gradient
 
-export MultibandPatch, SinglebandPatch, Patch
+export Patch, VirtualPatch, AbstractPatch
 
 abstract type AbstractPatch end
 
@@ -21,36 +22,32 @@ struct Patch <: AbstractPatch
     band_index::Int
 end
 
-struct SimplePatch <: AbstractPatch
+struct VirtualPatch <: AbstractPatch
     e::Float64 # Energy
     k::SVector{2,Float64} # Momentum
     v::SVector{2,Float64} # Group velocity
     band_index::Int
 end
 
-function patch_op(p::MultibandPatch, M::Matrix)
-    return MultibandPatch(
-        p.energy,
-        SVector{2}(M * p.momentum), 
+function patch_op(p::Patch, M::Matrix)
+    return Patch(
+        p.e,
+        SVector{2}(M * p.k), 
         SVector{2}(M * p.v),
         p.de,
         p.dV,
         M * p.jinv, 
         p.djinv,
-        p.U,
         p.band_index
     )
 end
 
-function patch_op(p::SinglebandPatch, M::Matrix)
-    return SinglebandPatch(
+function patch_op(p::VirtualPatch, M::Matrix)
+    return VirtualPatch(
         p.energy,
         SVector{2}(M * p.momentum), 
         SVector{2}(M * p.v),
-        p.de,
-        p.dV,
-        M * p.jinv, 
-        p.djinv,
+        band_index
     )
 end
 
@@ -64,7 +61,7 @@ Container struct for patches over which to integrate.
 struct Mesh
     patches::Vector{Patch}
     corners::Vector{SVector{2, Float64}} 
-    corner_inds::Vector{Vector{Int}}
+    corner_inds::Vector{SVector{4, Int}}
 end
 
 ###
@@ -144,7 +141,7 @@ function mesh_region(region, ε::Function, band_index, T, n_levels::Int, n_cuts:
 
     patches = Matrix{Patch}(undef, n_levels-1, n_cuts-1)
     corners = Vector{SVector{2, Float64}}(undef, (2 * n_levels - 2) * n_cuts)
-    corner_ids = Matrix{Vector{Int}}(undef, n_levels-1, n_cuts-1)
+    corner_ids = Matrix{SVector{4, Int}}(undef, n_levels-1, n_cuts-1)
 
     cind = 1 # Corner iteration index
 
@@ -153,6 +150,7 @@ function mesh_region(region, ε::Function, band_index, T, n_levels::Int, n_cuts:
 
         corners[cind], ij3 = contour_intersection(k[1], gradient(ε, k[1]), c[i-1].isolines[1])
         corners[cind+1], ij4 = contour_intersection(k[1], gradient(ε, k[1]), c[i+1].isolines[1])
+
         cind += 2        
         for j in 2:2:lastindex(k)
             corners[cind], ij1 = contour_intersection(k[j+1], gradient(ε, k[j+1]), c[i-1].isolines[1])
@@ -170,6 +168,7 @@ function mesh_region(region, ε::Function, band_index, T, n_levels::Int, n_cuts:
                 norm(k[j] - c[i+1].isolines[1].points[x[2]])])],
                 (ij4, ij2)
             )
+            
 
             dV = poly_area(vcat(corners[cind-4:cind-1], c[i-1].isolines[1].points[min(i1,i3):max(i1,i3)], c[i+1].isolines[1].points[min(i2,i4):max(i2,i4)]), k[j])
 
@@ -212,7 +211,7 @@ function mesh_region(region, ε::Function, band_index, T, n_levels::Int, n_cuts:
 
     end
 
-    return vec(patches)
+    return vec(patches), corners, vec(corner_ids)
 end
 
 mesh_region(region, ε, T, n_levels, n_cuts, N = 1001, α = 6.0) = mesh_region(region, ε, 1, T, n_levels, n_cuts, N, α)
@@ -232,58 +231,64 @@ function poly_area(poly, c)
     return A/2
 end
 
-function ibz_mesh(l::Lattice, bands::Vector{Function}, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0)
+function ibz_mesh(l::Lattice, bands::AbstractVector, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0)
     full_patches = Vector{Patch}(undef, 0)
+    full_corners = Vector{SVector{2, Float64}}(undef, 0)
+    full_corner_ids = Vector{SVector{4, Int}}
     ibz = get_ibz(l)
 
     for i in eachindex(bands)
-        patches = mesh_region(ibz, bands[i], i, T, n_levels, n_cuts, N, α)
+        patches, corners, corner_ids = mesh_region(ibz, bands[i], i, T, n_levels, n_cuts, N, α)
         full_patches = vcat(full_patches, patches)
+        ℓ = length(full_corners)
+        full_corner_ids = vcat(full_corners, map(x -> SVector{4, Int}(x .+ ℓ), corner_ids))
+        full_corners = vcat(full_corners, corners)
     end
 
-    return full_patches
+    return full_patches, full_corners, full_corner_ids
 end
 
 ibz_mesh(l::Lattice, ε::Function, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0) = ibz_mesh(l, [ε], T, n_levels, n_cuts, N, α)
 
-function bz_mesh(l::Lattice, bands::Vector{Function}, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0)
+function bz_mesh(l::Lattice, bands::AbstractVector, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0)
     G = point_group(l)
     ibz = get_ibz(l)
 
     θs = Vector{Float64}(undef, length(G.elements))
     for i in eachindex(G.elements)
-        O = Groups.get_matrix_representation(G.elements[i])
+        O = get_matrix_representation(G.elements[i])
         k = sum(map(x -> O*x, ibz)) # Central direction vector of IBZ
         θs[i] = mod(atan(k[2], k[1]), 2pi)
     end
     θperm = sortperm(θs)
 
     full_patches = Matrix{Patch}(undef, n_levels - 1, 0)
-    # full_corners = Matrix{SVector{2,Float64}}(undef, n_levels, 0)
+    full_corners = Vector{SVector{2,Float64}}(undef, n_levels, 0)
+    full_corner_ids = Vector{SVector{4, Int}}(undef, n_levels - 1, 0)
 
     for j in eachindex(bands)
-        patches = mesh_region(ibz, bands[j], j, T, n_levels, n_cuts, N, α)
-
-        size(patches)[2] == 0 && continue # No Fermi surface
-
+        patches, corners, corner_ids = mesh_region(ibz, bands[j], j, T, n_levels, n_cuts, N, α)
+        
         for i in θperm
-            O = Groups.get_matrix_representation(G.elements[i])
+            O = get_matrix_representation(G.elements[i])
             if det(O) < 0.0 # Improper rotation
                 full_patches = hcat(full_patches, 
-                    reverse( map(x -> patch_op(x, O), patches), dims = 2)
+                    reverse( map(x -> patch_op(x, O), reshape(patches, n_levels - 1, :)), dims = 2)
                 )
             else
                 full_patches = hcat(full_patches, 
-                    map(x -> patch_op(x, O), patches) 
+                    map(x -> patch_op(x, O), reshape(patches, n_levels - 1, :)) 
                 )
             end
-            # full_corners = hcat(full_corners, map(x -> O*x, corners))
+            ℓ = length(full_corners)
+            full_corner_ids = vcat(full_corner_ids, map(x -> SVector{4, Int}(x .+ ℓ), corner_ids))
+            full_corners = vcat(full_corners, map(x -> O*x, corners))
         end
     end
 
-    return full_patches
+    return vec(full_patches), vec(full_corners), vec(full_corner_ids)
 end
 
-bz_mesh(l::Lattice, ε::Function, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0) = bz_mesh(l, [ε], T, n_levels, n_cuts, N, α)
+bz_mesh(l::Lattice, ε, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0) = bz_mesh(l, [ε], T, n_levels, n_cuts, N, α)
 
 end
