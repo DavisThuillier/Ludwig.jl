@@ -5,7 +5,8 @@ using LinearAlgebra
 using ForwardDiff
 using Interpolations
 
-import ..Lattices : map_to_bz
+import ..Lattices: map_to_bz
+import ..FSMesh: Patch, VirtualPatch
 
 export Γabc!, electron_electron
 
@@ -67,7 +68,7 @@ function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, itp::ScaledInterpo
     return Kabc!(ζ, u, a, b, c, v, εabc, T)
 end 
 
-Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, d::SimplePatch, T::Real) = Kabc!(ζ, u, a, b, c, d.v, d.e, T)
+Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, d::VirtualPatch, T::Real) = Kabc!(ζ, u, a, b, c, d.v, d.e, T)
 
 function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, itp::ScaledInterpolation, invrlv, T::Real)
     v::SVector{2,Float64} = invrlv * Interpolations.gradient(itp, k[1], k[2])
@@ -116,7 +117,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         w123 = Weff_squared_123(grid[i], grid[j], grid[m], Fpp, Fpk, kijm, μ4)
 
         if w123 != 0
-            Lij += w123 * Kabc!(ζ, u, grid[i], grid[j], grid[m], T, kijm, energies[μ4], itps[μ4]) * f0s[j] * (1 - f0s[m])
+            Lij += w123 * Kabc!(ζ, u, grid[i], grid[j], grid[m], kijm, energies[μ4], itps[μ4], T) * f0s[j] * (1 - f0s[m])
         end
 
         qimj .= mod.(qij .+ grid[m].momentum .+ 0.5, 1.0) .- 0.5
@@ -134,7 +135,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         w124 = Weff_squared_124(grid[i], grid[m], grid[j], Fpp, Fpk, qimj, μ34)
 
         if w123 + w124 != 0
-            Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], T, qimj, energies[μ34], itps[μ34]) * f0s[m] * (1 - f0s[j])
+            Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], qimj, energies[μ34], itps[μ34], T) * f0s[m] * (1 - f0s[j])
         end
 
     end
@@ -179,7 +180,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         w123 = Weff_squared_123(grid[i], grid[j], grid[m], Fpp, Fpk, kijm, μ4)
 
         if w123 != 0
-            Lij += w123 * Kabc!(ζ, u, grid[i], grid[j], grid[m], T, kijm, energies[μ4], itps[μ4], invrlv) * f0s[j] * (1 - f0s[m])
+            Lij += w123 * Kabc!(ζ, u, grid[i], grid[j], grid[m], kijm, energies[μ4], itps[μ4], invrlv, T) * f0s[j] * (1 - f0s[m])
         end
 
         # qimj .= Lattices.map_to_bz(qij + grid[m].momentum, bz, rlv)
@@ -198,7 +199,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         w124 = Weff_squared_124(grid[i], grid[m], grid[j], Fpp, Fpk, qimj, μ34)
 
         if w123 + w124 != 0
-            Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], T, qimj, energies[μ34], itps[μ34], invrlv) * f0s[m] * (1 - f0s[j])
+            Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], qimj, energies[μ34], itps[μ34], invrlv, T) * f0s[m] * (1 - f0s[j])
         end
 
     end
@@ -230,16 +231,18 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         kijm .= kij .- grid[m].momentum 
         kijm_rlb .= mod.(invrlv * kijm, 1.0) # In reciprocal lattice basis, mapped to interpolation region
 
+        
+
         for μ in eachindex(bands)
             if is_function[μ]
-                p = SimplePatch(
+                p = VirtualPatch(
                     e = bands[μ](kijm),
                     k = umklapp ? kijm : map_to_bz(kijm, bz, rlv, invrlv),
                     v = ForwardDiff.gradient(bands[μ], kijm),
                     band_index = μ
                 )
             else # Otherwise assume this is an interpolation
-                p = SimplePatch(
+                p = VirtualPatch(
                     e = bands[μ](kijm_rlb[1], kijm_rlb[2]),
                     k = umklapp ? kijm : map_to_bz(kijm, bz, rlv, invrlv),
                     v = invrlv * Interpolations.gradient(bands[μ], kijm_rlb[1], kijm_rlb[2]),
@@ -258,14 +261,14 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
 
         for μ in eachindex(bands)
             if is_function[μ]
-                p = SimplePatch(
+                p = VirtualPatch(
                     e = bands[μ](qimj),
                     k = umklapp ? kimj : map_to_bz(qimj, bz, rlv, invrlv),
                     v = ForwardDiff.gradient(bands[μ], qimj),
                     band_index = μ
                 )
             else
-                p = SimplePatch(
+                p = VirtualPatch(
                     e = bands[μ](qimj_rlb[1], qimj_rlb[2]),
                     k = umklapp ? kijm : map_to_bz(kijm, bz, rlv, invrlv),
                     v = Interpolations.gradient(bands[μ], qimj_rlb[1], qimj_rlb[2]),
