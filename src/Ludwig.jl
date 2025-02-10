@@ -18,7 +18,7 @@ using .FSMesh
 include("Integration.jl")
 using .Integration
 
-export Lattices, Groups, MarchingSquares
+export Lattices, Groups, MarchingSquares, FSMesh
 
 import StaticArrays: SVector, MVector, MMatrix, SMatrix
 using LinearAlgebra
