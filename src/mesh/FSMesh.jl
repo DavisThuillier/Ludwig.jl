@@ -93,7 +93,7 @@ function arclength_slice(iso::Isoline, n::Int)
     jmax = length(arclengths)
     for i in eachindex(τ)
         i == 1 && continue
-        while j < jmax && arclengths[j] < τ[i]
+        while j < jmax && arclengths[j] <= τ[i]
             j += 1
         end
 
@@ -103,7 +103,7 @@ function arclength_slice(iso::Isoline, n::Int)
     return grid, collect(τ)   
 end
 
-function mesh_region(region, ε::Function, band_index, T, n_levels::Int, n_cuts::Int, N = 1001, α = 6.0)
+function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int, N = 1001, α = 6.0)
     n_levels = max(3, n_levels) # Enforce minimum of 2 patches in the energy direction
     n_cuts = max(3, n_cuts) # Enforce minimum of 2 patches in angular direction 
 
@@ -115,11 +115,12 @@ function mesh_region(region, ε::Function, band_index, T, n_levels::Int, n_cuts:
     for (i,x) in enumerate(X)
         for (j,y) in enumerate(Y)
             k = [x,y]
-            if in_polygon(k, region)
-                E[i,j] = ε(k)
-            else
-                E[i,j] = NaN # Identify point as living outside of IBZ
-            end
+            E[i,j] = ε(k)
+            # if in_polygon(k, region)
+            #     E[i,j] = ε(k)
+            # else
+            #     E[i,j] = NaN # Identify point as living outside of IBZ
+            # end
         end
     end
 
@@ -137,7 +138,8 @@ function mesh_region(region, ε::Function, band_index, T, n_levels::Int, n_cuts:
         end
     end
 
-    c = contours(X, Y, E, energies) # Generate Fermi surface contours
+    c = contours(X, Y, E, energies; mask = region) # Generate Fermi surface contours
+    @show map(x -> length(x.isolines), c)
 
     patches = Matrix{Patch}(undef, n_levels-1, n_cuts-1)
     corners = Vector{SVector{2, Float64}}(undef, (2 * n_levels - 2) * n_cuts)
