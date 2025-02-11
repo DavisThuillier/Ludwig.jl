@@ -77,29 +77,33 @@ function get_cells(x, y, A::AbstractMatrix, level::Real = 0.0, mask = [])
 
     @inbounds for i in first(xax):last(xax)-1
         for j in first(yax):last(yax)-1
-            # if any(isnan.([A[i, j], A[i+1, j], A[i+1,j+1], A[i,j+1]]))
-            #     continue
-            # end
+            
+            if length(mask) > 2 # Check for intersection with masking polygon
+                cell = [[x[i], y[j]], [x[i+1],y[j]], [x[i+1], y[j+1]], [x[i], y[j+1]]]
+                inside = in_polygon.(cell, Ref(mask)) 
+                sum(inside) == 0 && continue
 
-            intersect = (A[i, j] > level) ? 0x01 : 0x00
-            (A[i + 1, j] > level) && (intersect |= 0x02)
-            (A[i + 1, j + 1] > level) && (intersect |= 0x04)
-            (A[i, j + 1] > level) && (intersect |= 0x08)
+                intersect = (A[i, j] > level) ? 0x01 : 0x00
+                (A[i + 1, j] > level) && (intersect |= 0x02)
+                (A[i + 1, j + 1] > level) && (intersect |= 0x04)
+                (A[i, j + 1] > level) && (intersect |= 0x08)
 
-            if !(intersect == 0x00) && !(intersect == 0x0f)
-                if length(mask) > 2 # Check for intersection with masking polygon
-                    cell = [[x[i],y[i+1]], [x[i+1],y[i]], [x[i+1], y[i+1]], [x[i], y[i+1]]]
-                    inside = in_polygon.(cell, Ref(mask))
-                                            
-                    if 0 < sum(inside) < 3
+                if !(intersect == 0x00) && !(intersect == 0x0f)
+                    if 0 < sum(inside) < 4
                         border_cells[(i,j)] = crossing_lookup[intersect]
-                        continue
+                    elseif sum(inside) == 4
+                        cells[(i,j)] = crossing_lookup[intersect]
                     end
                 end
-
-                cells[(i,j)] = crossing_lookup[intersect]
+            else
+                intersect = (A[i, j] > level) ? 0x01 : 0x00
+                (A[i + 1, j] > level) && (intersect |= 0x02)
+                (A[i + 1, j + 1] > level) && (intersect |= 0x04)
+                (A[i, j + 1] > level) && (intersect |= 0x08)
+                if !(intersect == 0x00) && !(intersect == 0x0f)
+                    cells[(i,j)] = crossing_lookup[intersect]
+                end
             end
-
         end
     end 
 
@@ -125,7 +129,7 @@ function find_contour(x, y, A::AbstractMatrix, level::Real = 0.0; mask = [])
     js = first(yax):last(yax)-1
 
     cells, border_cells = get_cells(x, y, A, level, mask)
-    
+
     while Base.length(cells) > 0
         segment = Vector{SVector{2,Float64}}(undef, 0)
         start_index, case = first(cells)
@@ -136,12 +140,12 @@ function find_contour(x, y, A::AbstractMatrix, level::Real = 0.0; mask = [])
         # Check if the contour forms a loop
         isclosed = end_index == start_index ? true : false
 
-        if !isclosed && length(cells) > 0
+        if !isclosed && (length(cells) > 0 || length(border_cells) > 0)
             # Go back to the starting cell and walk the other direction
             edge, index = get_next_cell(start_edge, start_index)
-            !haskey(cells, index) && break 
+            !haskey(cells, index) && !haskey(border_cells, index) && break 
 
-            follow_contour!(cells, border_cells, reverse!(segment), x, y, A, is, js, index, edge, level)
+            follow_contour!(cells, border_cells, reverse!(segment), x, y, A, is, js, index, edge, level; mask)
         end
 
         seg_length = 0.0
@@ -170,7 +174,7 @@ function param_intersection(a1, v1, a2, v2)
     det(V) == 0 && return [NaN, NaN] # No intersection
 
     t = inv(V) * (a2 - a1)
-    return a1 + t[1] * v1, t[1]
+    return a1 + t[1] * v1, t
 end
 
 function follow_contour!(cells, border_cells, contour, x, y, A, is, js, start_index, start_edge, level; mask = [])
@@ -180,30 +184,40 @@ function follow_contour!(cells, border_cells, contour, x, y, A, is, js, start_in
     push!(contour, get_crossing(x, y, A, index, edge, level))
     while true
 
-        edge = pop!(cells, index) ⊻ edge
-        push!(contour, get_crossing(x, y, A, index, edge, level))
-        edge, index = get_next_cell(edge, index)
+        if index ∈ keys(cells)
+            edge = pop!(cells, index) ⊻ edge
+            push!(contour, get_crossing(x, y, A, index, edge, level))
+            edge, index = get_next_cell(edge, index)
 
-
-        # if index ∈ keys(border_cells)
-        #     edge = pop!(border_cells, index) ⊻ edge
-            
-        #     # p = get_crossing(x, y, A, index, edge, level) 
-        #     # for i in eachindex(mask)
-        #     #     @show p - contour[end]
-        #     #     ip = mod(i, length(mask)) + 1
-        #     #     q, t = param_intersection(mask[i], mask[ip] - mask[i], contour[end], p - contour[end])
-        #     #     @show q, t
-        #     # end
-        #     # boundary_intersection = intersection(contour[end], p - contour[end])
-        #     break
-        # end
-        if index ∈ keys(border_cells)
-            @show show index
+            (!(index[1] ∈ is) || !(index[2] ∈ js) || index == start_index) && break
         end
 
+        if index ∈ keys(border_cells)
+            while true
+                edge = pop!(border_cells, index) ⊻ edge
+                p = get_crossing(x, y, A, index, edge, level) 
+                
+                intersection_found = false
+                for i in eachindex(mask)
+                    ip = mod(i, length(mask)) + 1
+                    q, t = param_intersection(mask[i], mask[ip] - mask[i], contour[end], p - contour[end])
+                    # @show q,t
+                    if 0 <= t[2] <= 1 
+                        push!(contour, q)
+                        intersection_found = !intersection_found
+                        break
+                    end
+                end
+                intersection_found && break
 
-        (!(index[1] ∈ is) || !(index[2] ∈ js) || index == start_index || index ∈ keys(border_cells)) && break
+                push!(contour, p)
+                edge, index = get_next_cell(edge, index)
+
+                !(index ∈ keys(border_cells)) && (@show index;  break)
+            end
+
+            break
+        end
     end
 
     return index
