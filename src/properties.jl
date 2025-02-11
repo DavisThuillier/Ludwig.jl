@@ -122,15 +122,13 @@ function σ_lifetime(L, v, E, dV, T)
 end
 
 """
-    η_lifetime(L, Dxx, Dyy, E, dV, T)
+    η_lifetime(L, D, E, dV, T)
 
-Compute the effective scattering lifetime corresponding the conductivity.
+Compute the effective scattering lifetime corresponding the viscosity η = <D|L^-1|D>.
 """
-function η_lifetime(L, Dxx, Dyy, E, dV, T)
+function η_lifetime(L, D, E, dV, T)
     fd = f0.(E, T) # Fermi dirac on grid points
     w = fd .* (1 .- fd)
-
-    D = Dxx .- Dyy
 
     norm = 0.0
     for i in eachindex(D)
