@@ -110,36 +110,42 @@ function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int,
     ((x_min, x_max), (y_min, y_max)) = get_bounding_box(region)
 
     X = LinRange(x_min, x_max, N)
-    Y = LinRange(y_min, y_max, N)
-    E = Matrix{Float64}(undef, N, N) 
+    Δx = (x_max - x_min) / (N - 1)
+    Ny = round(Int, (y_max - y_min) / Δx)
+    Y = LinRange(y_min, y_max, Ny)
+    E = Matrix{Float64}(undef, N, Ny) 
     for (i,x) in enumerate(X)
         for (j,y) in enumerate(Y)
             k = [x,y]
             E[i,j] = ε(k)
-            # if in_polygon(k, region)
-            #     E[i,j] = ε(k)
-            # else
-            #     E[i,j] = NaN # Identify point as living outside of IBZ
-            # end
         end
     end
 
     e_threshold = α*T # Half-width of Fermi tube
     e_min = max(-e_threshold, 0.999 * minimum(E[.!isnan.(E)]))
     e_max = min(e_threshold, 0.999 * maximum(E[.!isnan.(E)]))
-    energies = collect(LinRange(e_min, e_max, 2 * n_levels - 1))
+    energies = collect(LinRange(e_min, e_max, n_levels))
     # Shift energy levels to include corner energy if there is a crossing
     for corner_e ∈ ε.(region)
         if e_min < corner_e < e_max 
             i = argmin(abs.(energies .- corner_e))
-            iseven(i) && (i = i + (-1)^argmin(abs.([energies[i - 1], energies[i + 1]] .- corner_e)) 
-            )
-            energies[i] = corner_e
+            energies[1:i] = LinRange(e_min, corner_e, i)
+            Δe = (e_max - corner_e) / (n_levels - i)
+            energies[i+1:end] = LinRange(corner_e + Δe, e_max, n_levels - i)
+        end 
+    end
+
+    foliated_energies = Vector{Float64}(undef, 2 * n_levels - 1)
+
+    for i in eachindex(foliated_energies)
+        if isodd(i)
+            foliated_energies[i] = energies[(i - 1) ÷ 2 + 1]
+        else
+            foliated_energies[i] = (energies[i ÷ 2 + 1] + energies[i ÷ 2]) / 2
         end
     end
 
-    c = contours(X, Y, E, energies; mask = region) # Generate Fermi surface contours
-    @show map(x -> length(x.isolines), c)
+    c = contours(X, Y, E, foliated_energies; mask = region) # Generate Fermi surface contours
 
     patches = Matrix{Patch}(undef, n_levels-1, n_cuts-1)
     corners = Vector{SVector{2, Float64}}(undef, (2 * n_levels - 2) * n_cuts)
@@ -178,7 +184,7 @@ function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int,
 
             ij3 = ij1; ij4 = ij2
 
-            Δε = energies[i+1] - energies[i-1]
+            Δε = foliated_energies[i+1] - foliated_energies[i-1]
             Δs = arclengths[j+1] - arclengths[j-1]
 
             v = gradient(ε, k[j])
@@ -200,7 +206,7 @@ function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int,
             J[2,2] = 2 * A[1,1] / det(A) / Δs # ∂s/∂ky |kx
 
             patches[i÷2,j÷2] = Patch(
-                ε(k[j]),
+                foliated_energies[i],
                 k[j], 
                 v,
                 Δε, 
@@ -265,25 +271,28 @@ function bz_mesh(l::Lattice, bands::AbstractVector, T, n_levels::Int, n_cuts::In
     θperm = sortperm(θs)
 
     full_patches = Matrix{Patch}(undef, n_levels - 1, 0)
-    full_corners = Vector{SVector{2,Float64}}(undef, n_levels, 0)
-    full_corner_ids = Vector{SVector{4, Int}}(undef, n_levels - 1, 0)
+    full_corners = Vector{SVector{2, Float64}}(undef, 0)
+    full_corner_ids = Matrix{SVector{4, Int}}(undef, n_levels - 1, 0)
 
     for j in eachindex(bands)
         patches, corners, corner_ids = mesh_region(ibz, bands[j], j, T, n_levels, n_cuts, N, α)
         
         for i in θperm
             O = get_matrix_representation(G.elements[i])
+            ℓ = length(full_corners)
             if det(O) < 0.0 # Improper rotation
                 full_patches = hcat(full_patches, 
                     reverse( map(x -> patch_op(x, O), reshape(patches, n_levels - 1, :)), dims = 2)
                 )
+                full_corner_ids = hcat(full_corner_ids, reverse( map(x -> SVector{4, Int}(x .+ ℓ), reshape(corner_ids,  n_levels - 1, :)), dims = 2))
             else
                 full_patches = hcat(full_patches, 
                     map(x -> patch_op(x, O), reshape(patches, n_levels - 1, :)) 
                 )
+                full_corner_ids = hcat(full_corner_ids, map(x -> SVector{4, Int}(x .+ ℓ), reshape(corner_ids,  n_levels - 1, :)))
             end
-            ℓ = length(full_corners)
-            full_corner_ids = vcat(full_corner_ids, map(x -> SVector{4, Int}(x .+ ℓ), corner_ids))
+            
+            
             full_corners = vcat(full_corners, map(x -> O*x, corners))
         end
     end
