@@ -27,7 +27,6 @@ using Interpolations
 using IterativeSolvers
 
 include("utilities.jl")
-include("mesh/mesh.jl")
 include("properties.jl")
 include("vertex_factors.jl")
 
