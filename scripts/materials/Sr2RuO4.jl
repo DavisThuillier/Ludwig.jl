@@ -46,7 +46,7 @@ function ham_β(k)
 end
 
 # Computes the xx or yy band structure deformation potential for the α band. μ is a band index where 1 is α, 2 is β, and 3 in γ
-function dbs_ii_μ(k, i::Int, μ::Int, δ = 0.0)
+function dii_μ(k, i::Int, μ::Int, δ = 0.0)
     if μ == 1 || μ == 2
         (μ == 1) ? (δ /= tα) : (δ /= tβ)
         x = exz(k)
@@ -63,14 +63,7 @@ function dbs_ii_μ(k, i::Int, μ::Int, δ = 0.0)
     end
 end
 
-function dep_ii_μ(k, i::Int, μ::Int, δ = 0.0)
-    dbs = dbs_ii_μ(k, i, μ, δ)
-    v = ForwardDiff.gradient(bands[μ], k)
-    dep = dbs + Ludwig.e_mass * (a/Ludwig.hc)^2 * v[i]^2
-    return dep
-end
-
-function dbs_xy_μ(k, μ::Int)
+function dxy_μ(k, μ::Int)
     if μ == 1 || μ == 2
         x = exz(k)
         y = eyz(k)
