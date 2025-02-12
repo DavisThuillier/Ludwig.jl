@@ -3,6 +3,9 @@ module Ludwig
 include("constants.jl") # Physical constants
 
 ### Submodules ###
+include("GeometryUtilities.jl")
+using .GeometryUtilities
+
 include("Groups.jl");
 using .Groups
 

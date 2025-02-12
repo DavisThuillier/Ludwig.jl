@@ -3,6 +3,7 @@ module MarchingSquares
 import StaticArrays: SVector
 import DataStructures: OrderedDict
 import LinearAlgebra: norm, det, dot
+import ..GeometryUtilities: intersection, param_intersection
 
 export Isoline, IsolineBundle, contour_intersection
 
@@ -35,40 +36,6 @@ end
 # Top, Bottom, Left, Right
 T, B, R, L = 0x01, 0x02, 0x04, 0x08
 crossing_lookup = [L|B, B|R, L|R, T|R, 0x0, T|B, L|T, L|T, T|B, 0x0, T|R, L|R, B|R, L|B] # Ignore the ambiguous cases of two crossings in one cell, with the assumption that chosen gridding is small enough
-
-function in_polygon(k, p, atol = 1e-12)
-    is_vertex = false
-    for vertex in p
-        isapprox(k, vertex, atol = atol) && (is_vertex = true)
-    end
-    is_vertex && return true
-
-    w = _winding_number(p .- Ref(k), atol) # Winding number of polygon wrt k
-    return !(abs(w) < atol) # Returns false is w ≈ 0
-end
-
-function _winding_number(v, atol = 1e-12)
-    w = 0
-    for i in eachindex(v)
-        j = (i == length(v)) ? 1 : i + 1 
-
-        
-        if v[i][2] * v[j][2] < 0 # [vᵢvⱼ] crosses the x-axis
-            m = (v[j][1] - v[i][1]) / (v[i][2] - v[j][2])
-            r = v[i][1] + m * v[i][2]  # x-coordinate of intersection of [vᵢvⱼ] with x-axis
-            if abs(r) < atol
-                m > 0 ? (w += 0.5) : (w -= 0.5)
-            elseif r > 0
-                v[i][2] < 0 ? (w += 1) : (w -= 1)
-            end
-        elseif abs(v[i][2]) < atol && abs(v[j][2]) > atol && v[i][1] > 0 # vᵢ on the positive x-axis
-            v[j][2] > 0 ? (w += 0.5) : (w -= 0.5)
-        elseif abs(v[i][2]) > atol && abs(v[j][2]) < atol && v[j][1] > 0 # vⱼ on the positive x-axis
-            v[i][2] < 0 ? (w += 0.5) : (w -= 0.5)
-        end
-    end
-    return w
-end
 
 function get_cells(x, y, A::AbstractMatrix, level::Real = 0.0, mask = [])
     xax, yax = axes(A)
@@ -159,22 +126,6 @@ function find_contour(x, y, A::AbstractMatrix, level::Real = 0.0; mask = [])
     end
     
     return bundle
-end
-
-function intersection(a1, v1, a2, v2)
-    V = hcat(v1, -v2)
-    det(V) == 0 && return [NaN, NaN] # No intersection
-
-    t = inv(V) * (a2 - a1)
-    return a1 + t[1] * v1
-end
-
-function param_intersection(a1, v1, a2, v2)
-    V = hcat(v1, -v2)
-    det(V) == 0 && return [NaN, NaN] # No intersection
-
-    t = inv(V) * (a2 - a1)
-    return a1 + t[1] * v1, t
 end
 
 function follow_contour!(cells, border_cells, contour, x, y, A, is, js, start_index, start_edge, level; mask = [])
@@ -289,16 +240,8 @@ function contour_intersection(a, v, iso::Isoline, i = 1)
         end 
     else
         p1 = iso.points[i]; p2 = iso.points[i+1]
-        return _intersection(a, v, p1, p2-p1), (i, i+1)
+        return intersection(a, v, p1, p2-p1), (i, i+1)
     end
-end
-
-function _intersection(a1, v1, a2, v2)
-    V = hcat(v1, -v2)
-    det(V) == 0 && return [NaN, NaN] # No intersection
-
-    t = inv(V) * (a2 - a1)
-    return SVector{2}(a1 + t[1] * v1)
 end
 
 end # module MarchingSquares
