@@ -5,10 +5,10 @@ using LinearAlgebra
 using ForwardDiff
 using Interpolations
 
-import ..Lattices: map_to_bz
+import ..Lattices: map_to_bz, Lattice, NoLattice 
 import ..FSMesh: Patch, VirtualPatch
 
-export Γabc!, electron_electron
+export electron_electron, electron_impurity!
 
 const ρ::Float64 = 4*6^(1/3)/pi
 
@@ -224,14 +224,12 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
     qimj = Vector{Float64}(undef, 2)
     qimj_rlb = Vector{Float64}(undef, 2)
 
-    invrlv = inv(rlv)
+    invrlv = inv(rlv) 
     is_function = map(x -> isa(x, Function), bands) # For determining how to evaluate bands
 
     for m in eachindex(grid)
         kijm .= kij .- grid[m].momentum 
         kijm_rlb .= mod.(invrlv * kijm, 1.0) # In reciprocal lattice basis, mapped to interpolation region
-
-        
 
         for μ in eachindex(bands)
             if is_function[μ]
@@ -270,7 +268,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
             else
                 p = VirtualPatch(
                     e = bands[μ](qimj_rlb[1], qimj_rlb[2]),
-                    k = umklapp ? kijm : map_to_bz(kijm, bz, rlv, invrlv),
+                    k = umklapp ? qimj : map_to_bz(qimj, bz, rlv, invrlv),
                     v = Interpolations.gradient(bands[μ], qimj_rlb[1], qimj_rlb[2]),
                     band_index = μ
                 )
@@ -282,6 +280,62 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
             if w123 + w124 != 0
                 Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], p, T) * f0s[m] * (1 - f0s[j])
             end
+        end
+    end
+
+    return Lij / (grid[i].dV * (1 - f0s[i]))
+end
+
+electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, l::Lattice; umklapp = true) = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, reciprocal_lattice_vectors(l), get_bz(l); umklapp)
+
+function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, ε, T::Real, Weff_squared, l::NoLattice; umklapp) 
+    Lij::Float64 = 0.0
+    w123::Float64 = 0.0
+    w124::Float64 = 0.0
+
+    ζ  = MVector{6,Float64}(undef)
+    u  = MVector{6,Float64}(undef)
+
+    kij = grid[i].momentum + grid[j].momentum
+    qij = grid[i].momentum - grid[j].momentum
+
+    kijm = Vector{Float64}(undef, 2)
+    kijm_rlb = Vector{Float64}(undef, 2)
+
+    qimj = Vector{Float64}(undef, 2)
+    qimj_rlb = Vector{Float64}(undef, 2)
+
+    for m in eachindex(grid)
+        kijm .= kij .- grid[m].momentum 
+        kijm_rlb .= mod.(invrlv * kijm, 1.0) # In reciprocal lattice basis, mapped to interpolation region
+
+        p = VirtualPatch(
+            e = ε(kijm),
+            k = kijm,
+            v = ForwardDiff.gradient(bands[μ], kijm),
+            band_index = μ
+        )
+        
+        w123 = Weff_squared(grid[i], grid[j], grid[m], p)
+
+        if w123 != 0
+            Lij += w123 * Kabc!(ζ, u, grid[i], grid[j], grid[m], p, T) * f0s[j] * (1 - f0s[m])
+        end
+
+        qimj .= qij .+ grid[m].momentum
+        qimj_rlb .= mod.(invrlv * qimj, 1.0) # In reciprocal lattice basis
+
+        p = VirtualPatch(
+                    e = ε(qimj),
+                    k = qimj,
+                    v = ForwardDiff.gradient(bands[μ], qimj),
+                    band_index = μ
+        )
+        w123 = Weff_squared(grid[i], grid[m], grid[j], p)
+        w124 = Weff_squared(grid[i], grid[m], p, grid[j])
+
+        if w123 + w124 != 0
+            Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], p, T) * f0s[m] * (1 - f0s[j])
         end
     end
 
