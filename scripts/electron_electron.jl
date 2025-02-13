@@ -3,13 +3,16 @@ using HDF5
 using Interpolations
 using StaticArrays
 using LinearAlgebra
+using ProgressBars
 
-function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
+function main(T::Real, n_ε::Int, n_θ::Int, outfile::String, α::Real = 6.0)
 
-    mesh = Ludwig.multiband_mesh(bands, orbital_weights, kb * T, n_ε, n_θ)
+    l = Lattices.Lattice([1.0, 0.0], [0.0, 1.0])
+    t = @elapsed mesh = Ludwig.bz_mesh(l, bands, kb * T, n_ε, n_θ, 800, α)
+    println("Mesh generation took ", t, " seconds.")
     ℓ = length(mesh.patches)
 
-    # Initialize file - will error if
+    # Initialize file - will error if file exists
     h5open(outfile, "cw") do f
         g = create_group(f, "data")
         g["n_ε"] = n_ε
@@ -39,11 +42,12 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String)
     end
 
     L = zeros(Float64, ℓ, ℓ) # Scattering operator
-    f0s = map(x -> f0(x.energy, T), mesh.patches) # Fermi-Dirac Grid
+    f0s = map(x -> f0(x.e, T), mesh.patches) # Fermi-Dirac Grid
+    weights = orbital_weights.(map(p -> p.k, mesh.patches))
 
     Threads.@threads for i in 1:ℓ
         for j in 1:ℓ
-            L[i,j] = Ludwig.electron_electron(mesh.patches, f0s, i, j, itps, T, vertex_pp, vertex_pk, 36)
+            L[i,j] = Ludwig.electron_electron(mesh.patches, f0s, i, j, itps, T, vertex_pp, vertex_pk, weights)
         end
     end
 
@@ -58,12 +62,13 @@ function argument_handling()
     T   = parse(Float64, ARGS[1])
     n_ε = parse(Int, ARGS[2])
     n_θ = parse(Int, ARGS[3])
-    band_file = ARGS[4]
-    out_dir = ARGS[5]
-    return T, n_ε, n_θ, band_file, out_dir
+    α = parse(Float64, ARGS[4])
+    band_file = ARGS[5]
+    out_dir = ARGS[6]
+    return T, n_ε, n_θ, α, band_file, out_dir
 end
 
-T, n_ε, n_θ, band_file, dir = argument_handling()
+# T, n_ε, n_θ, α, band_file, dir = argument_handling()
 include(joinpath(@__DIR__, band_file))
-outfile = joinpath(@__DIR__, dir, "$(material)_$(T)_$(n_ε)x$(n_θ).h5")
-main(T, n_ε, n_θ, outfile)
+outfile = joinpath(@__DIR__, dir, "$(material)_$(T)_$(n_ε)x$(n_θ)_$(α).h5")
+main(T, n_ε, n_θ, outfile, α)

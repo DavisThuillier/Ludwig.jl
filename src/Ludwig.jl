@@ -3,30 +3,33 @@ module Ludwig
 include("constants.jl") # Physical constants
 
 ### Submodules ###
+include("GeometryUtilities.jl")
+using .GeometryUtilities
+
 include("Groups.jl");
 using .Groups
 
 include("Lattices.jl"); 
 using .Lattices
 
-include("MarchingTriangles.jl")
-using .MarchingTriangles
+include(joinpath("mesh","MarchingSquares.jl"))
+using .MarchingSquares
 
-export Lattices, Groups, MarchingTriangles
+include(joinpath("mesh", "FSMesh.jl"))
+using .FSMesh
+
+include("Integration.jl")
+using .Integration
+
+export Lattices, Groups, MarchingSquares, FSMesh
 
 import StaticArrays: SVector, MVector, MMatrix, SMatrix
 using LinearAlgebra
 using ForwardDiff
-import DataStructures: OrderedDict
 using Interpolations
 using IterativeSolvers
 
 include("utilities.jl")
-include("mesh/marching_squares.jl")
-include("mesh/mesh.jl")
-include("integration.jl")
 include("properties.jl")
-include("vertex_factors.jl")
-
     
 end # module Ludwig

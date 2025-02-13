@@ -25,10 +25,18 @@ function conductivity(L, v, E, dV, T, ω = 0.0, q = [0.0, 0.0])
 
     σ = Matrix{ComplexF64}(undef, 2, 2)
 
-    if ω != 0.0 || q != [0.0, 0.0]
-        L′ = L - im*ω*I + im * diagm(dot.(Ref(q), v))
+    if q != [0.0, 0.0]
+        if ω == 0.0
+            L′ = L - im * diagm(dot.(Ref(q), v))
+        else
+            L′ = L - im*ω*I + im * diagm(dot.(Ref(q), v))
+        end
     else
-        L′ = L
+        if ω != 0.0
+            L′ = L - im*ω*I
+        else
+            L′ = L
+        end
     end
 
     σ[1,1] = inner_product(first.(v), first.(v), L′, weight)
@@ -42,7 +50,7 @@ end
 """
     longitudinal_conductivity(L, vx, E, dV, T [, ω])
 
-Compute only the ``\\sigma_{xx}`` component of the conductivity tensor.
+Compute ``\\sigma_{xx}`` only.
 """
 function longitudinal_conductivity(L, vx, E, dV, T, ω = 0.0)
     fd = f0.(E, T) # Fermi dirac on grid points
@@ -114,15 +122,13 @@ function σ_lifetime(L, v, E, dV, T)
 end
 
 """
-    η_lifetime(L, Dxx, Dyy, E, dV, T)
+    η_lifetime(L, D, E, dV, T)
 
-Compute the effective scattering lifetime corresponding the conductivity.
+Compute the effective scattering lifetime corresponding the viscosity η = <D|L^-1|D>.
 """
-function η_lifetime(L, Dxx, Dyy, E, dV, T)
+function η_lifetime(L, D, E, dV, T)
     fd = f0.(E, T) # Fermi dirac on grid points
     w = fd .* (1 .- fd)
-
-    D = Dxx .- Dyy
 
     norm = 0.0
     for i in eachindex(D)

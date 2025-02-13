@@ -1,4 +1,5 @@
 using Ludwig.Lattices
+using Ludwig.MarchingSquares
 
 @testset "Lattice Constructors" begin
     a1 = [1.0, 1.0]
@@ -27,12 +28,15 @@ end
     hex_lat = Lattice([1.0 -0.5; 0.0 sqrt(3)/2.0])
     bz = Lattices.get_bz(hex_lat)
     rlv = Lattices.reciprocal_lattice_vectors(hex_lat)
-    x_range, y_range = Ludwig.get_bounding_box(bz)
+    x_range, y_range = MarchingSquares.get_bounding_box(bz)
 
-    for i in 1:1000
+    x_range = 2 .* x_range
+    y_range = 2 .* y_range
+
+    for i in 1:10000
         kx = x_range[1] + (x_range[2] - x_range[1]) * Random.rand(Float64)
         ky = y_range[1] + (y_range[2] - y_range[1]) * Random.rand(Float64)
-        k = Lattices.map_to_bz([kx, ky], rlv)
+        k = Lattices.map_to_bz([kx, ky], bz, rlv)
         @test Lattices.in_polygon(k, bz)
     end
 end
