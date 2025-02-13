@@ -1,4 +1,5 @@
 using ForwardDiff
+import Ludwig.FSMesh: Patch
 
 const material::String = "Sr2RuO4"
 const c::Float64  = 12.68e-10 # Interlayer distance in m
@@ -109,14 +110,14 @@ function orbital_weights(k)
 end
 
 """
-    vertex_factor(p1, p2)
+    vertex_factor(p1, p2, i1, i2, weights)
 
 Compute ``F_{k1, k2}`` for patches `p1` and `p2` specifically optimized for Sr2RuO4.
 """
-function vertex_pp(p1::Patch, p2::Patch)
+function vertex_pp(p1::Patch, p2::Patch, i1::Int, i2::Int, weights::AbstractVector)
     if p1.band_index < 3 # i.e. p1 ∈ {α, β}
         if p2.band_index < 3
-            return dot(p1.w, p2.w)
+            return dot(weights[i1], weights[i2])
         else
             return 0.0
         end
@@ -129,7 +130,7 @@ function vertex_pp(p1::Patch, p2::Patch)
     end
 end
 
-function vertex_pk(p::Patch, k, μ::Int)
+function vertex_pk(p::Patch, i::Int, k, μ::Int, weights::AbstractVector)
     if p.band_index < 3 # i.e. p ∈ {α, β}
         if μ < 3
             Δ1 = (exz(k) - eyz(k)) 
@@ -138,9 +139,9 @@ function vertex_pk(p::Patch, k, μ::Int)
 
             w1 = Δ1 - ζ # First element of the α band weight
             if μ == 1 # α band
-                return sign(Δ2) * (p.w[1] * w1 + p.w[2] * Δ2) / sqrt(Δ2^2 + w1^2)
+                return sign(Δ2) * (weights[i][1] * w1 + weights[i][2] * Δ2) / sqrt(Δ2^2 + w1^2)
             else # β band
-                return sign(Δ2) * (p.w[1] * Δ2 - p.w[2] * w1) / sqrt(Δ2^2 + w1^2)
+                return sign(Δ2) * (weights[i][1] * Δ2 - weights[i][2] * w1) / sqrt(Δ2^2 + w1^2)
             end
         else
             return 0.0
