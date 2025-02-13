@@ -8,7 +8,7 @@ import ..Groups: get_matrix_representation
 using ..GeometryUtilities
 import ForwardDiff: gradient, derivative
 
-export Patch, VirtualPatch, AbstractPatch
+export Patch, VirtualPatch, AbstractPatch, energy, momentum, velocity
 export Mesh, patches, corners, corner_indices
 export mesh_region, ibz_mesh, bz_mesh, circular_fs_mesh
 
@@ -31,6 +31,13 @@ struct VirtualPatch <: AbstractPatch
     v::SVector{2,Float64} # Group velocity
     band_index::Int
 end
+
+energy(p::AbstractPatch)   = p.e
+momentum(p::AbstractPatch) = p.k
+velocity(p::AbstractPatch) = p.v
+band(p::AbstractPatch)     = p.band_index
+
+area(p::Patch)             = p.dV
 
 function patch_op(p::Patch, M::Matrix)
     return Patch(
