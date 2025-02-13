@@ -3,7 +3,7 @@ module MarchingSquares
 import StaticArrays: SVector
 import DataStructures: OrderedDict
 import LinearAlgebra: norm, det, dot
-import ..GeometryUtilities: intersection, param_intersection
+import ..GeometryUtilities: intersection, param_intersection, in_polygon
 
 export Isoline, IsolineBundle, contour_intersection
 
