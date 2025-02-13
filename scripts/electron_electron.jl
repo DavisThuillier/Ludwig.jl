@@ -3,13 +3,16 @@ using HDF5
 using Interpolations
 using StaticArrays
 using LinearAlgebra
+using ProgressBars
 
 function main(T::Real, n_ε::Int, n_θ::Int, outfile::String, α::Real = 6.0)
 
-    mesh = Ludwig.multiband_mesh(bands, orbital_weights, kb * T, n_ε, n_θ; α = α)
+    l = Lattices.Lattice([1.0, 0.0], [0.0, 1.0])
+    t = @elapsed mesh = Ludwig.bz_mesh(l, bands, kb * T, n_ε, n_θ, 800, α)
+    println("Mesh generation took ", t, " seconds.")
     ℓ = length(mesh.patches)
 
-    # Initialize file - will error if
+    # Initialize file - will error if file exists
     h5open(outfile, "cw") do f
         g = create_group(f, "data")
         g["n_ε"] = n_ε
@@ -39,13 +42,12 @@ function main(T::Real, n_ε::Int, n_θ::Int, outfile::String, α::Real = 6.0)
     end
 
     L = zeros(Float64, ℓ, ℓ) # Scattering operator
-    f0s = map(x -> f0(x.energy, T), mesh.patches) # Fermi-Dirac Grid
-    vertices = (map(x -> SVector{6, UInt8}(digits(x, base=2, pad = 6)), 0:63))
+    f0s = map(x -> f0(x.e, T), mesh.patches) # Fermi-Dirac Grid
+    weights = orbital_weights.(map(p -> p.k, mesh.patches))
 
     Threads.@threads for i in 1:ℓ
         for j in 1:ℓ
-            L[i,j] = Ludwig.electron_electron(mesh.patches, f0s, i, j, itps, T, vertex_pp, vertex_pk)
-            # L[i,j] = Ludwig.electron_electron(mesh.patches, f0s, i, j, itps, T, vertex_pp, vertex_pk, vertices)
+            L[i,j] = Ludwig.electron_electron(mesh.patches, f0s, i, j, itps, T, vertex_pp, vertex_pk, weights)
         end
     end
 
@@ -66,7 +68,7 @@ function argument_handling()
     return T, n_ε, n_θ, α, band_file, out_dir
 end
 
-T, n_ε, n_θ, α, band_file, dir = argument_handling()
+# T, n_ε, n_θ, α, band_file, dir = argument_handling()
 include(joinpath(@__DIR__, band_file))
 outfile = joinpath(@__DIR__, dir, "$(material)_$(T)_$(n_ε)x$(n_θ)_$(α).h5")
 main(T, n_ε, n_θ, outfile, α)
