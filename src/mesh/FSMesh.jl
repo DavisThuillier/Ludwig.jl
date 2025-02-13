@@ -359,12 +359,14 @@ function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 
             J[1, :] *= 2/Δε
             J[2, :] *= 2/Δθ
 
+            dV = abs(0.5 * Δθ * (radius[2*i + 1]^2 - radius[2*i - 1]^2))
+
             patches[i, j] = Patch(
                 ε(norm(k[i,j])),   
                 k[i,j], 
                 v[i,j],
                 Δε,
-                0.5 * Δθ * (radius[2*i - 1]^2 - radius[2*i + 1]^2),
+                dV,
                 inv(J),
                 1 / abs(det(J)),
                 1
