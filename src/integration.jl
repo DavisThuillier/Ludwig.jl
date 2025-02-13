@@ -10,6 +10,8 @@ import ..FSMesh: Patch, VirtualPatch
 
 export electron_electron, electron_impurity!
 
+f0(E::Float64, T::Float64) = 1 / (exp(E/T) + 1)
+
 const ρ::Float64 = 4*6^(1/3)/pi
 
 "Volume of the 5-dimensional unit sphere"
@@ -30,7 +32,7 @@ is an integral over momenta in patch ``\\mathcal{P}_i``.
 
 """
 function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc, T)
-    δ = a.energy + b.energy - c.energy - εabc
+    δ = a.e + b.e - c.e - εabc
 
     # ζ[1], ζ[2] = v' * a.jinv
     # ζ[3], ζ[4] = v' * b.jinv
@@ -75,6 +77,26 @@ function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, itp::ScaledInterpo
     return Kabc!(ζ, u, a, b, c, v, εabc, T)
 end
 
+### Multi-orbital Hubbard Model ###
+function Weff_squared_123(p1::Patch, p2::Patch, p3::Patch, i1::Int, i2::Int, i3::Int, Fpp::Function, Fpk::Function, k4, μ4, weights::AbstractVector)
+    f13 = Fpp(p1, p3, i1, i3, weights)
+    f23 = Fpp(p2, p3, i2, i3, weights)
+    f14 = Fpk(p1, i1, k4, μ4, weights)
+    f24 = Fpk(p2, i2, k4, μ4, weights)
+
+    return abs2(f13*f24 - f14*f23) + 2 * abs2(f14*f23)
+end
+
+function Weff_squared_124(p1::Patch, p2::Patch, p4::Patch, i1::Int, i2::Int, i4::Int, Fpp::Function, Fpk::Function, k3, μ3, weights::AbstractVector)
+    f14 = Fpp(p1, p4, i1, i4, weights)
+    f24 = Fpp(p2, p4, i2, i4, weights)
+
+    f13 = Fpk(p1, i1, k3, μ3, weights)
+    f23 = Fpk(p2, i2, k3, μ3, weights)
+
+    return abs2(f13*f24 - f14*f23) + 2 * abs2(f14*f23)
+end
+
 """
     electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, itps::Vector{ScaledInterpolation}, T::Real, Fpp::Function, Fpk::Function)
 
@@ -83,7 +105,7 @@ Compute the element (`i`,`j`) of the linearized Boltzmann collision operator for
 The bands used to construct `grid` are callable using the interpolated dispersion in `itps`. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center an can be calculated independent of `i` and `j`. The functions `Fpp` and `Fpk` are vertex factors defined for two patch variables and for one patch and one momentum vector respectively.
 
 """
-function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, itps::Vector{ScaledInterpolation}, T::Real, Fpp::Function, Fpk::Function)
+function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, itps::Vector{ScaledInterpolation}, T::Real, Fpp::Function, Fpk::Function, weights::AbstractVector)
     Lij::Float64 = 0.0
     w123::Float64 = 0.0
     w124::Float64 = 0.0
@@ -91,8 +113,8 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
     ζ  = MVector{6,Float64}(undef)
     u  = MVector{6,Float64}(undef)
 
-    kij = grid[i].momentum + grid[j].momentum
-    qij = grid[i].momentum - grid[j].momentum
+    kij = grid[i].k + grid[j].k
+    qij = grid[i].k - grid[j].k
     kijm = Vector{Float64}(undef, 2)
     qimj = Vector{Float64}(undef, 2)
 
@@ -103,7 +125,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
     min_e::Float64 = 0
 
     for m in eachindex(grid)
-        kijm .= mod.(kij .- grid[m].momentum .+ 0.5, 1.0) .- 0.5
+        kijm .= mod.(kij .- grid[m].k .+ 0.5, 1.0) .- 0.5
 
         min_e = 1e3
         μ4 = 1
@@ -114,13 +136,13 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
             end
         end
         
-        w123 = Weff_squared_123(grid[i], grid[j], grid[m], Fpp, Fpk, kijm, μ4)
+        w123 = Weff_squared_123(grid[i], grid[j], grid[m], i, j, m, Fpp, Fpk, kijm, μ4, weights)
 
         if w123 != 0
             Lij += w123 * Kabc!(ζ, u, grid[i], grid[j], grid[m], kijm, energies[μ4], itps[μ4], T) * f0s[j] * (1 - f0s[m])
         end
 
-        qimj .= mod.(qij .+ grid[m].momentum .+ 0.5, 1.0) .- 0.5
+        qimj .= mod.(qij .+ grid[m].k .+ 0.5, 1.0) .- 0.5
 
         min_e = 1e3
         μ34 = 1
@@ -131,8 +153,8 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
             end
         end
 
-        w123 = Weff_squared_123(grid[i], grid[m], grid[j], Fpp, Fpk, qimj, μ34)
-        w124 = Weff_squared_124(grid[i], grid[m], grid[j], Fpp, Fpk, qimj, μ34)
+        w123 = Weff_squared_123(grid[i], grid[m], grid[j], i, m, j, Fpp, Fpk, qimj, μ34, weights)
+        w124 = Weff_squared_124(grid[i], grid[m], grid[j], i, m, j, Fpp, Fpk, qimj, μ34, weights)
 
         if w123 + w124 != 0
             Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], qimj, energies[μ34], itps[μ34], T) * f0s[m] * (1 - f0s[j])
@@ -143,7 +165,9 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
     return Lij / (grid[i].dV * (1 - f0s[i]))
 end
 
-function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, itps::Vector{ScaledInterpolation}, T::Real, Fpp::Function, Fpk::Function, rlv)
+### Generic Scattering Vertex ###
+
+function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, rlv, bz; umklapp = true, kwargs...)
     Lij::Float64 = 0.0
     w123::Float64 = 0.0
     w124::Float64 = 0.0
@@ -151,72 +175,8 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
     ζ  = MVector{6,Float64}(undef)
     u  = MVector{6,Float64}(undef)
 
-    kij = grid[i].momentum + grid[j].momentum
-    qij = grid[i].momentum - grid[j].momentum
-    kijm = Vector{Float64}(undef, 2)
-    qimj = Vector{Float64}(undef, 2)
-
-    energies = Vector{Float64}(undef, length(itps))
-
-    μ4::Int = 0
-    μ34::Int = 0
-    min_e::Float64 = 0
-
-    invrlv = inv(rlv)
-
-    for m in eachindex(grid)
-        # kijm .= Lattices.map_to_bz(kij - grid[m].momentum, bz, rlv)
-        kijm = mod.(invrlv * (kij .- grid[m].momentum), 1.0)
-
-        min_e = 1e3
-        μ4 = 1
-        for μ in eachindex(itps)
-            energies[μ] = itps[μ](kijm[1], kijm[2])
-            if abs(energies[μ]) < min_e
-                min_e = abs(energies[μ]); μ4 = μ
-            end
-        end
-        
-        w123 = Weff_squared_123(grid[i], grid[j], grid[m], Fpp, Fpk, kijm, μ4)
-
-        if w123 != 0
-            Lij += w123 * Kabc!(ζ, u, grid[i], grid[j], grid[m], kijm, energies[μ4], itps[μ4], invrlv, T) * f0s[j] * (1 - f0s[m])
-        end
-
-        # qimj .= Lattices.map_to_bz(qij + grid[m].momentum, bz, rlv)
-        qimj = mod.(invrlv * (qij .+ grid[m].momentum), 1.0)
-
-        min_e = 1e3
-        μ34 = 1
-        for μ in eachindex(itps)
-            energies[μ] = itps[μ](qimj[1], qimj[2])
-            if abs(energies[μ]) < min_e
-                min_e = abs(energies[μ]); μ34 = μ
-            end
-        end
-
-        w123 = Weff_squared_123(grid[i], grid[m], grid[j], Fpp, Fpk, qimj, μ34)
-        w124 = Weff_squared_124(grid[i], grid[m], grid[j], Fpp, Fpk, qimj, μ34)
-
-        if w123 + w124 != 0
-            Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], qimj, energies[μ34], itps[μ34], invrlv, T) * f0s[m] * (1 - f0s[j])
-        end
-
-    end
-
-    return Lij / (grid[i].dV * (1 - f0s[i]))
-end
-
-function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, rlv, bz; umklapp = true)
-    Lij::Float64 = 0.0
-    w123::Float64 = 0.0
-    w124::Float64 = 0.0
-
-    ζ  = MVector{6,Float64}(undef)
-    u  = MVector{6,Float64}(undef)
-
-    kij = grid[i].momentum + grid[j].momentum
-    qij = grid[i].momentum - grid[j].momentum
+    kij = grid[i].k + grid[j].k
+    qij = grid[i].k - grid[j].k
 
     kijm = Vector{Float64}(undef, 2)
     kijm_rlb = Vector{Float64}(undef, 2)
@@ -228,7 +188,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
     is_function = map(x -> isa(x, Function), bands) # For determining how to evaluate bands
 
     for m in eachindex(grid)
-        kijm .= kij .- grid[m].momentum 
+        kijm .= kij .- grid[m].k 
         kijm_rlb .= mod.(invrlv * kijm, 1.0) # In reciprocal lattice basis, mapped to interpolation region
 
         for μ in eachindex(bands)
@@ -247,14 +207,14 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
                     band_index = μ
                 )
             end
-            w123 = Weff_squared(grid[i], grid[j], grid[m], p)
+            w123 = Weff_squared(grid[i], grid[j], grid[m], p; kwargs)
 
             if w123 != 0
                 Lij += w123 * Kabc!(ζ, u, grid[i], grid[j], grid[m], p, T) * f0s[j] * (1 - f0s[m])
             end
         end
 
-        qimj .= qij .+ grid[m].momentum
+        qimj .= qij .+ grid[m].k
         qimj_rlb .= mod.(invrlv * qimj, 1.0) # In reciprocal lattice basis
 
         for μ in eachindex(bands)
@@ -274,8 +234,8 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
                 )
             end
 
-            w123 = Weff_squared(grid[i], grid[m], grid[j], p)
-            w124 = Weff_squared(grid[i], grid[m], p, grid[j])
+            w123 = Weff_squared(grid[i], grid[m], grid[j], p; kwargs)
+            w124 = Weff_squared(grid[i], grid[m], p, grid[j]; kwargs)
 
             if w123 + w124 != 0
                 Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], p, T) * f0s[m] * (1 - f0s[j])
@@ -286,9 +246,9 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
     return Lij / (grid[i].dV * (1 - f0s[i]))
 end
 
-electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, l::Lattice; umklapp = true) = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, reciprocal_lattice_vectors(l), get_bz(l); umklapp)
+electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, l::Lattice; umklapp = true, kwargs...) = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, reciprocal_lattice_vectors(l), get_bz(l); umklapp, kwargs...)
 
-function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, ε, T::Real, Weff_squared, l::NoLattice; umklapp) 
+function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, ε, T::Real, Weff_squared, l::NoLattice; kwargs...) 
     Lij::Float64 = 0.0
     w123::Float64 = 0.0
     w124::Float64 = 0.0
@@ -296,43 +256,38 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
     ζ  = MVector{6,Float64}(undef)
     u  = MVector{6,Float64}(undef)
 
-    kij = grid[i].momentum + grid[j].momentum
-    qij = grid[i].momentum - grid[j].momentum
+    kij = grid[i].k + grid[j].k
+    qij = grid[i].k - grid[j].k
 
     kijm = Vector{Float64}(undef, 2)
-    kijm_rlb = Vector{Float64}(undef, 2)
-
     qimj = Vector{Float64}(undef, 2)
-    qimj_rlb = Vector{Float64}(undef, 2)
 
     for m in eachindex(grid)
-        kijm .= kij .- grid[m].momentum 
-        kijm_rlb .= mod.(invrlv * kijm, 1.0) # In reciprocal lattice basis, mapped to interpolation region
+        kijm .= kij .- grid[m].k 
 
         p = VirtualPatch(
-            e = ε(kijm),
-            k = kijm,
-            v = ForwardDiff.gradient(bands[μ], kijm),
-            band_index = μ
+            ε(norm(kijm)),
+            kijm,
+            ForwardDiff.derivative(ε, norm(kijm)) * kijm / norm(kijm),
+            1
         )
         
-        w123 = Weff_squared(grid[i], grid[j], grid[m], p)
+        w123 = Weff_squared(grid[i], grid[j], grid[m], p; kwargs...)
 
         if w123 != 0
             Lij += w123 * Kabc!(ζ, u, grid[i], grid[j], grid[m], p, T) * f0s[j] * (1 - f0s[m])
         end
 
-        qimj .= qij .+ grid[m].momentum
-        qimj_rlb .= mod.(invrlv * qimj, 1.0) # In reciprocal lattice basis
+        qimj .= qij .+ grid[m].k
 
         p = VirtualPatch(
-                    e = ε(qimj),
-                    k = qimj,
-                    v = ForwardDiff.gradient(bands[μ], qimj),
-                    band_index = μ
+            ε(norm(qimj)),
+            qimj,
+            ForwardDiff.derivative(ε, norm(qimj)) * qimj / norm(qimj),
+            1
         )
-        w123 = Weff_squared(grid[i], grid[m], grid[j], p)
-        w124 = Weff_squared(grid[i], grid[m], p, grid[j])
+        w123 = Weff_squared(grid[i], grid[m], grid[j], p; kwargs...)
+        w124 = Weff_squared(grid[i], grid[m], p, grid[j]; kwargs...)
 
         if w123 + w124 != 0
             Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], p, T) * f0s[m] * (1 - f0s[j])
@@ -471,67 +426,6 @@ function Jabc!(ζ, u, nonzero_indices, a::Patch, b::Patch, c::Patch, T::Real, k,
     else
         return 0.0
     end
-end
-
-function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, itps::Vector{ScaledInterpolation}, T::Real, Fpp::Function, Fpk::Function, vertices::Vector{SVector{6, UInt8}})
-    Lij::Float64 = 0.0
-    w123::Float64 = 0.0
-    w124::Float64 = 0.0
-
-    ζ  = MVector{6,Float64}(undef)
-    u  = MVector{6,Float64}(undef)
-    nonzero_indices = MVector{6,Float64}(undef)
-
-    kij = grid[i].momentum + grid[j].momentum
-    qij = grid[i].momentum - grid[j].momentum
-    kijm = Vector{Float64}(undef, 2)
-    qimj = Vector{Float64}(undef, 2)
-
-    energies = Vector{Float64}(undef, length(itps))
-
-    μ4::Int = 0
-    μ34::Int = 0
-    min_e::Float64 = 0
-
-    for m in eachindex(grid)
-        kijm .= mod.(kij .- grid[m].momentum .+ 0.5, 1.0) .- 0.5
-
-        min_e = 1e3
-        μ4 = 1
-        for μ in eachindex(itps)
-            energies[μ] = itps[μ](kijm[1], kijm[2])
-            if abs(energies[μ]) < min_e
-                min_e = abs(energies[μ]); μ4 = μ
-            end
-        end
-
-        w123 = Weff_squared_123(grid[i], grid[j], grid[m], Fpp, Fpk, kijm, μ4)
-
-        if w123 != 0
-            Lij += w123 * Jabc!(ζ, u, nonzero_indices, grid[i], grid[j], grid[m], T, kijm, energies[μ4], itps[μ4], vertices) * f0s[j] * (1 - f0s[m])
-        end
-
-        qimj .= mod.(qij .+ grid[m].momentum .+ 0.5, 1.0) .- 0.5
-
-        min_e = 1e3
-        μ34 = 1
-        for μ in eachindex(itps)
-            energies[μ] = itps[μ](qimj[1], qimj[2])
-            if abs(energies[μ]) < min_e
-                min_e = abs(energies[μ]); μ34 = μ
-            end
-        end
-
-        w123 = Weff_squared_123(grid[i], grid[m], grid[j], Fpp, Fpk, qimj, μ34)
-        w124 = Weff_squared_124(grid[i], grid[m], grid[j], Fpp, Fpk, qimj, μ34)
-
-        if w123 + w124 != 0
-            Lij -= (w123 + w124) * Jabc!(ζ, u, nonzero_indices, grid[i], grid[m], grid[j], T, qimj, energies[μ34], itps[μ34], vertices) * f0s[m] * (1 - f0s[j])
-        end
-
-    end
-
-    return Lij / (grid[i].dV * (1 - f0s[i]))
 end
 
 ######################################################
