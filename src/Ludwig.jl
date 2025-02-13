@@ -31,7 +31,5 @@ using IterativeSolvers
 
 include("utilities.jl")
 include("properties.jl")
-include("vertex_factors.jl")
-
     
 end # module Ludwig

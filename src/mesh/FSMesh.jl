@@ -14,6 +14,19 @@ export mesh_region, ibz_mesh, bz_mesh, circular_fs_mesh
 
 abstract type AbstractPatch end
 
+"""
+    Patch(e::Float64, k::SVector{2,Float64}, v::SVector{2,Float64}, de::Float64, dV::Float64, jinv::Matrix{Float64}, djinv::Float64, band_index::Int)
+Construct a `Patch' object defining regions of momentum space over which to integrate. 
+# Fields
+- `e`: energy
+- `k`: momentum 
+- `v`: group velocity
+- `de`: width of patch in energy
+- `dV`: area of patch in momentum space
+- `jinv`: Jacobian of transformation from (kx, ky) --> (E, s)
+- `djinv`: determinant of above Jacobian
+- `band_index`: index of band from which `e` was sampled at `k`
+"""
 struct Patch <: AbstractPatch
     e::Float64 # Energy
     k::SVector{2,Float64} # Momentum
@@ -25,6 +38,15 @@ struct Patch <: AbstractPatch
     band_index::Int
 end
 
+"""
+    VirtualPatch(e::Float64, k::SVector{2,Float64}, v::SVector{2,Float64}, band_index::Int)
+Construct a `VirtualPatch' object that can be operated on as if it were a `Patch` for the purposes of sampling momentum, energy, and group velocity but which cannot be integrated over. 
+# Fields
+- `e`: energy
+- `k`: momentum 
+- `v`: group velocity
+- `band_index`: index of band from which `e` was sampled at `k`
+"""
 struct VirtualPatch <: AbstractPatch
     e::Float64 # Energy
     k::SVector{2,Float64} # Momentum
@@ -62,8 +84,8 @@ function patch_op(p::VirtualPatch, M::Matrix)
 end
 
 """
-Container struct for patches over which to integrate.
-
+    Mesh(patches::Vector{Patch}, corners::Vector{SVector{2,Float64}}, corner_inds::Vector{SVector{4,Int}}})
+Construct a container struct of patches which contains information for plotting functions defined on patch centers.
 # Fields
 - `patches`: Vector of patches
 - `corners`: Vector of points on patch corners for plotting mesh
