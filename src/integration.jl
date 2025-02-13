@@ -77,7 +77,15 @@ function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, itp::ScaledInterpo
     return Kabc!(ζ, u, a, b, c, v, εabc, T)
 end
 
+###################################
 ### Multi-orbital Hubbard Model ###
+###################################
+
+"""
+    Weff_squared_123(p1::Patch, p2::Patch, p3::Patch, i1::Int, i2::Int, i3::Int, Fpp::Function, Fpk::Function, k4, μ4, weights::AbstractVector)
+
+Compute the effective antisymmetrized spinless quasiparticle scattering vertex in the multiorbital Hubbard model for ``k_1 + k_2 \\to k_3 + k_4`` where momenta 1, 2, and 3 are associated to Patch objects, but the fourth momentum is not. The function `Fpp` calculates the orbital overlap for two Patch objects given the orbital weight vectors in `weights` associated to the indices `i1`, `i2` and `i3` and `Fpk` does the same when one of the inputs is `k4` and not a Patch. `μ4` is the band index associated to `k4`.
+"""
 function Weff_squared_123(p1::Patch, p2::Patch, p3::Patch, i1::Int, i2::Int, i3::Int, Fpp::Function, Fpk::Function, k4, μ4, weights::AbstractVector)
     f13 = Fpp(p1, p3, i1, i3, weights)
     f23 = Fpp(p2, p3, i2, i3, weights)
@@ -87,6 +95,11 @@ function Weff_squared_123(p1::Patch, p2::Patch, p3::Patch, i1::Int, i2::Int, i3:
     return abs2(f13*f24 - f14*f23) + 2 * abs2(f14*f23)
 end
 
+"""
+    Weff_squared_124(p1::Patch, p2::Patch, p4::Patch, i1::Int, i2::Int, i4::Int, Fpp::Function, Fpk::Function, k3, μ3, weights::AbstractVector)
+
+Compute the effective antisymmetrized spinless quasiparticle scattering vertex in the multiorbital Hubbard model for ``k_1 + k_2 \\to k_3 + k_4`` where momenta 1, 2, and 4 are associated to Patch objects, but the fourth momentum is not. The function `Fpp` calculates the orbital overlap for two Patch objects given the orbital weight vectors in `weights` associated to the indices `i1`, `i2` and `i4` and `Fpk` does the same when one of the inputs is `k3` and not a Patch. `μ3` is the band index associated to `k3`.
+"""
 function Weff_squared_124(p1::Patch, p2::Patch, p4::Patch, i1::Int, i2::Int, i4::Int, Fpp::Function, Fpk::Function, k3, μ3, weights::AbstractVector)
     f14 = Fpp(p1, p4, i1, i4, weights)
     f24 = Fpp(p2, p4, i2, i4, weights)
@@ -98,12 +111,11 @@ function Weff_squared_124(p1::Patch, p2::Patch, p4::Patch, i1::Int, i2::Int, i4:
 end
 
 """
-    electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, itps::Vector{ScaledInterpolation}, T::Real, Fpp::Function, Fpk::Function)
+    electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, itps::Vector{ScaledInterpolation}, T::Real, Fpp::Function, Fpk::Function, weights::AbstractVector)
 
 Compute the element (`i`,`j`) of the linearized Boltzmann collision operator for electron electron scattering.
 
-The bands used to construct `grid` are callable using the interpolated dispersion in `itps`. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center an can be calculated independent of `i` and `j`. The functions `Fpp` and `Fpk` are vertex factors defined for two patch variables and for one patch and one momentum vector respectively.
-
+The bands used to construct `grid` are callable using the interpolated dispersions in `itps`. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center and can be calculated independent of `i` and `j`. The functions `Fpp` and `Fpk` are vertex factors defined for two Patch variables and for one Patch and one momentum vector respectively, using the orbital weight vectors defined `weights` evaluated at the patch centers of `grid`. 
 """
 function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, itps::Vector{ScaledInterpolation}, T::Real, Fpp::Function, Fpk::Function, weights::AbstractVector)
     Lij::Float64 = 0.0
@@ -165,7 +177,9 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
     return Lij / (grid[i].dV * (1 - f0s[i]))
 end
 
+#################################
 ### Generic Scattering Vertex ###
+#################################
 
 function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, rlv, bz; umklapp = true, kwargs...)
     Lij::Float64 = 0.0
@@ -248,7 +262,14 @@ end
 
 electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, l::Lattice; umklapp = true, kwargs...) = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, reciprocal_lattice_vectors(l), get_bz(l); umklapp, kwargs...)
 
-function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, ε, T::Real, Weff_squared, l::NoLattice; kwargs...) 
+"""
+    electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, ε::Function, T::Real, Weff_squared, l::NoLattice; kwargs...)
+
+Compute the element (`i`,`j`) of the linearized Boltzmann collision operator for electron electron scattering, assuming an isotropic Fermi surface.
+
+Passing the singleton `NoLattice` object identifies that the FS is isotropic and that umklapp is ignored. The dispersion `ε` is thus taken to be a function of the norm of momentum only. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center and can be calculated independent of `i` and `j`. `Weff_squared` is a user defined function of four Patch variables that computes the effective spinless quasiparticle scattering vertex. Additional parameters needed to evaluate `Weff_squared` can be passed through as keyword arguments. 
+"""
+function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, ε::Function, T::Real, Weff_squared, l::NoLattice; kwargs...) 
     Lij::Float64 = 0.0
     w123::Float64 = 0.0
     w124::Float64 = 0.0
@@ -308,14 +329,16 @@ Compute the scattering amplitude for an electron scattering from patch `a` to pa
 function Iab(a::Patch, b::Patch, V_squared::Function)
     Δε = sqrt(a.de^2 + b.de^2) / sqrt(2) # Add energy differentials in quadrature to obtain ||u||
     if abs(a.energy - b.energy) < Δε/2
-        return 16 * V_squared(a.momentum, b.momentum) * a.djinv * b.djinv / Δε
+        return 16 * V_squared(a.k, b.k) * a.djinv * b.djinv / Δε
     else
         return 0.0
     end
 end
 
 """
-    electron_impurity
+    electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_squared)
+
+Populate the entire collision matrix for electron-impurity scattering on `grid` given the scattering potential `V_squared`, which takes as arguments the incoming and outgoing momenta.
 """
 function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_squared)
     for i in eachindex(grid)
@@ -329,6 +352,11 @@ function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_s
     return nothing
 end
 
+"""
+    electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_squared::Matrix)
+
+Populate the entire collision matrix for electron-impurity scattering on `grid` assuming a constant impurity scattering strength for each band and each interband event given in `V_squared`. It is assumed that `grid` is band-ordered and that the length of each band sector is the same. The ordering of `V_squared` must be the same band ordering.
+"""
 function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_squared::Matrix)
     ℓ = size(L)[1] ÷ size(V_squared)[1]
     for i in eachindex(grid)
@@ -350,7 +378,6 @@ end
     Jabc!(ζ, u, a::Patch, b::Patch, c::Patch, T, k, εabc, itp)
 
 Compute ``\\mathcal{K}_{abc} ``, calculating the intersection volume exactly.
-
 """
 function Jabc!(ζ, u, nonzero_indices, a::Patch, b::Patch, c::Patch, T::Real, k, εabc, itp::ScaledInterpolation, vertices)
     δ = a.energy + b.energy - c.energy - εabc # Energy conservation violations
