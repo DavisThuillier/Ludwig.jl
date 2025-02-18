@@ -27,4 +27,5 @@ makedocs(
 
 deploydocs(
     repo = "github.com/DavisThuillier/Ludwig.jl.git",
+    push_preview = false
 )
