@@ -1,12 +1,6 @@
 # Installation
 
-Ludwig.jl is not yet registered on the [general Julia package registry](https://github.com/JuliaRegistries/General). 
-The latest version of Ludwig.jl can be installed from the Julia REPL by running  
+Ludwig.jl is a registered package on the [general Julia package registry](https://github.com/JuliaRegistries/General). From the Julia REPL, type ] to enter the Pkg REPL mode and run
 ```
-julia> import Pkg
-julia> Pkg.add(url="https://github.com/DavisThuillier/Ludwig.jl/")
-```
-The above will clone the repository and make the package available locally via 
-```
-julia> using Ludwig
+pkg> add Ludwig
 ```
