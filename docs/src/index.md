@@ -1,8 +1,7 @@
 # Ludwig.jl Documentation
 
 ## Overview
-Ludwig provides a framework for generating the linearized Boltzmann collision operator for electron-electron scattering in two-dimensional materials and materials with a pseudo-two-dimensional band structure. This package also provides utilities for calculating conductivities and viscosities of the electron fluid from the generated collision matrix.
-For now, only square Brillouin Zones are supported.
+Ludwig provides a framework for generating the linearized Boltzmann collision operator for electron-electron scattering in two-dimensional materials and materials with a quasi-2D band structure. This package also provides utilities for calculating transport properties such as conductivity and viscosity from the generated collision matrix.
 
 !!! info "Unicode"
     This package uses Unicode characters (primarily Greek letters) such as `η`, `σ`, and `ε` in both function names and for function arguments. 
@@ -32,15 +31,9 @@ e_charge
 f0
 ```
 
-Moreover, all crystal momenta are normalized by ``2\pi / a_i`` where ``a_i`` denotes the the lattice spacing. This makes the computation of momentum integrals simplified:
+Moreover, all momentum integrals are normalized by the volume of the Brillouin zone. This simplifies calculations, but again requires appropriate dimension to be restored later:
 ```math
-\int \frac{d^2\mathbf{k}}{(2\pi)^2} \mapsto \frac{1}{a^2} \int d^2\mathbf{k}
-```
-
-## Other Utilities
-
-```@docs
-Ludwig.map_to_first_bz
+\int \frac{d^2\mathbf{k}}{(2\pi)^2} \to \frac{1}{v_\text{cell}} \int d^2\mathbf{k}
 ```
 
 ## References
