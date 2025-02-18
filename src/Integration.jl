@@ -164,7 +164,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         end
     end
 
-    return Lij / (grid[i].dV * (1 - f0s[i]))
+    return π * Lij / (grid[i].dV * (1 - f0s[i]))
 end
 
 electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, l::Lattice; umklapp = true, kwargs...) = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, reciprocal_lattice_vectors(l), get_bz(l); umklapp, kwargs...)
@@ -222,7 +222,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         end
     end
 
-    return Lij / (grid[i].dV * (1 - f0s[i]))
+    return π * Lij / (grid[i].dV * (1 - f0s[i]))
 end
 
 """
@@ -254,7 +254,7 @@ function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_s
             @inbounds L[i,j] -= Iab(grid[i], grid[j], V_squared)
         end
 
-        L[i, :] /= grid[i].dV
+        L[i, :] *= 2π / grid[i].dV
     end
     return nothing
 end
@@ -272,7 +272,7 @@ function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_s
             @inbounds L[i,j] -= Iab(grid[i], grid[j], (x,y) -> V_squared[(i-1)÷ℓ + 1, (j-1)÷ℓ + 1])
         end
 
-        L[i, :] /= grid[i].dV
+        L[i, :] *= 2π / grid[i].dV
     end
     return nothing
 end
@@ -461,7 +461,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
 
     end
 
-    return Lij / (grid[i].dV * (1 - f0s[i]))
+    return π * Lij / (grid[i].dV * (1 - f0s[i]))
 end
 
 end
