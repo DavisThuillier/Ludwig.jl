@@ -77,110 +77,17 @@ function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, itp::ScaledInterpo
     return Kabc!(ζ, u, a, b, c, v, εabc, T)
 end
 
-###################################
-### Multi-orbital Hubbard Model ###
-###################################
+#################################
+### Generic Scattering Vertex ###
+#################################
 
 """
-    Weff_squared_123(p1::Patch, p2::Patch, p3::Patch, i1::Int, i2::Int, i3::Int, Fpp::Function, Fpk::Function, k4, μ4, weights::AbstractVector)
-
-Compute the effective antisymmetrized spinless quasiparticle scattering vertex in the multiorbital Hubbard model for ``k_1 + k_2 \\to k_3 + k_4`` where momenta 1, 2, and 3 are associated to Patch objects, but the fourth momentum is not. The function `Fpp` calculates the orbital overlap for two Patch objects given the orbital weight vectors in `weights` associated to the indices `i1`, `i2` and `i3` and `Fpk` does the same when one of the inputs is `k4` and not a Patch. `μ4` is the band index associated to `k4`.
-"""
-function Weff_squared_123(p1::Patch, p2::Patch, p3::Patch, i1::Int, i2::Int, i3::Int, Fpp::Function, Fpk::Function, k4, μ4, weights::AbstractVector)
-    f13 = Fpp(p1, p3, i1, i3, weights)
-    f23 = Fpp(p2, p3, i2, i3, weights)
-    f14 = Fpk(p1, i1, k4, μ4, weights)
-    f24 = Fpk(p2, i2, k4, μ4, weights)
-
-    return abs2(f13*f24 - f14*f23) + 2 * abs2(f14*f23)
-end
-
-"""
-    Weff_squared_124(p1::Patch, p2::Patch, p4::Patch, i1::Int, i2::Int, i4::Int, Fpp::Function, Fpk::Function, k3, μ3, weights::AbstractVector)
-
-Compute the effective antisymmetrized spinless quasiparticle scattering vertex in the multiorbital Hubbard model for ``k_1 + k_2 \\to k_3 + k_4`` where momenta 1, 2, and 4 are associated to Patch objects, but the fourth momentum is not. The function `Fpp` calculates the orbital overlap for two Patch objects given the orbital weight vectors in `weights` associated to the indices `i1`, `i2` and `i4` and `Fpk` does the same when one of the inputs is `k3` and not a Patch. `μ3` is the band index associated to `k3`.
-"""
-function Weff_squared_124(p1::Patch, p2::Patch, p4::Patch, i1::Int, i2::Int, i4::Int, Fpp::Function, Fpk::Function, k3, μ3, weights::AbstractVector)
-    f14 = Fpp(p1, p4, i1, i4, weights)
-    f24 = Fpp(p2, p4, i2, i4, weights)
-
-    f13 = Fpk(p1, i1, k3, μ3, weights)
-    f23 = Fpk(p2, i2, k3, μ3, weights)
-
-    return abs2(f13*f24 - f14*f23) + 2 * abs2(f14*f23)
-end
-
-"""
-    electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, itps::Vector{ScaledInterpolation}, T::Real, Fpp::Function, Fpk::Function, weights::AbstractVector)
+    electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, rlv, bz; umklapp = true, kwargs...)
 
 Compute the element (`i`,`j`) of the linearized Boltzmann collision operator for electron electron scattering.
 
 The bands used to construct `grid` are callable using the interpolated dispersions in `itps`. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center and can be calculated independent of `i` and `j`. The functions `Fpp` and `Fpk` are vertex factors defined for two Patch variables and for one Patch and one momentum vector respectively, using the orbital weight vectors defined `weights` evaluated at the patch centers of `grid`. 
 """
-function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, itps::Vector{ScaledInterpolation}, T::Real, Fpp::Function, Fpk::Function, weights::AbstractVector)
-    Lij::Float64 = 0.0
-    w123::Float64 = 0.0
-    w124::Float64 = 0.0
-
-    ζ  = MVector{6,Float64}(undef)
-    u  = MVector{6,Float64}(undef)
-
-    kij = grid[i].k + grid[j].k
-    qij = grid[i].k - grid[j].k
-    kijm = Vector{Float64}(undef, 2)
-    qimj = Vector{Float64}(undef, 2)
-
-    energies = Vector{Float64}(undef, length(itps))
-
-    μ4::Int = 0
-    μ34::Int = 0
-    min_e::Float64 = 0
-
-    for m in eachindex(grid)
-        kijm .= mod.(kij .- grid[m].k .+ 0.5, 1.0) .- 0.5
-
-        min_e = 1e3
-        μ4 = 1
-        for μ in eachindex(itps)
-            energies[μ] = itps[μ](kijm[1], kijm[2])
-            if abs(energies[μ]) < min_e
-                min_e = abs(energies[μ]); μ4 = μ
-            end
-        end
-        
-        w123 = Weff_squared_123(grid[i], grid[j], grid[m], i, j, m, Fpp, Fpk, kijm, μ4, weights)
-
-        if w123 != 0
-            Lij += w123 * Kabc!(ζ, u, grid[i], grid[j], grid[m], kijm, energies[μ4], itps[μ4], T) * f0s[j] * (1 - f0s[m])
-        end
-
-        qimj .= mod.(qij .+ grid[m].k .+ 0.5, 1.0) .- 0.5
-
-        min_e = 1e3
-        μ34 = 1
-        for μ in eachindex(itps)
-            energies[μ] = itps[μ](qimj[1], qimj[2])
-            if abs(energies[μ]) < min_e
-                min_e = abs(energies[μ]); μ34 = μ
-            end
-        end
-
-        w123 = Weff_squared_123(grid[i], grid[m], grid[j], i, m, j, Fpp, Fpk, qimj, μ34, weights)
-        w124 = Weff_squared_124(grid[i], grid[m], grid[j], i, m, j, Fpp, Fpk, qimj, μ34, weights)
-
-        if w123 + w124 != 0
-            Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], qimj, energies[μ34], itps[μ34], T) * f0s[m] * (1 - f0s[j])
-        end
-
-    end
-
-    return Lij / (grid[i].dV * (1 - f0s[i]))
-end
-
-#################################
-### Generic Scattering Vertex ###
-#################################
-
 function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, rlv, bz; umklapp = true, kwargs...)
     Lij::Float64 = 0.0
     w123::Float64 = 0.0
@@ -455,6 +362,106 @@ function Jabc!(ζ, u, nonzero_indices, a::Patch, b::Patch, c::Patch, T::Real, k,
     end
 end
 
-######################################################
+###################################
+### Multi-orbital Hubbard Model ###
+# # # # # # # # # # # # # # # # # #
+###### Warning: Deprecated ########
+###################################
+
+"""
+    Weff_squared_123(p1::Patch, p2::Patch, p3::Patch, i1::Int, i2::Int, i3::Int, Fpp::Function, Fpk::Function, k4, μ4, weights::AbstractVector)
+
+Compute the effective antisymmetrized spinless quasiparticle scattering vertex in the multiorbital Hubbard model for ``k_1 + k_2 \\to k_3 + k_4`` where momenta 1, 2, and 3 are associated to Patch objects, but the fourth momentum is not. The function `Fpp` calculates the orbital overlap for two Patch objects given the orbital weight vectors in `weights` associated to the indices `i1`, `i2` and `i3` and `Fpk` does the same when one of the inputs is `k4` and not a Patch. `μ4` is the band index associated to `k4`.
+"""
+function Weff_squared_123(p1::Patch, p2::Patch, p3::Patch, i1::Int, i2::Int, i3::Int, Fpp::Function, Fpk::Function, k4, μ4, weights::AbstractVector)
+    f13 = Fpp(p1, p3, i1, i3, weights)
+    f23 = Fpp(p2, p3, i2, i3, weights)
+    f14 = Fpk(p1, i1, k4, μ4, weights)
+    f24 = Fpk(p2, i2, k4, μ4, weights)
+
+    return abs2(f13*f24 - f14*f23) + 2 * abs2(f14*f23)
+end
+
+"""
+    Weff_squared_124(p1::Patch, p2::Patch, p4::Patch, i1::Int, i2::Int, i4::Int, Fpp::Function, Fpk::Function, k3, μ3, weights::AbstractVector)
+
+Compute the effective antisymmetrized spinless quasiparticle scattering vertex in the multiorbital Hubbard model for ``k_1 + k_2 \\to k_3 + k_4`` where momenta 1, 2, and 4 are associated to Patch objects, but the fourth momentum is not. The function `Fpp` calculates the orbital overlap for two Patch objects given the orbital weight vectors in `weights` associated to the indices `i1`, `i2` and `i4` and `Fpk` does the same when one of the inputs is `k3` and not a Patch. `μ3` is the band index associated to `k3`.
+"""
+function Weff_squared_124(p1::Patch, p2::Patch, p4::Patch, i1::Int, i2::Int, i4::Int, Fpp::Function, Fpk::Function, k3, μ3, weights::AbstractVector)
+    f14 = Fpp(p1, p4, i1, i4, weights)
+    f24 = Fpp(p2, p4, i2, i4, weights)
+
+    f13 = Fpk(p1, i1, k3, μ3, weights)
+    f23 = Fpk(p2, i2, k3, μ3, weights)
+
+    return abs2(f13*f24 - f14*f23) + 2 * abs2(f14*f23)
+end
+
+"""
+    electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, itps::Vector{ScaledInterpolation}, T::Real, Fpp::Function, Fpk::Function, weights::AbstractVector)
+
+Compute the element (`i`,`j`) of the linearized Boltzmann collision operator for electron electron scattering.
+
+The bands used to construct `grid` are callable using the interpolated dispersions in `itps`. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center and can be calculated independent of `i` and `j`. The functions `Fpp` and `Fpk` are vertex factors defined for two Patch variables and for one Patch and one momentum vector respectively, using the orbital weight vectors defined `weights` evaluated at the patch centers of `grid`. 
+"""
+function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, itps::Vector{ScaledInterpolation}, T::Real, Fpp::Function, Fpk::Function, weights::AbstractVector)
+    Lij::Float64 = 0.0
+    w123::Float64 = 0.0
+    w124::Float64 = 0.0
+
+    ζ  = MVector{6,Float64}(undef)
+    u  = MVector{6,Float64}(undef)
+
+    kij = grid[i].k + grid[j].k
+    qij = grid[i].k - grid[j].k
+    kijm = Vector{Float64}(undef, 2)
+    qimj = Vector{Float64}(undef, 2)
+
+    energies = Vector{Float64}(undef, length(itps))
+
+    μ4::Int = 0
+    μ34::Int = 0
+    min_e::Float64 = 0
+
+    for m in eachindex(grid)
+        kijm .= mod.(kij .- grid[m].k .+ 0.5, 1.0) .- 0.5
+
+        min_e = 1e3
+        μ4 = 1
+        for μ in eachindex(itps)
+            energies[μ] = itps[μ](kijm[1], kijm[2])
+            if abs(energies[μ]) < min_e
+                min_e = abs(energies[μ]); μ4 = μ
+            end
+        end
+        
+        w123 = Weff_squared_123(grid[i], grid[j], grid[m], i, j, m, Fpp, Fpk, kijm, μ4, weights)
+
+        if w123 != 0
+            Lij += w123 * Kabc!(ζ, u, grid[i], grid[j], grid[m], kijm, energies[μ4], itps[μ4], T) * f0s[j] * (1 - f0s[m])
+        end
+
+        qimj .= mod.(qij .+ grid[m].k .+ 0.5, 1.0) .- 0.5
+
+        min_e = 1e3
+        μ34 = 1
+        for μ in eachindex(itps)
+            energies[μ] = itps[μ](qimj[1], qimj[2])
+            if abs(energies[μ]) < min_e
+                min_e = abs(energies[μ]); μ34 = μ
+            end
+        end
+
+        w123 = Weff_squared_123(grid[i], grid[m], grid[j], i, m, j, Fpp, Fpk, qimj, μ34, weights)
+        w124 = Weff_squared_124(grid[i], grid[m], grid[j], i, m, j, Fpp, Fpk, qimj, μ34, weights)
+
+        if w123 + w124 != 0
+            Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], qimj, energies[μ34], itps[μ34], T) * f0s[m] * (1 - f0s[j])
+        end
+
+    end
+
+    return Lij / (grid[i].dV * (1 - f0s[i]))
+end
 
 end
