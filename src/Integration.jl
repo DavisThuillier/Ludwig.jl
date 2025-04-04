@@ -51,6 +51,7 @@ function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc, T)
     u[4] = - ζ[4]
     u[5] = (- c.de/2.0) - ζ[5]
     u[6] = - ζ[6]
+    
 
     ρ < δ^2 / dot(u,u) && return 0.0 # Check for intersection of energy conserving 5-plane with coordinate space
 
@@ -174,7 +175,7 @@ electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, ban
 
 Compute the element (`i`,`j`) of the linearized Boltzmann collision operator for electron electron scattering, assuming an isotropic Fermi surface.
 
-Passing the singleton `NoLattice` object identifies that the FS is isotropic and that umklapp is ignored. The dispersion `ε` is thus taken to be a function of the norm of momentum only. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center and can be calculated independent of `i` and `j`. `Weff_squared` is a user defined function of four Patch variables that computes the effective spinless quasiparticle scattering vertex. Additional parameters needed to evaluate `Weff_squared` can be passed through as keyword arguments. 
+Passing the singleton `NoLattice` object identifies that the FS is isotropic and that umklapp is ignored. For the output, an explicit factor of (2π)^-6 is included since the momenta sampled are not rescaled as in the lattice case. The dispersion `ε` is thus taken to be a function of the norm of momentum only. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center and can be calculated independent of `i` and `j`. `Weff_squared` is a user defined function of four Patch variables that computes the effective spinless quasiparticle scattering vertex. Additional parameters needed to evaluate `Weff_squared` can be passed through as keyword arguments. 
 """
 function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, ε::Function, T::Real, Weff_squared, l::NoLattice; kwargs...) 
     Lij::Float64 = 0.0
@@ -196,7 +197,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         p = VirtualPatch(
             ε(norm(kijm)),
             kijm,
-            ForwardDiff.derivative(ε, norm(kijm)) * kijm / norm(kijm),
+            norm(kijm) != 0.0 ? ForwardDiff.derivative(ε, norm(kijm)) * kijm / norm(kijm) : [0.0, 0.0],
             1
         )
         
@@ -211,7 +212,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         p = VirtualPatch(
             ε(norm(qimj)),
             qimj,
-            ForwardDiff.derivative(ε, norm(qimj)) * qimj / norm(qimj),
+            norm(qimj) != 0.0 ? ForwardDiff.derivative(ε, norm(qimj)) * qimj / norm(qimj) : [0.0, 0.0],
             1
         )
         w123 = Weff_squared(grid[i], grid[m], grid[j], p; kwargs...)
@@ -222,7 +223,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         end
     end
 
-    return π * Lij / (grid[i].dV * (1 - f0s[i]))
+    return π * Lij / (grid[i].dV * (1 - f0s[i])) / (2π)^6
 end
 
 """
