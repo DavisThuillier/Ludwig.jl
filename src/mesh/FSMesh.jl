@@ -102,6 +102,50 @@ corners(m::Mesh) = m.corners
 corner_indices(m::Mesh) = m.corner_inds
 
 ###
+# Nonuniform Energy Gridding
+###
+
+function populate_abscissas!(x, δ)
+    Δx = 0.0
+    for i ∈ eachindex(x)
+        if i == 1
+            x[i] = δ
+        else
+            x[i] = x[i-1] + Δx
+        end
+        Δx = 4 * δ * cosh(x[i]/2)^2
+    end
+    return nothing
+end
+
+function get_abscissas(n, α, threshold = 1e-10, max_iter = 1000)
+    x = Vector{Float64}(undef, n)
+
+    ϵ = α / n
+    iter = 1
+    step = 0.1 * ϵ^(1/3)
+    populate_abscissas!(x, ϵ^(1/3))
+    old_sign = sign(x[end] - α)
+
+    while abs(x[end] - α) >= threshold && iter <= max_iter
+        new_sign = sign(x[end] - α)
+        if new_sign != old_sign
+            old_sign = new_sign
+            step /= 10.0
+        end
+        while ϵ - new_sign * step < 0
+            step /= 2.0
+        end
+        ϵ += - new_sign * step
+        populate_abscissas!(x, ϵ^(1/3))
+
+        iter += 1
+    end
+
+    return vcat(-reverse(x), x), ϵ
+end
+
+###
 # General IBZ Meshes
 ###
 
@@ -335,8 +379,11 @@ function secant_method(f, x0, x1, maxiter; atol = eps(Float64))
     return x2
 end
 
-function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 6.0; maxiter = 10000, atol = 1e-10)
-    n_levels = max(3, n_levels) # Enforce minimum of 2 patches in the energy direction
+function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 6.0; maxiter = 10000, atol = 1e-10, nonuniform = false)
+    n_levels = max(4, n_levels) # Enforce minimum of 3 patches in the energy direction
+    if isodd(n_levels)
+        n_levels += 1
+    end
     n_angles = max(3, n_angles) # Enforce minimum of 2 patches in angular direction
     Δθ = 2π / (n_angles - 1) 
     Δε = 2*α*T / (n_levels - 1)
@@ -346,10 +393,20 @@ function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 
     k = Matrix{SVector{2,Float64}}(undef, n_levels-1, n_angles-1)
     corner_indices = Matrix{SVector{4,Int}}(undef, n_levels-1, n_angles-1)
     radius = Vector{Float64}(undef, 2*n_levels - 1)
-    
+    if nonuniform
+        energies = get_abscissas(n_levels ÷ 2, α) * T
+    else
+        energies = LinRange(-α, α, n_levels) * T
+    end
 
     for i ∈ 1:2*n_levels-1
         E = (i - 1) * Δε/2 - α*T
+        if isodd(i)
+            E = energies[(i+1)÷2]
+        else
+            E = (energies[i÷2+1] + energies[i÷2]) / 2.0
+        end
+
         r0 = i == 1 ? 0.0 : radius[i-1]
         r1 = r0 + Δε / derivative(ε, r0)
         isinf(r1) && (r1 = Δε)
