@@ -142,7 +142,7 @@ function get_abscissas(n, α, threshold = 1e-10, max_iter = 1000)
         iter += 1
     end
 
-    return vcat(-reverse(x), x), ϵ
+    return vcat(-reverse(x), x)#, ϵ
 end
 
 ###
@@ -386,7 +386,7 @@ function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 
     end
     n_angles = max(3, n_angles) # Enforce minimum of 2 patches in angular direction
     Δθ = 2π / (n_angles - 1) 
-    Δε = 2*α*T / (n_levels - 1)
+    Δε = 2*α*T / (n_levels - 1) # From uniform spacing for sense of energy scale
     
     # Slice contours to generate patch corners
     corners = Matrix{SVector{2,Float64}}(undef, n_levels, n_angles)
@@ -400,7 +400,6 @@ function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 
     end
 
     for i ∈ 1:2*n_levels-1
-        E = (i - 1) * Δε/2 - α*T
         if isodd(i)
             E = energies[(i+1)÷2]
         else
@@ -433,6 +432,8 @@ function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 
     J = zeros(Float64, 2, 2)
     patches = Matrix{Patch}(undef, n_levels-1, n_angles-1)
     for i in 1:size(patches)[1]
+        Δε = energies[i+1] - energies[i] 
+        dV = abs(0.5 * Δθ * (radius[2*i + 1]^2 - radius[2*i - 1]^2))
         for j in 1:size(patches)[2]
             θ = atan(k[i,j][2], k[i,j][1])
 
@@ -444,8 +445,6 @@ function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 
             J = inv(J)
             J[1, :] *= 2/Δε
             J[2, :] *= 2/Δθ
-
-            dV = abs(0.5 * Δθ * (radius[2*i + 1]^2 - radius[2*i - 1]^2))
 
             patches[i, j] = Patch(
                 ε(norm(k[i,j])),   
