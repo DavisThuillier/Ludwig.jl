@@ -237,8 +237,18 @@ function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int,
     for i in 2:2:2*n_levels-1
         k, arclengths = arclength_slice(c[i].isolines[1], 2 * n_cuts - 1)
 
-        corners[cind], ij3 = contour_intersection(k[1], gradient(ε, k[1]), c[i-1].isolines[1])
-        corners[cind+1], ij4 = contour_intersection(k[1], gradient(ε, k[1]), c[i+1].isolines[1])
+        # corners[cind], ij3 = contour_intersection(k[1], gradient(ε, k[1]), c[i-1].isolines[1])
+        # corners[cind+1], ij4 = contour_intersection(k[1], gradient(ε, k[1]), c[i+1].isolines[1])
+        endpoints = [c[i-1].isolines[1].points[begin], c[i-1].isolines[1].points[end]]
+        i3 = argmin(map(x -> norm(x .- k[1]), endpoints))
+        ij3 = (i3, i3)
+        corners[cind] = endpoints[i3]
+
+        endpoints = [c[i+1].isolines[1].points[begin], c[i+1].isolines[1].points[end]]
+        i4 = argmin(map(x -> norm(x .- k[1]), endpoints))
+        ij4 = (i4, i4)
+        corners[cind+1] = endpoints[i4]
+
 
         cind += 2        
         for j in 2:2:lastindex(k)
