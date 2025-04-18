@@ -116,17 +116,17 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         for μ in eachindex(bands)
             if is_function[μ]
                 p = VirtualPatch(
-                    e = bands[μ](kijm),
-                    k = umklapp ? kijm : map_to_bz(kijm, bz, rlv, invrlv),
-                    v = ForwardDiff.gradient(bands[μ], kijm),
-                    band_index = μ
+                    bands[μ](kijm),
+                    umklapp ? kijm : map_to_bz(kijm, bz, rlv, invrlv),
+                    ForwardDiff.gradient(bands[μ], kijm),
+                    μ
                 )
             else # Otherwise assume this is an interpolation
                 p = VirtualPatch(
-                    e = bands[μ](kijm_rlb[1], kijm_rlb[2]),
-                    k = umklapp ? kijm : map_to_bz(kijm, bz, rlv, invrlv),
-                    v = invrlv * Interpolations.gradient(bands[μ], kijm_rlb[1], kijm_rlb[2]),
-                    band_index = μ
+                    bands[μ](kijm_rlb[1], kijm_rlb[2]),
+                    umklapp ? kijm : map_to_bz(kijm, bz, rlv, invrlv),
+                    invrlv * Interpolations.gradient(bands[μ], kijm_rlb[1], kijm_rlb[2]),
+                    μ
                 )
             end
             w123 = Weff_squared(grid[i], grid[j], grid[m], p; kwargs)
@@ -142,17 +142,17 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         for μ in eachindex(bands)
             if is_function[μ]
                 p = VirtualPatch(
-                    e = bands[μ](qimj),
-                    k = umklapp ? kimj : map_to_bz(qimj, bz, rlv, invrlv),
-                    v = ForwardDiff.gradient(bands[μ], qimj),
-                    band_index = μ
+                    bands[μ](qimj),
+                    umklapp ? kimj : map_to_bz(qimj, bz, rlv, invrlv),
+                    ForwardDiff.gradient(bands[μ], qimj),
+                    μ
                 )
             else
                 p = VirtualPatch(
-                    e = bands[μ](qimj_rlb[1], qimj_rlb[2]),
-                    k = umklapp ? qimj : map_to_bz(qimj, bz, rlv, invrlv),
-                    v = Interpolations.gradient(bands[μ], qimj_rlb[1], qimj_rlb[2]),
-                    band_index = μ
+                    bands[μ](qimj_rlb[1], qimj_rlb[2]),
+                    umklapp ? qimj : map_to_bz(qimj, bz, rlv, invrlv),
+                    Interpolations.gradient(bands[μ], qimj_rlb[1], qimj_rlb[2]),
+                    μ
                 )
             end
 
