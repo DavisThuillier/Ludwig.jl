@@ -117,14 +117,14 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
             if is_function[μ]
                 p = VirtualPatch(
                     bands[μ](kijm),
-                    umklapp ? kijm : map_to_bz(kijm, bz, rlv, invrlv),
+                    umklapp ? map_to_bz(kijm, bz, rlv, invrlv) : kijm,
                     ForwardDiff.gradient(bands[μ], kijm),
                     μ
                 )
             else # Otherwise assume this is an interpolation
                 p = VirtualPatch(
                     bands[μ](kijm_rlb[1], kijm_rlb[2]),
-                    umklapp ? kijm : map_to_bz(kijm, bz, rlv, invrlv),
+                    umklapp ? map_to_bz(kijm, bz, rlv, invrlv) : kijm,
                     invrlv * Interpolations.gradient(bands[μ], kijm_rlb[1], kijm_rlb[2]),
                     μ
                 )
@@ -143,14 +143,14 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
             if is_function[μ]
                 p = VirtualPatch(
                     bands[μ](qimj),
-                    umklapp ? kimj : map_to_bz(qimj, bz, rlv, invrlv),
+                    umklapp ? map_to_bz(qimj, bz, rlv, invrlv) : qimj,
                     ForwardDiff.gradient(bands[μ], qimj),
                     μ
                 )
             else
                 p = VirtualPatch(
                     bands[μ](qimj_rlb[1], qimj_rlb[2]),
-                    umklapp ? qimj : map_to_bz(qimj, bz, rlv, invrlv),
+                    umklapp ? map_to_bz(qimj, bz, rlv, invrlv) : qimj,
                     Interpolations.gradient(bands[μ], qimj_rlb[1], qimj_rlb[2]),
                     μ
                 )
@@ -236,7 +236,7 @@ Compute the scattering amplitude for an electron scattering from patch `a` to pa
 """
 function Iab(a::Patch, b::Patch, V_squared::Function)
     Δε = sqrt(a.de^2 + b.de^2) / sqrt(2) # Add energy differentials in quadrature to obtain ||u||
-    if abs(a.energy - b.energy) < Δε/2
+    if abs(a.e - b.e) < Δε/2
         return 16 * V_squared(a.k, b.k) * a.djinv * b.djinv / Δε
     else
         return 0.0
