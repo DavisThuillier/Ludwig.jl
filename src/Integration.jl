@@ -235,8 +235,8 @@ Compute the scattering amplitude for an electron scattering from patch `a` to pa
 ```
 """
 function Iab(a::Patch, b::Patch, V_squared::Function)
-    Δε = sqrt(a.de^2 + b.de^2) / sqrt(2) # Add energy differentials in quadrature to obtain ||u||
-    if abs(a.e - b.e) < Δε/2
+    Δε = (a.de + b.de) / 2 # Everage of energy differentials yields ||u||
+    if abs(a.e - b.e) < a.de/2 # Check for being between the same energy contours
         return 16 * V_squared(a.k, b.k) * a.djinv * b.djinv / Δε
     else
         return 0.0
