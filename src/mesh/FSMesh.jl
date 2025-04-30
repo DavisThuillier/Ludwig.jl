@@ -58,7 +58,6 @@ energy(p::AbstractPatch)   = p.e
 momentum(p::AbstractPatch) = p.k
 velocity(p::AbstractPatch) = p.v
 band(p::AbstractPatch)     = p.band_index
-
 area(p::Patch)             = p.dV
 
 function patch_op(p::Patch, M::Matrix)
@@ -102,6 +101,50 @@ corners(m::Mesh) = m.corners
 corner_indices(m::Mesh) = m.corner_inds
 
 ###
+# Nonuniform Energy Gridding
+###
+
+function populate_abscissas!(x, δ)
+    Δx = 0.0
+    for i ∈ eachindex(x)
+        if i == 1
+            x[i] = δ
+        else
+            x[i] = x[i-1] + Δx
+        end
+        Δx = 4 * δ * cosh(x[i]/2)^2
+    end
+    return nothing
+end
+
+function get_abscissas(n, α, threshold = 1e-10, max_iter = 1000)
+    x = Vector{Float64}(undef, n)
+
+    ϵ = α / n
+    iter = 1
+    step = 0.1 * ϵ^(1/3)
+    populate_abscissas!(x, ϵ^(1/3))
+    old_sign = sign(x[end] - α)
+
+    while abs(x[end] - α) >= threshold && iter <= max_iter
+        new_sign = sign(x[end] - α)
+        if new_sign != old_sign
+            old_sign = new_sign
+            step /= 10.0
+        end
+        while ϵ - new_sign * step < 0
+            step /= 2.0
+        end
+        ϵ += - new_sign * step
+        populate_abscissas!(x, ϵ^(1/3))
+
+        iter += 1
+    end
+
+    return vcat(-reverse(x), x)#, ϵ
+end
+
+###
 # General IBZ Meshes
 ###
 
@@ -118,7 +161,7 @@ function get_arclengths(curve)
 end
 
 function arclength_slice(iso::Isoline, n::Int)
-    curve = iso.points
+    curve = iso.points # Curve consists of linear segments between points
 
     arclengths = get_arclengths(curve)
     
@@ -134,6 +177,7 @@ function arclength_slice(iso::Isoline, n::Int)
             j += 1
         end
 
+        # Perform linear interpolation between curve points
         push!(grid, curve[j-1] + (curve[j] - curve[j - 1]) * (τ[i] - arclengths[j-1]) / (arclengths[j] - arclengths[j-1]))
     end
 
@@ -154,7 +198,7 @@ function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int,
     for (i,x) in enumerate(X)
         for (j,y) in enumerate(Y)
             k = [x,y]
-            E[i,j] = ε(k)
+            E[i,j] = ε(k) # Sample dispersion in bounding box
         end
     end
 
@@ -169,11 +213,12 @@ function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int,
             energies[1:i] = LinRange(e_min, corner_e, i)
             Δe = (e_max - corner_e) / (n_levels - i)
             energies[i+1:end] = LinRange(corner_e + Δe, e_max, n_levels - i)
+            break # Accept at most one corner crossing
         end 
     end
 
     foliated_energies = Vector{Float64}(undef, 2 * n_levels - 1)
-
+    # Populate vector of energies for patch centers and contours
     for i in eachindex(foliated_energies)
         if isodd(i)
             foliated_energies[i] = energies[(i - 1) ÷ 2 + 1]
@@ -193,8 +238,17 @@ function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int,
     for i in 2:2:2*n_levels-1
         k, arclengths = arclength_slice(c[i].isolines[1], 2 * n_cuts - 1)
 
-        corners[cind], ij3 = contour_intersection(k[1], gradient(ε, k[1]), c[i-1].isolines[1])
-        corners[cind+1], ij4 = contour_intersection(k[1], gradient(ε, k[1]), c[i+1].isolines[1])
+        # Identify endpoints of contours as corners of first patch
+        endpoints = [c[i-1].isolines[1].points[begin], c[i-1].isolines[1].points[end]]
+        i3 = argmin(map(x -> norm(x .- k[1]), endpoints))
+        ij3 = (i3, i3)
+        corners[cind] = endpoints[i3]
+
+        endpoints = [c[i+1].isolines[1].points[begin], c[i+1].isolines[1].points[end]]
+        i4 = argmin(map(x -> norm(x .- k[1]), endpoints))
+        ij4 = (i4, i4)
+        corners[cind+1] = endpoints[i4]
+
 
         cind += 2        
         for j in 2:2:lastindex(k)
@@ -214,10 +268,8 @@ function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int,
                 (ij4, ij2)
             )
             
-
+            # Calculate area of patch using winding method relative to patch center
             dV = poly_area(vcat(corners[cind-4:cind-1], c[i-1].isolines[1].points[min(i1,i3):max(i1,i3)], c[i+1].isolines[1].points[min(i2,i4):max(i2,i4)]), k[j])
-
-            # dV = dV2
 
             ij3 = ij1; ij4 = ij2
 
@@ -324,6 +376,10 @@ end
 
 bz_mesh(l::Lattice, ε, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0) = bz_mesh(l, [ε], T, n_levels, n_cuts, N, α)
 
+"""
+    secant_method(f, x0, x1, maxiter[; atol])
+Find a root of the function f(x) in the interval [x0, x1] via the secant method. Root finding will iterate until `maxiter` iterations is reached or the root is within the absolute tolerance `atol`.
+"""
 function secant_method(f, x0, x1, maxiter; atol = eps(Float64))
     x2 = 0.0
     for i in 1:maxiter
@@ -335,21 +391,33 @@ function secant_method(f, x0, x1, maxiter; atol = eps(Float64))
     return x2
 end
 
-function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 6.0; maxiter = 10000, atol = 1e-10)
-    n_levels = max(3, n_levels) # Enforce minimum of 2 patches in the energy direction
+function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 6.0; maxiter = 10000, atol = 1e-10, nonuniform = false)
+    n_levels = max(4, n_levels) # Enforce minimum of 3 patches in the energy direction
+    if isodd(n_levels)
+        n_levels += 1
+    end
     n_angles = max(3, n_angles) # Enforce minimum of 2 patches in angular direction
     Δθ = 2π / (n_angles - 1) 
-    Δε = 2*α*T / (n_levels - 1)
+    Δε = 2*α*T / (n_levels - 1) # From uniform spacing for sense of energy scale
     
     # Slice contours to generate patch corners
     corners = Matrix{SVector{2,Float64}}(undef, n_levels, n_angles)
     k = Matrix{SVector{2,Float64}}(undef, n_levels-1, n_angles-1)
     corner_indices = Matrix{SVector{4,Int}}(undef, n_levels-1, n_angles-1)
     radius = Vector{Float64}(undef, 2*n_levels - 1)
-    
+    if nonuniform
+        energies = get_abscissas(n_levels ÷ 2, α) * T
+    else
+        energies = LinRange(-α, α, n_levels) * T
+    end
 
     for i ∈ 1:2*n_levels-1
-        E = (i - 1) * Δε/2 - α*T
+        if isodd(i)
+            E = energies[(i+1)÷2]
+        else
+            E = (energies[i÷2+1] + energies[i÷2]) / 2.0
+        end
+
         r0 = i == 1 ? 0.0 : radius[i-1]
         r1 = r0 + Δε / derivative(ε, r0)
         isinf(r1) && (r1 = Δε)
@@ -376,6 +444,8 @@ function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 
     J = zeros(Float64, 2, 2)
     patches = Matrix{Patch}(undef, n_levels-1, n_angles-1)
     for i in 1:size(patches)[1]
+        Δε = energies[i+1] - energies[i] 
+        dV = abs(0.5 * Δθ * (radius[2*i + 1]^2 - radius[2*i - 1]^2))
         for j in 1:size(patches)[2]
             θ = atan(k[i,j][2], k[i,j][1])
 
@@ -387,8 +457,6 @@ function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 
             J = inv(J)
             J[1, :] *= 2/Δε
             J[2, :] *= 2/Δθ
-
-            dV = abs(0.5 * Δθ * (radius[2*i + 1]^2 - radius[2*i - 1]^2))
 
             patches[i, j] = Patch(
                 ε(norm(k[i,j])),   

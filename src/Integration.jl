@@ -51,6 +51,7 @@ function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc, T)
     u[4] = - ζ[4]
     u[5] = (- c.de/2.0) - ζ[5]
     u[6] = - ζ[6]
+    
 
     ρ < δ^2 / dot(u,u) && return 0.0 # Check for intersection of energy conserving 5-plane with coordinate space
 
@@ -115,17 +116,17 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         for μ in eachindex(bands)
             if is_function[μ]
                 p = VirtualPatch(
-                    e = bands[μ](kijm),
-                    k = umklapp ? kijm : map_to_bz(kijm, bz, rlv, invrlv),
-                    v = ForwardDiff.gradient(bands[μ], kijm),
-                    band_index = μ
+                    bands[μ](kijm),
+                    umklapp ? map_to_bz(kijm, bz, rlv, invrlv) : kijm,
+                    ForwardDiff.gradient(bands[μ], kijm),
+                    μ
                 )
             else # Otherwise assume this is an interpolation
                 p = VirtualPatch(
-                    e = bands[μ](kijm_rlb[1], kijm_rlb[2]),
-                    k = umklapp ? kijm : map_to_bz(kijm, bz, rlv, invrlv),
-                    v = invrlv * Interpolations.gradient(bands[μ], kijm_rlb[1], kijm_rlb[2]),
-                    band_index = μ
+                    bands[μ](kijm_rlb[1], kijm_rlb[2]),
+                    umklapp ? map_to_bz(kijm, bz, rlv, invrlv) : kijm,
+                    invrlv * Interpolations.gradient(bands[μ], kijm_rlb[1], kijm_rlb[2]),
+                    μ
                 )
             end
             w123 = Weff_squared(grid[i], grid[j], grid[m], p; kwargs)
@@ -141,17 +142,17 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         for μ in eachindex(bands)
             if is_function[μ]
                 p = VirtualPatch(
-                    e = bands[μ](qimj),
-                    k = umklapp ? kimj : map_to_bz(qimj, bz, rlv, invrlv),
-                    v = ForwardDiff.gradient(bands[μ], qimj),
-                    band_index = μ
+                    bands[μ](qimj),
+                    umklapp ? map_to_bz(qimj, bz, rlv, invrlv) : qimj,
+                    ForwardDiff.gradient(bands[μ], qimj),
+                    μ
                 )
             else
                 p = VirtualPatch(
-                    e = bands[μ](qimj_rlb[1], qimj_rlb[2]),
-                    k = umklapp ? qimj : map_to_bz(qimj, bz, rlv, invrlv),
-                    v = Interpolations.gradient(bands[μ], qimj_rlb[1], qimj_rlb[2]),
-                    band_index = μ
+                    bands[μ](qimj_rlb[1], qimj_rlb[2]),
+                    umklapp ? map_to_bz(qimj, bz, rlv, invrlv) : qimj,
+                    Interpolations.gradient(bands[μ], qimj_rlb[1], qimj_rlb[2]),
+                    μ
                 )
             end
 
@@ -164,7 +165,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         end
     end
 
-    return Lij / (grid[i].dV * (1 - f0s[i]))
+    return π * Lij / (grid[i].dV * (1 - f0s[i]))
 end
 
 electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, l::Lattice; umklapp = true, kwargs...) = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, reciprocal_lattice_vectors(l), get_bz(l); umklapp, kwargs...)
@@ -174,7 +175,7 @@ electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, ban
 
 Compute the element (`i`,`j`) of the linearized Boltzmann collision operator for electron electron scattering, assuming an isotropic Fermi surface.
 
-Passing the singleton `NoLattice` object identifies that the FS is isotropic and that umklapp is ignored. The dispersion `ε` is thus taken to be a function of the norm of momentum only. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center and can be calculated independent of `i` and `j`. `Weff_squared` is a user defined function of four Patch variables that computes the effective spinless quasiparticle scattering vertex. Additional parameters needed to evaluate `Weff_squared` can be passed through as keyword arguments. 
+Passing the singleton `NoLattice` object identifies that the FS is isotropic and that umklapp is ignored. For the output, an explicit factor of (2π)^-6 is included since the momenta sampled are not rescaled as in the lattice case. The dispersion `ε` is thus taken to be a function of the norm of momentum only. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center and can be calculated independent of `i` and `j`. `Weff_squared` is a user defined function of four Patch variables that computes the effective spinless quasiparticle scattering vertex. Additional parameters needed to evaluate `Weff_squared` can be passed through as keyword arguments. 
 """
 function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, ε::Function, T::Real, Weff_squared, l::NoLattice; kwargs...) 
     Lij::Float64 = 0.0
@@ -196,7 +197,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         p = VirtualPatch(
             ε(norm(kijm)),
             kijm,
-            ForwardDiff.derivative(ε, norm(kijm)) * kijm / norm(kijm),
+            norm(kijm) != 0.0 ? ForwardDiff.derivative(ε, norm(kijm)) * kijm / norm(kijm) : [0.0, 0.0],
             1
         )
         
@@ -211,7 +212,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         p = VirtualPatch(
             ε(norm(qimj)),
             qimj,
-            ForwardDiff.derivative(ε, norm(qimj)) * qimj / norm(qimj),
+            norm(qimj) != 0.0 ? ForwardDiff.derivative(ε, norm(qimj)) * qimj / norm(qimj) : [0.0, 0.0],
             1
         )
         w123 = Weff_squared(grid[i], grid[m], grid[j], p; kwargs...)
@@ -222,7 +223,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         end
     end
 
-    return Lij / (grid[i].dV * (1 - f0s[i]))
+    return π * Lij / (grid[i].dV * (1 - f0s[i])) / (2π)^6
 end
 
 """
@@ -234,8 +235,8 @@ Compute the scattering amplitude for an electron scattering from patch `a` to pa
 ```
 """
 function Iab(a::Patch, b::Patch, V_squared::Function)
-    Δε = sqrt(a.de^2 + b.de^2) / sqrt(2) # Add energy differentials in quadrature to obtain ||u||
-    if abs(a.energy - b.energy) < Δε/2
+    Δε = (a.de + b.de) / 2 # Everage of energy differentials yields ||u||
+    if abs(a.e - b.e) < a.de/2 # Check for being between the same energy contours
         return 16 * V_squared(a.k, b.k) * a.djinv * b.djinv / Δε
     else
         return 0.0
@@ -254,7 +255,7 @@ function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_s
             @inbounds L[i,j] -= Iab(grid[i], grid[j], V_squared)
         end
 
-        L[i, :] /= grid[i].dV
+        L[i, :] *= 2π / grid[i].dV
     end
     return nothing
 end
@@ -272,7 +273,7 @@ function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_s
             @inbounds L[i,j] -= Iab(grid[i], grid[j], (x,y) -> V_squared[(i-1)÷ℓ + 1, (j-1)÷ℓ + 1])
         end
 
-        L[i, :] /= grid[i].dV
+        L[i, :] *= 2π / grid[i].dV
     end
     return nothing
 end
@@ -461,7 +462,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
 
     end
 
-    return Lij / (grid[i].dV * (1 - f0s[i]))
+    return π * Lij / (grid[i].dV * (1 - f0s[i]))
 end
 
 end
