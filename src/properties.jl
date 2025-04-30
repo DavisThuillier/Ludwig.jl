@@ -13,13 +13,13 @@ function inner_product(a, b, L, w)
 end
 
 """
-    conductivity(L, v, E, dV, T [, ω = 0.0, q = [0.0, 0.0]])
+    electrical_conductivity(L, v, E, dV, T [, ω = 0.0, q = [0.0, 0.0]])
 
 Compute the conductivity tensor using ``\\sigma_{ij}(ω, \\mathbf{q}) = 2 e^2 \\langle v_i | (L - i\\omega + i\\mathbf{q}\\cdot\\mathbf{v})^{-1} | v_j \\rangle``.
 
 For correct conversion to SI units, `E` and `T` must be expressed in units of eV, dV must be in units of ``(2pi / a)^2,`` where ``a`` is the lattice constant, and `v` must be in units of ``(a / h) eV``.
 """
-function conductivity(L, v, E, dV, T, ω = 0.0, q = [0.0, 0.0])
+function electrical_conductivity(L, v, E, dV, T, ω = 0.0, q = [0.0, 0.0])
     fd = f0.(E, T) # Fermi dirac on grid points
     weight = fd .* (1 .- fd) .* dV
 
@@ -48,11 +48,11 @@ function conductivity(L, v, E, dV, T, ω = 0.0, q = [0.0, 0.0])
 end
 
 """
-    longitudinal_conductivity(L, vx, E, dV, T [, ω])
+    longitudinal_electrical_conductivity(L, vx, E, dV, T [, ω])
 
 Compute ``\\sigma_{xx}`` only.
 """
-function longitudinal_conductivity(L, vx, E, dV, T, ω = 0.0)
+function longitudinal_electrical_conductivity(L, vx, E, dV, T, ω = 0.0)
     fd = f0.(E, T) # Fermi dirac on grid points
 
     if ω != 0.0
@@ -64,6 +64,100 @@ function longitudinal_conductivity(L, vx, E, dV, T, ω = 0.0)
     σxx = inner_product(vx, vx, L, fd .* (1 .- fd) .* dV)
 
     return (G0 / (2π)) * (σxx / T)
+end
+
+function thermal_conductivity(L, v, E, dV, T)
+    fd = f0.(E, T) # Fermi dirac on grid points
+    weight = fd .* (1 .- fd) .* dV
+
+    jex = E .* first.(v) # Energy current in x-direction
+    jey = E .* last.(v)  # Energy current in y-direction
+
+    λ = Matrix{ComplexF64}(undef, 2, 2)
+    λ[1,1] = inner_product(jex, jex, L, weight)
+    λ[1,2] = inner_product(jex, jey, L, weight)
+    λ[2,1] = inner_product(jey, jex, L, weight)
+    λ[2,2] = inner_product(jey, jey, L, weight)
+
+    return λ
+end
+
+function thermal_conductivity(L, v, E, dV, T, i::Int, j::Int)
+    if !((0 < i < 3) && (0 < j < 3)) 
+        throw(BoundsError((i,j), " indices of tensor must be 1 or 2."))
+    end
+    fd = f0.(E, T) # Fermi dirac on grid points
+    weight = fd .* (1 .- fd) .* dV
+
+    j1 = E .* map(x -> x[i], v)
+    j2 = E .* map(x -> x[j], v)
+
+    λ = inner_product(j1, j2, L, weight)
+    return λ
+end
+
+function thermoelectric_conductivity(L, v, E, dV, T)
+    fd = f0.(E, T) # Fermi dirac on grid points
+    weight = fd .* (1 .- fd) .* dV
+
+    jx  = first.(v)
+    jy  = last.(v)
+    jex = E .* jx # Energy current in x-direction
+    jey = E .* jy  # Energy current in y-direction
+
+    ϵ = Matrix{ComplexF64}(undef, 2, 2)
+    ϵ[1,1] = inner_product(jx, jex, L, weight)
+    ϵ[1,2] = inner_product(jx, jey, L, weight)
+    ϵ[2,1] = inner_product(jy, jex, L, weight)
+    ϵ[2,2] = inner_product(jy, jey, L, weight)
+
+    return ϵ
+end
+
+function thermoelectric_conductivity(L, v, E, dV, T, i::Int, j::Int)
+    if !((0 < i < 3) && (0 < j < 3)) 
+        throw(BoundsError((i,j), " indices of tensor must be 1 or 2."))
+    end
+    fd = f0.(E, T) # Fermi dirac on grid points
+    weight = fd .* (1 .- fd) .* dV
+
+    j1 = map(x -> x[i], v)
+    je2 = E .* map(x -> x[j], v)
+    ϵ = inner_product(j1, je2, L, weight)
+
+    return ϵ
+end
+
+function peltier_tensor(L, v, E, dV, T)
+    fd = f0.(E, T) # Fermi dirac on grid points
+    weight = fd .* (1 .- fd) .* dV
+
+    jx  = first.(v)
+    jy  = last.(v)
+    jex = E .* jx # Energy current in x-direction
+    jey = E .* jy  # Energy current in y-direction
+
+    τ = Matrix{ComplexF64}(undef, 2, 2)
+    τ[1,1] = inner_product(jex, jx, L, weight)
+    τ[1,2] = inner_product(jex, jy, L, weight)
+    τ[2,1] = inner_product(jey, jx, L, weight)
+    τ[2,2] = inner_product(jey, jy, L, weight)
+
+    return τ
+end
+
+function peltier_tensor(L, v, E, dV, T, i::Int, j::Int)
+    if !((0 < i < 3) && (0 < j < 3)) 
+        throw(BoundsError((i,j), " indices of tensor must be 1 or 2."))
+    end
+    fd = f0.(E, T) # Fermi dirac on grid points
+    weight = fd .* (1 .- fd) .* dV
+
+    je1 = E .* map(x -> x[i], v)
+    j2  = map(x -> x[j], v)
+    τ  = inner_product(je1, j2, L, weight)
+
+    return τ
 end
 
 """
@@ -140,6 +234,10 @@ function η_lifetime(L, D, E, dV, T)
 
     return τ_eff * hbar
 end
+
+#########################
+### FIXME: Incomplete ###
+### Hall Resistivity  ###
 
 delta(i,j) = i == j ? 1.0 : 0.0
 delta(v::Vector, i::Int, j::Int) = v[i] == v[j] ? 1.0 : 0.0
