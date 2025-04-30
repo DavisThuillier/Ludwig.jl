@@ -110,9 +110,9 @@ function find_contour(x, y, A::AbstractMatrix, level::Real = 0.0; mask = [])
         if !isclosed && (length(cells) > 0 || length(border_cells) > 0)
             # Go back to the starting cell and walk the other direction
             edge, index = get_next_cell(start_edge, start_index)
-            !haskey(cells, index) && !haskey(border_cells, index) && break 
-
-            follow_contour!(cells, border_cells, reverse!(segment), x, y, A, is, js, index, edge, level; mask)
+            if haskey(cells, index) || haskey(border_cells, index) 
+                follow_contour!(cells, border_cells, reverse!(segment), x, y, A, is, js, index, edge, level; mask)
+            end
         end
 
         seg_length = 0.0
@@ -124,7 +124,7 @@ function find_contour(x, y, A::AbstractMatrix, level::Real = 0.0; mask = [])
 
         push!(bundle.isolines, Isoline(segment, isclosed, seg_length))
     end
-    
+
     return bundle
 end
 
