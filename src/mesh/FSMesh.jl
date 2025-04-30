@@ -58,7 +58,6 @@ energy(p::AbstractPatch)   = p.e
 momentum(p::AbstractPatch) = p.k
 velocity(p::AbstractPatch) = p.v
 band(p::AbstractPatch)     = p.band_index
-
 area(p::Patch)             = p.dV
 
 function patch_op(p::Patch, M::Matrix)
@@ -162,7 +161,7 @@ function get_arclengths(curve)
 end
 
 function arclength_slice(iso::Isoline, n::Int)
-    curve = iso.points
+    curve = iso.points # Curve consists of linear segments between points
 
     arclengths = get_arclengths(curve)
     
@@ -178,6 +177,7 @@ function arclength_slice(iso::Isoline, n::Int)
             j += 1
         end
 
+        # Perform linear interpolation between curve points
         push!(grid, curve[j-1] + (curve[j] - curve[j - 1]) * (τ[i] - arclengths[j-1]) / (arclengths[j] - arclengths[j-1]))
     end
 
@@ -198,7 +198,7 @@ function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int,
     for (i,x) in enumerate(X)
         for (j,y) in enumerate(Y)
             k = [x,y]
-            E[i,j] = ε(k)
+            E[i,j] = ε(k) # Sample dispersion in bounding box
         end
     end
 
@@ -213,11 +213,12 @@ function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int,
             energies[1:i] = LinRange(e_min, corner_e, i)
             Δe = (e_max - corner_e) / (n_levels - i)
             energies[i+1:end] = LinRange(corner_e + Δe, e_max, n_levels - i)
+            break # Accept at most one corner crossing
         end 
     end
 
     foliated_energies = Vector{Float64}(undef, 2 * n_levels - 1)
-
+    # Populate vector of energies for patch centers and contours
     for i in eachindex(foliated_energies)
         if isodd(i)
             foliated_energies[i] = energies[(i - 1) ÷ 2 + 1]
@@ -237,8 +238,7 @@ function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int,
     for i in 2:2:2*n_levels-1
         k, arclengths = arclength_slice(c[i].isolines[1], 2 * n_cuts - 1)
 
-        # corners[cind], ij3 = contour_intersection(k[1], gradient(ε, k[1]), c[i-1].isolines[1])
-        # corners[cind+1], ij4 = contour_intersection(k[1], gradient(ε, k[1]), c[i+1].isolines[1])
+        # Identify endpoints of contours as corners of first patch
         endpoints = [c[i-1].isolines[1].points[begin], c[i-1].isolines[1].points[end]]
         i3 = argmin(map(x -> norm(x .- k[1]), endpoints))
         ij3 = (i3, i3)
@@ -268,10 +268,8 @@ function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int,
                 (ij4, ij2)
             )
             
-
+            # Calculate area of patch using winding method relative to patch center
             dV = poly_area(vcat(corners[cind-4:cind-1], c[i-1].isolines[1].points[min(i1,i3):max(i1,i3)], c[i+1].isolines[1].points[min(i2,i4):max(i2,i4)]), k[j])
-
-            # dV = dV2
 
             ij3 = ij1; ij4 = ij2
 
@@ -378,6 +376,10 @@ end
 
 bz_mesh(l::Lattice, ε, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0) = bz_mesh(l, [ε], T, n_levels, n_cuts, N, α)
 
+"""
+    secant_method(f, x0, x1, maxiter[; atol])
+Find a root of the function f(x) in the interval [x0, x1] via the secant method. Root finding will iterate until `maxiter` iterations is reached or the root is within the absolute tolerance `atol`.
+"""
 function secant_method(f, x0, x1, maxiter; atol = eps(Float64))
     x2 = 0.0
     for i in 1:maxiter
