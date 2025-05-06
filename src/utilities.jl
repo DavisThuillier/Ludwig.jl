@@ -13,17 +13,6 @@ f0(E::Float64, T::Float64) = 1 / (exp(E/T) + 1)
 
 
 """
-        f0(E, T)
-
-Return the value of the Bose-Einstein distribution for energy `E` and temperature `T`.
-
-```math
-    f^{(0)}(\\varepsilon) = \\frac{1}{e^{\\varepsilon/k_B T} - 1}
-```
-"""
-b0(E::Float64, T::Float64) = 1 / (exp(E/T) - 1)
-
-"""
         symmetrize(L, dV, E, T)
 
 """
