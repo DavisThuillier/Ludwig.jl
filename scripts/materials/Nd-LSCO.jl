@@ -9,6 +9,9 @@ const tz::Float64 = 0.0651 # ± 0.0005
 const a::Float64 = 3.75e-10
 const c::Float64 = 13.2e-10
 
+const a1 = [1.0, 0.0]
+const a2 = [0.0, 1.0]
+
 function ε_full(k::AbstractVector)
     return - μ - 2.0 * (cos(2pi*k[1]) + cos(2pi*k[2])) - 4 * tp * cos(2pi*k[1])*cos(2pi*k[2]) - 2 * tpp * (cos(4pi * k[1]) + cos(4pi * k[2])) - 2 * tz * cos(pi*k[1]) * cos(pi*k[2]) * cos(pi*k[3]) * (cos(2pi*k[1]) - cos(2pi*k[2]))^2
 end
