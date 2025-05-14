@@ -391,7 +391,7 @@ function secant_method(f, x0, x1, maxiter; atol = eps(Float64))
     return x2
 end
 
-function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 6.0; maxiter = 10000, atol = 1e-10, nonuniform = false)
+function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 6.0; maxiter = 10000, atol = 1e-10)
     n_levels = max(4, n_levels) # Enforce minimum of 3 patches in the energy direction
     if isodd(n_levels)
         n_levels += 1
@@ -405,11 +405,7 @@ function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 
     k = Matrix{SVector{2,Float64}}(undef, n_levels-1, n_angles-1)
     corner_indices = Matrix{SVector{4,Int}}(undef, n_levels-1, n_angles-1)
     radius = Vector{Float64}(undef, 2*n_levels - 1)
-    if nonuniform
-        energies = get_abscissas(n_levels ÷ 2, α) * T
-    else
-        energies = LinRange(-α, α, n_levels) * T
-    end
+    energies = LinRange(-α, α, n_levels) * T
 
     for i ∈ 1:2*n_levels-1
         if isodd(i)
@@ -421,8 +417,8 @@ function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 
         r0 = i == 1 ? 0.0 : radius[i-1]
         r1 = r0 + Δε / derivative(ε, r0)
         isinf(r1) && (r1 = Δε)
-
         radius[i] = secant_method(r -> ε(r) - E, r0, r1, maxiter; atol)
+
         if isodd(i)
             corners[i÷2 + 1, :] = map(θ -> SVector{2, Float64}(radius[i]*cos(θ), radius[i]*sin(θ)), LinRange(0, 2π, n_angles))
         else
@@ -441,31 +437,28 @@ function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 
 
     v = map(x -> derivative(ε, norm(x)) * x / norm(x), k)
 
-    J = zeros(Float64, 2, 2)
     patches = Matrix{Patch}(undef, n_levels-1, n_angles-1)
     for i in 1:size(patches)[1]
+        E = (energies[i+1] + energies[i]) / 2.0
         Δε = energies[i+1] - energies[i] 
         dV = abs(0.5 * Δθ * (radius[2*i + 1]^2 - radius[2*i - 1]^2))
         for j in 1:size(patches)[2]
             θ = atan(k[i,j][2], k[i,j][1])
 
-            J[1,1] = cos(θ) / norm(v[i,j])
-            J[1,2] = sin(θ) / norm(v[i,j])
-            J[2,1] = - norm(k[i,j]) * sin(θ)
-            J[2,2] = norm(k[i,j]) * cos(θ)
-
-            J = inv(J)
-            J[1, :] *= 2/Δε
-            J[2, :] *= 2/Δθ
+            Jinv = zeros(Float64, 2, 2)
+            Jinv[1,1] = (Δε/2) * cos(θ) / norm(v[i,j])
+            Jinv[2,1] = (Δε/2) * sin(θ) / norm(v[i,j])
+            Jinv[1,2] = - (Δθ/2) * norm(k[i,j]) * sin(θ)
+            Jinv[2,2] = (Δθ/2) * norm(k[i,j]) * cos(θ)
 
             patches[i, j] = Patch(
-                ε(norm(k[i,j])),   
+                E,   
                 k[i,j], 
                 v[i,j],
                 Δε,
                 dV,
-                inv(J),
-                1 / abs(det(J)),
+                Jinv,
+                abs(det(Jinv)),
                 1
             )
         end
