@@ -226,6 +226,101 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
     return π * Lij / (grid[i].dV * (1 - f0s[i])) / (2π)^6
 end
 
+function electron_phonon(a::Patch, b::Patch, T::Real, g, ω, rlv, bz; kwargs...)
+    if abs(a.e - b.e) < a.de / 2
+        return 0.0
+    end
+    R4_squared = 4*sqrt(2)/π
+
+    invrlv = inv(rlv) 
+    q = map_to_bz(b.k - a.k, bz, rlv, invrlv)
+    ω0 = ω(q)
+    gij2 = abs(g(b.k, a.k, q, ω0; kwargs))^2
+
+    v = ForwardDiff.gradient(ω, q)
+    ζ = MVector{4,Float64}(undef)
+    u = MVector{4,Float64}(undef)
+    ζ[1] = -(v[1] * a.jinv[1,1] + v[2] * a.jinv[2,1])
+    ζ[2] = -(v[1] * a.jinv[1,2] + v[2] * a.jinv[2,2])
+    ζ[3] = v[1] * b.jinv[1,1] + v[2] * b.jinv[2,1]
+    ζ[4] = v[1] * b.jinv[1,2] + v[2] * b.jinv[2,2]
+
+    Lij = 0.0
+    for sign ∈ [-1, 1] 
+        δ = b.e - a.e + sign * ω0
+
+        u[1] = - a.de/2.0 + sign * ζ[1]
+        u[2] = sign * ζ[2]
+        u[3] = b.de/2.0 + sign * ζ[3]
+        u[4] = sign * ζ[4]
+
+        if R4_squared > δ^2 / dot(u,u) # Check for intersection of energy conserving 3-plane with coordinate space
+            ω = ω0 - δ * dot(ζ, u) / dot(u,u)
+            V = (4 * π^3 / 3) * (4*sqrt(2)/π - δ^2 / dot(u,u) )^(3/2)
+
+            Lij -= sign * V / (2 * cosh(ω / T) - 2) / norm(u)
+        end
+    end
+    
+    f0i = f0(a.e, T)
+    f0j = f0(b.e, T)
+    return 4π * Lij * gij2 * (f0j - f0i) * a.djinv * b.djinv / (a.dV * f0i * (1 - f0i)) 
+end
+
+function exact_volume(u, b, scale = 1)
+    vertices = (map(x -> SVector{length(u), UInt8}(digits(x, base=2, pad = length(u))), 0:2^(length(u))-1))
+    nonzero_indices = MVector{length(u), Int}(undef)
+    α = 2 * u / scale # Normalize by scale to reduce numerical errors in the product of α
+    prod_α::Float64 = 1.0
+    d::Int = 0 # Number of nonzero elements of α
+    for i in eachindex(u)
+        if abs(u[i] / scale) > 1e-2 
+            nonzero_indices[i] = 1 
+            prod_α *= α[i]
+            d += 1
+        else
+            nonzero_indices[i] = 0
+        end
+    end
+
+    β = (- b + sum(u)) / scale
+
+    if d > 1
+        volume = 0.0
+        for v in vertices
+            σ = 0
+            αv = 0.0 
+            for i in eachindex(u)
+                if nonzero_indices[i] == 1
+                    σ += v[i]
+                    αv += α[i]*v[i]
+                end
+            end
+            if αv ≤ β
+                if iseven(σ)
+                    volume += (β - αv)^(d-1)
+                else
+                    volume -= (β - αv)^(d-1)
+                end 
+            end 
+        end
+        
+        volume *= (2^d / factorial(d - 1)) / (scale * prod_α) # Really, volume / norm(u)
+        volume = max(0.0, volume) # Set to zero if small negative error accumulated from sign oscillation
+
+        return volume 
+    elseif d == 1
+        # Then, prod_α == α_i, the nonzero element
+        if 0 ≤ β/prod_α ≤ 1
+            return 2^(length(u) - 1)
+        else
+            return 0.0
+        end
+    else
+        return 0.0
+    end
+end
+
 """
     Iab(a, b, V_squared)
 
