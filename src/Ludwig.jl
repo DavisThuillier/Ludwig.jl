@@ -31,6 +31,5 @@ using IterativeSolvers
 
 include("utilities.jl")
 include("properties.jl")
-include("mesh/mesh.jl")
     
 end # module Ludwig
