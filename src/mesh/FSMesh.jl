@@ -1,6 +1,6 @@
 module FSMesh
 
-import StaticArrays: SVector, SMatrix
+import StaticArrays: SVector
 using LinearAlgebra
 import ..MarchingSquares: Isoline, get_bounding_box, contours, contour_intersection
 import ..Lattices: Lattice, get_ibz, point_group

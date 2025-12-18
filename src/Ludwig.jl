@@ -26,7 +26,7 @@ using .Integration
 
 export Lattices, Groups, MarchingSquares, FSMesh
 
-import StaticArrays: SVector, MVector, MMatrix, SMatrix
+import StaticArrays: SVector
 using LinearAlgebra
 using ForwardDiff
 using Interpolations
