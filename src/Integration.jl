@@ -7,10 +7,9 @@ using Interpolations
 
 import ..Lattices: map_to_bz, Lattice, NoLattice 
 import ..FSMesh: Patch, VirtualPatch
+import ..Utilities: f0
 
 export electron_electron, electron_impurity!
-
-f0(E::Float64, T::Float64) = 1 / (exp(E/T) + 1)
 
 const ρ::Float64 = 4*6^(1/3)/pi
 

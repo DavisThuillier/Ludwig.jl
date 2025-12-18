@@ -3,6 +3,9 @@ module Ludwig
 include("constants.jl") # Physical constants
 
 ### Submodules ###
+include("utilities.jl")
+using .Utilities
+
 include("GeometryUtilities.jl")
 using .GeometryUtilities
 
@@ -29,7 +32,6 @@ using ForwardDiff
 using Interpolations
 using IterativeSolvers
 
-include("utilities.jl")
 include("properties.jl")
 
 end # module Ludwig
