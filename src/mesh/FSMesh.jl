@@ -1,6 +1,6 @@
 module FSMesh
 
-import StaticArrays: SVector, SMatrix
+import StaticArrays: SVector
 using LinearAlgebra
 import ..MarchingSquares: Isoline, get_bounding_box, contours, contour_intersection
 import ..Lattices: Lattice, get_ibz, point_group
@@ -16,6 +16,7 @@ abstract type AbstractPatch end
 
 """
     Patch(e::Float64, k::SVector{2,Float64}, v::SVector{2,Float64}, de::Float64, dV::Float64, jinv::Matrix{Float64}, djinv::Float64, band_index::Int)
+
 Construct a `Patch' object defining regions of momentum space over which to integrate. 
 # Fields
 - `e`: energy
@@ -28,18 +29,19 @@ Construct a `Patch' object defining regions of momentum space over which to inte
 - `band_index`: index of band from which `e` was sampled at `k`
 """
 struct Patch <: AbstractPatch
-    e::Float64 # Energy
-    k::SVector{2,Float64} # Momentum
-    v::SVector{2,Float64} # Group velocity
+    e::Float64
+    k::SVector{2,Float64}
+    v::SVector{2,Float64}
     de::Float64
-    dV::Float64 # Patch area
-    jinv::Matrix{Float64} # Jacobian of transformation from (kx, ky) --> (E, S)
+    dV::Float64
+    jinv::Matrix{Float64}
     djinv::Float64
     band_index::Int
 end
 
 """
     VirtualPatch(e::Float64, k::SVector{2,Float64}, v::SVector{2,Float64}, band_index::Int)
+
 Construct a `VirtualPatch' object that can be operated on as if it were a `Patch` for the purposes of sampling momentum, energy, and group velocity but which cannot be integrated over. 
 # Fields
 - `e`: energy
@@ -48,9 +50,9 @@ Construct a `VirtualPatch' object that can be operated on as if it were a `Patch
 - `band_index`: index of band from which `e` was sampled at `k`
 """
 struct VirtualPatch <: AbstractPatch
-    e::Float64 # Energy
-    k::SVector{2,Float64} # Momentum
-    v::SVector{2,Float64} # Group velocity
+    e::Float64
+    k::SVector{2,Float64} 
+    v::SVector{2,Float64}
     band_index::Int
 end
 
@@ -60,6 +62,11 @@ velocity(p::AbstractPatch) = p.v
 band(p::AbstractPatch)     = p.band_index
 area(p::Patch)             = p.dV
 
+"""
+    patch_op(p::Patch, M::Matrix)
+
+Apply the active transformation defined by matrix `M` on the relevant fields of patch `p`.
+"""
 function patch_op(p::Patch, M::Matrix)
     return Patch(
         p.e,
@@ -73,6 +80,11 @@ function patch_op(p::Patch, M::Matrix)
     )
 end
 
+"""
+    patch_op(p::VirtualPatch, M::Matrix)
+
+Apply the active transformation defined by matrix `M` on the relevant fields of virtual patch `p`.
+"""
 function patch_op(p::VirtualPatch, M::Matrix)
     return VirtualPatch(
         p.energy,
@@ -84,6 +96,7 @@ end
 
 """
     Mesh(patches::Vector{Patch}, corners::Vector{SVector{2,Float64}}, corner_inds::Vector{SVector{4,Int}}})
+
 Construct a container struct of patches which contains information for plotting functions defined on patch centers.
 # Fields
 - `patches`: Vector of patches
@@ -148,6 +161,11 @@ end
 # General IBZ Meshes
 ###
 
+"""
+    get_arclengths(curve::AbstractVector)
+
+Get the distance to each point along `curve`. Treats `curve` as an ordered list of points defining a piecewise linear path.
+"""
 function get_arclengths(curve)
     s = 0.0
     arclengths = Vector{Float64}(undef, length(curve))
@@ -160,9 +178,14 @@ function get_arclengths(curve)
     return arclengths
 end
 
-function arclength_slice(iso::Isoline, n::Int)
-    curve = iso.points # Curve consists of linear segments between points
+"""
+    arclength_slice(curve::AbstractVector, n::Int)
 
+Cut `curve` into `n` uniformly spaced points. Treats `curve` as an ordered list of points defining a piecewise linear path, and linear interpolation is used to find intermediate points. Returns interpolated points and arclengths along original curve of interpolated points.
+
+For best results, points in `curve` should have approximately uniform spacing and `n` should be much less than the number of points in `curve`.  
+"""
+function arclength_slice(curve, n::Int)
     arclengths = get_arclengths(curve)
     
     τ = LinRange(0.0, arclengths[end], n)
@@ -184,12 +207,22 @@ function arclength_slice(iso::Isoline, n::Int)
     return grid, collect(τ)   
 end
 
+"""
+    mesh_region(region, ε::Function, band_index::Int, T::Real, n_levels::Int, n_cuts::Int[, N::Int, α::Real])
+
+Generate mesh of `region` of momentum space given dispersion `ε` corresponding to band `band_index` at temperature `T`. The resultant mesh covers an annular region of the Fermi surface between -`αT` and + `αT` with `n_levels - 1` patches in the energy direction and `n_cuts - 1` patches along the energy contours bounded by the convex hull of points in `region`.
+
+The resolution used for marching squares over `region` is set by `N`, as the number of points to sample in each direction of the rectangle which bounds `region`.
+
+It is recommended that `n_levels` be an even integer to enforce that a patch be centered on the Fermi surface
+"""
 function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int, N = 1001, α = 6.0)
     n_levels = max(3, n_levels) # Enforce minimum of 2 patches in the energy direction
     n_cuts = max(3, n_cuts) # Enforce minimum of 2 patches in angular direction 
 
-    ((x_min, x_max), (y_min, y_max)) = get_bounding_box(region)
 
+    # Sample coordinates and energies for marching squares
+    ((x_min, x_max), (y_min, y_max)) = get_bounding_box(region)
     X = LinRange(x_min, x_max, N)
     Δx = (x_max - x_min) / (N - 1)
     Ny = round(Int, (y_max - y_min) / Δx)
@@ -203,7 +236,7 @@ function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int,
     end
 
     e_threshold = α*T # Half-width of Fermi tube
-    e_min = max(-e_threshold, 0.999 * minimum(E[.!isnan.(E)]))
+    e_min = max(-e_threshold, 0.999 * minimum(E[.!isnan.(E)])) 
     e_max = min(e_threshold, 0.999 * maximum(E[.!isnan.(E)]))
     energies = collect(LinRange(e_min, e_max, n_levels))
     # Shift energy levels to include corner energy if there is a crossing
@@ -236,7 +269,7 @@ function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int,
     cind = 1 # Corner iteration index
 
     for i in 2:2:2*n_levels-1
-        k, arclengths = arclength_slice(c[i].isolines[1], 2 * n_cuts - 1)
+        k, arclengths = arclength_slice(c[i].isolines[1].points, 2 * n_cuts - 1)
 
         # Identify endpoints of contours as corners of first patch
         endpoints = [c[i-1].isolines[1].points[begin], c[i-1].isolines[1].points[end]]
@@ -313,6 +346,11 @@ end
 
 mesh_region(region, ε, T, n_levels, n_cuts, N = 1001, α = 6.0) = mesh_region(region, ε, 1, T, n_levels, n_cuts, N, α)
 
+"""
+    ibz_mesh(l::Lattice, bands::AbstractVector, T, n_levels::Int, n_cuts::Int[, N::Int, α::Real])
+
+Generate a mesh of the irreducible Brillouin Zone (IBZ) for lattice `l` given dispersions in `bands` at temperature `T`. The resultant mesh covers an annular region of the Fermi surface between -`αT` and + `αT` with `n_levels - 1` patches in the energy direction and `n_cuts - 1` patches along the energy contours bounded by the IBZ.
+"""
 function ibz_mesh(l::Lattice, bands::AbstractVector, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0)
     full_patches = Vector{Patch}(undef, 0)
     full_corners = Vector{SVector{2, Float64}}(undef, 0)
@@ -332,14 +370,21 @@ end
 
 ibz_mesh(l::Lattice, ε::Function, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0) = ibz_mesh(l, [ε], T, n_levels, n_cuts, N, α)
 
+"""
+    bz_mesh(l::Lattice, bands::AbstractVector, T, n_levels::Int, n_cuts::Int[, N::Int, α::Real])
+
+Generate a mesh of the Brillouin Zone (BZ) for lattice `l` given dispersions in `bands` at temperature `T`. The resultant mesh covers an annular region of the Fermi surface between -`αT` and + `αT` with `n_levels - 1` patches in the energy direction and `n_cuts - 1` patches along the energy contours bounded by the irreducible BZ.
+"""
 function bz_mesh(l::Lattice, bands::AbstractVector, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0)
     G = point_group(l)
     ibz = get_ibz(l)
 
+    # Angle-order group elements, O, by mapping the centroid of the IBZ
     θs = Vector{Float64}(undef, length(G.elements))
+    centroid = sum(ibz) # Centroid of the IBZ
     for i in eachindex(G.elements)
         O = get_matrix_representation(G.elements[i])
-        k = sum(map(x -> O*x, ibz)) # Central direction vector of IBZ
+        k = O * centroid
         θs[i] = mod(atan(k[2], k[1]), 2pi)
     end
     θperm = sortperm(θs)
@@ -378,7 +423,8 @@ bz_mesh(l::Lattice, ε, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real =
 
 """
     secant_method(f, x0, x1, maxiter[; atol])
-Find a root of the function f(x) in the interval [x0, x1] via the secant method. Root finding will iterate until `maxiter` iterations is reached or the root is within the absolute tolerance `atol`.
+
+Find a root of the function `f` in the interval [`x0`, `x1`] via the secant method. Root finding will iterate until `maxiter` iterations is reached or the root is within the absolute tolerance `atol`.
 """
 function secant_method(f, x0, x1, maxiter; atol = eps(Float64))
     x2 = 0.0
@@ -391,6 +437,13 @@ function secant_method(f, x0, x1, maxiter; atol = eps(Float64))
     return x2
 end
 
+"""
+    circular_mesh(ε::Function, T::Real, n_levels::Int, n_angles::Int[, α::Real; maxiter, atol])
+
+Generate a mesh for the isotropic Fermi surface given radial dispersion `ε` at temperature `T`. The resultant mesh covers an annular region of the Fermi surface between -`αT` and + `αT` with `n_levels - 1` patches in the energy direction and `n_angles - 1` patches along the energy contours.
+
+The parameters `maxiter` and `atol` determine the maximum number of iterations and absolute tolerance used for inverting the dispersion to find the radial distance corresponding to the energy contours. 
+"""
 function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 6.0; maxiter = 10000, atol = 1e-10)
     n_levels = max(4, n_levels) # Enforce minimum of 3 patches in the energy direction
     if isodd(n_levels)
