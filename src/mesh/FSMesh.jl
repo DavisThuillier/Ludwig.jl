@@ -11,6 +11,7 @@ import ForwardDiff: gradient, derivative
 export Patch, VirtualPatch, AbstractPatch, energy, momentum, velocity
 export Mesh, patches, corners, corner_indices
 export mesh_region, ibz_mesh, bz_mesh, circular_fs_mesh
+export BZSymmetryMap, bz_symmetry_map
 
 abstract type AbstractPatch end
 
@@ -112,6 +113,77 @@ end
 patches(m::Mesh) = m.patches
 corners(m::Mesh) = m.corners
 corner_indices(m::Mesh) = m.corner_inds
+
+"""
+    BZSymmetryMap
+
+Precomputed symmetry information for a BZ mesh, relating each non-IBZ patch to its IBZ
+representative via a point-group operation. Built via [`bz_symmetry_map`](@ref).
+
+# Fields
+- `ibz_inds`: BZ grid indices of the IBZ patches
+- `ibz_preimage`: maps each non-IBZ patch index to its IBZ representative index
+- `g_perms`: `g_perms[s][j]` = BZ index of `O_s * grid[j]`, for each group element sector `s`
+- `g_inv_perms`: inverse permutations; `g_inv_perms[s][j]` = BZ index of `O_s^{-1} * grid[j]`
+- `ibz_g_idx`: maps each non-IBZ patch index to the sector index `s` of its group element
+"""
+struct BZSymmetryMap
+    ibz_inds::Vector{Int}
+    ibz_preimage::Dict{Int,Int}
+    g_perms::Vector{Vector{Int}}
+    g_inv_perms::Vector{Vector{Int}}
+    ibz_g_idx::Dict{Int,Int}
+end
+
+"""
+    bz_symmetry_map(grid::Vector{Patch}, l::Lattice) -> BZSymmetryMap
+
+Build the symmetry map for a BZ mesh generated from lattice `l`. All maps are constructed
+by matching momenta in `grid` directly, so the result is independent of the internal
+ordering convention used by [`bz_mesh`](@ref).
+
+The returned [`BZSymmetryMap`](@ref) can be passed to [`fill_from_ibz!`](@ref) to fill
+the non-IBZ rows of a collision matrix after computing only the IBZ rows.
+"""
+function bz_symmetry_map(grid::Vector{Patch}, l::Lattice)
+    G   = point_group(l)
+    ibz = get_ibz(l)
+    N   = length(grid)
+    G_order = length(G.elements)
+
+    θperm = _group_angle_perm(G, ibz)
+
+    # Build momentum → grid index dictionary (robust: does not depend on ordering)
+    momentum_to_idx = Dict(round.(p.k, digits = 10) => i for (i, p) in enumerate(grid))
+
+    # Identify IBZ patches by polygon membership
+    ibz_inds = filter(i -> in_polygon(grid[i].k, ibz), 1:N)
+
+    # Build permutation vectors for each group element
+    g_perms = Vector{Vector{Int}}(undef, G_order)
+    for (s, g_idx) in enumerate(θperm)
+        O = get_matrix_representation(G.elements[g_idx])
+        g_perms[s] = [momentum_to_idx[round.(O * grid[j].k, digits = 10)] for j in 1:N]
+    end
+    g_inv_perms = [invperm(perm) for perm in g_perms]
+
+    # Find the identity sector (the sector whose permutation is the identity)
+    ibz_sector = findfirst(s -> g_perms[s] == collect(1:N), 1:G_order)
+
+    # For each non-identity sector, map BZ patches to their IBZ representatives
+    ibz_preimage = Dict{Int,Int}()
+    ibz_g_idx    = Dict{Int,Int}()
+    for s in 1:G_order
+        s == ibz_sector && continue
+        for k in ibz_inds
+            i_bz = g_perms[s][k]
+            ibz_preimage[i_bz] = k
+            ibz_g_idx[i_bz]    = s
+        end
+    end
+
+    return BZSymmetryMap(ibz_inds, ibz_preimage, g_perms, g_inv_perms, ibz_g_idx)
+end
 
 ###
 # Nonuniform Energy Gridding
@@ -371,6 +443,30 @@ end
 ibz_mesh(l::Lattice, ε::Function, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0) = ibz_mesh(l, [ε], T, n_levels, n_cuts, N, α)
 
 """
+    _group_angle_perm(G, ibz) -> Vector{Int}
+
+Return the permutation that sorts the elements of point group `G` by the polar angle of
+the image of the IBZ centroid under each element's matrix representation.
+
+Concretely, for each group element `g` with 2×2 matrix `O`, the angle
+`θ_g = atan(k[2], k[1]) mod 2π` is computed where `k = O * centroid(ibz)`.
+The returned index vector `p` satisfies `θ_{p[1]} ≤ θ_{p[2]} ≤ … ≤ θ_{p[|G|]}`.
+
+This ordering assigns each group element to a unique angular sector of the BZ and is the
+canonical sector ordering shared by [`bz_mesh`](@ref) and [`bz_symmetry_map`](@ref).
+"""
+function _group_angle_perm(G, ibz)
+    centroid = sum(ibz)
+    θs = Vector{Float64}(undef, length(G.elements))
+    for i in eachindex(G.elements)
+        O = get_matrix_representation(G.elements[i])
+        k = O * centroid
+        θs[i] = mod(atan(k[2], k[1]), 2π)
+    end
+    return sortperm(θs)
+end
+
+"""
     bz_mesh(l::Lattice, bands::AbstractVector, T, n_levels::Int, n_cuts::Int[, N::Int, α::Real])
 
 Generate a mesh of the Brillouin Zone (BZ) for lattice `l` given dispersions in `bands` at temperature `T`. The resultant mesh covers an annular region of the Fermi surface between -`αT` and + `αT` with `n_levels - 1` patches in the energy direction and `n_cuts - 1` patches along the energy contours bounded by the irreducible BZ.
@@ -378,16 +474,7 @@ Generate a mesh of the Brillouin Zone (BZ) for lattice `l` given dispersions in 
 function bz_mesh(l::Lattice, bands::AbstractVector, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0)
     G = point_group(l)
     ibz = get_ibz(l)
-
-    # Angle-order group elements, O, by mapping the centroid of the IBZ
-    θs = Vector{Float64}(undef, length(G.elements))
-    centroid = sum(ibz) # Centroid of the IBZ
-    for i in eachindex(G.elements)
-        O = get_matrix_representation(G.elements[i])
-        k = O * centroid
-        θs[i] = mod(atan(k[2], k[1]), 2pi)
-    end
-    θperm = sortperm(θs)
+    θperm = _group_angle_perm(G, ibz)
 
     full_patches = Matrix{Patch}(undef, n_levels - 1, 0)
     full_corners = Vector{SVector{2, Float64}}(undef, 0)
