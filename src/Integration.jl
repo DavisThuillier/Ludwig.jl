@@ -6,10 +6,10 @@ using ForwardDiff
 using Interpolations
 
 import ..Lattices: map_to_bz, Lattice, NoLattice, reciprocal_lattice_vectors, get_bz
-import ..FSMesh: Patch, VirtualPatch
+import ..FSMesh: Patch, VirtualPatch, BZSymmetryMap
 import ..Utilities: f0
 
-export electron_electron, electron_impurity!
+export electron_electron, electron_impurity!, fill_from_ibz!
 
 const ρ::Float64 = 4*6^(1/3)/pi
 
@@ -381,6 +381,21 @@ function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_s
         end
 
         L[i, :] *= 2π / grid[i].dV
+    end
+    return nothing
+end
+
+"""
+    fill_from_ibz!(L::AbstractMatrix, symmetry_map::BZSymmetryMap)
+
+Given that the rows `symmetry_map.ibz_inds` of `L` have already been populated (e.g. via
+[`electron_electron`](@ref) for each `i ∈ symmetry_map.ibz_inds`), fill all remaining rows
+using the point-group invariance `L[O*i, O*j] = L[i, j]`.
+"""
+function fill_from_ibz!(L::AbstractMatrix, symmetry_map::BZSymmetryMap)
+    for (i_bz, i_ibz) in symmetry_map.ibz_preimage
+        g = symmetry_map.ibz_g_idx[i_bz]
+        L[i_bz, :] = L[i_ibz, symmetry_map.g_inv_perms[g]]
     end
     return nothing
 end
