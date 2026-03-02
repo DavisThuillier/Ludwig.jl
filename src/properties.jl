@@ -252,3 +252,107 @@ end
 function hall_coefficient(L, k, v, E, dV, T; kwargs)
     _momentum_derivative(kwargs[:n_ε], kwargs[:n_θ], kwargs[:n_bands], k, v, E)
 end
+
+function get_nearest_neighbors(points, i, N = 4; rtol = π/12)
+    N > length(points) - 1 && return nothing
+
+    reference = points[i]
+
+    neighbors = Int[] # Index in points of neighbors
+    neighbors_relative = SVector{2, Float64}[] # Displacement vector from reference
+    neighbors_distance = Float64[] # Norm of displacement
+
+    order = sortperm(points, by = x -> norm(x .- reference))
+    popfirst!(order) # Remove the reference point
+
+    while length(neighbors) < N && length(order) > 0
+        index = popfirst!(order)
+        u = points[index] .- reference
+
+        parallel = false
+        for i ∈ eachindex(neighbors_relative)
+            cosθ_rel = dot(u, neighbors_relative[i]) / (norm(u) * neighbors_distance[i])
+
+            # Fix rounding errors when cosθrel ≈ ± 1.0
+            if abs(cosθ_rel) > 1.0
+                cosθ_rel = round(cosθ_rel)
+            end
+
+            if abs(acos(cosθ_rel)) < rtol
+                parallel = true
+                break # End for loop 
+            end
+        end
+
+        if !parallel
+            push!(neighbors, index)
+            push!(neighbors_relative, u)
+            push!(neighbors_distance, norm(u))
+        end
+    end
+
+    return neighbors 
+end
+
+# function finite_difference_gradient(i, points::AbstractArray, f::AbstractArray, border_indices::AbstractArray)
+#     N = i ∈ border_indices ? 3 : 4
+#     neighbor_indices = get_nearest_neighbors(points, i, N)
+
+#     U = Matrix{Float64}(undef, N, 2)
+#     for j ∈ 1:N
+#         U[j, :] = points[neighbor_indices[j]] - points[i]
+#     end
+
+#     Δf = f[neighbor_indices] .- f[i]
+
+#     return pinv(U) * Δf
+# end
+
+function generate_Dk(mesh, border_indices = [])
+    k = map(x -> momentum(x), patches(mesh))
+    Dx = zeros(Float64, length(k), length(k))
+    Dy = zeros(Float64, length(k), length(k))
+
+    U3 = Matrix{Float64}(undef, 3, 2)
+    U4 = Matrix{Float64}(undef, 4, 2)
+    P3 = Matrix{Float64}(undef, 2, 3)
+    P4 = Matrix{Float64}(undef, 2, 4)
+
+    println("Compute displacements")
+    # Compute all displacements
+    Δk = Dict{Tuple{Int, Int}, SVector{2, Float64}}()
+    @time for i ∈ eachindex(k)
+        for j ∈ i:length(k)
+            Δk[(i, j)] = k[j] - k[i]
+        end
+    end
+
+    println("Compute derivatives")
+
+    @time for i in eachindex(k)
+        N = i ∈ border_indices ? 3 : 4
+        U = N == 3 ? U3 : U4 # Choose the correct memory location for this point's neighbors
+        P = N == 3 ? P3 : P4 # Choose the correct memory location for pseduoinverse
+        neighbor_indices = get_nearest_neighbors(k, i, N)
+
+        for j ∈ 1:N
+            if i <= neighbor_indices[j]
+                U[j, :] .= Δk[(i, neighbor_indices[j])]
+            else
+                U[j, :] .= - Δk[(neighbor_indices[j], i)] # Reverse direction of catalogued displacement vector
+            end
+        end
+
+        P .= pinv(U) 
+
+        Dx[i,i] = - sum(P[1, :])
+        Dy[i,i] = - sum(P[2, :])
+        
+        for j ∈ 1:N
+            Dx[i, neighbor_indices[j]] = P[1, j]
+            Dy[i, neighbor_indices[j]] = P[2, j]
+        end
+    end
+
+    return Dx, Dy
+end
