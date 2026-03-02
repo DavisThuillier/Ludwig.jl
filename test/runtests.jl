@@ -9,3 +9,7 @@ end
 @testset "Group Tests" begin
     include("group_tests.jl")
 end
+
+@testset "IBZ Fill Tests" begin
+    include("ibz_fill_test.jl")
+end
