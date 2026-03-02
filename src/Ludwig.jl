@@ -3,6 +3,9 @@ module Ludwig
 include("constants.jl") # Physical constants
 
 ### Submodules ###
+include("utilities.jl")
+using .Utilities
+
 include("GeometryUtilities.jl")
 using .GeometryUtilities
 
@@ -23,13 +26,12 @@ using .Integration
 
 export Lattices, Groups, MarchingSquares, FSMesh
 
-import StaticArrays: SVector, MVector, MMatrix, SMatrix
+import StaticArrays: SVector
 using LinearAlgebra
 using ForwardDiff
 using Interpolations
 using IterativeSolvers
 
-include("utilities.jl")
 include("properties.jl")
-    
+
 end # module Ludwig
