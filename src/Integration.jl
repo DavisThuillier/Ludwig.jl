@@ -9,7 +9,7 @@ import ..Lattices: map_to_bz, Lattice, NoLattice, reciprocal_lattice_vectors, ge
 import ..FSMesh: Patch, VirtualPatch, BZSymmetryMap
 import ..Utilities: f0
 
-export electron_electron, electron_impurity!, fill_from_ibz!
+export electron_electron, electron_impurity, fill_from_ibz!
 
 const ρ::Float64 = 4*6^(1/3)/pi
 
@@ -338,38 +338,28 @@ function Iab(a::Patch, b::Patch, V_squared::Function)
 end
 
 """
-    electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_squared)
+    electron_impurity(grid::Vector{Patch}, i::Int, j::Int, V_squared)
 
-Populate the entire collision matrix for electron-impurity scattering on `grid` given the scattering potential `V_squared`, which takes as arguments the incoming and outgoing momenta.
+Return the `(i, j)` element of the collision matrix for electron-impurity scattering on
+`grid`, given the scattering potential `V_squared(k_a, k_b)`.
 """
-function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_squared)
-    for i in eachindex(grid)
-        for j in eachindex(grid)
-            i == j && continue
-            @inbounds L[i,j] -= Iab(grid[i], grid[j], V_squared)
-        end
-
-        L[i, :] *= 2π / grid[i].dV
-    end
-    return nothing
+function electron_impurity(grid::Vector{Patch}, i::Int, j::Int, V_squared)
+    i == j && return 0.0
+    return -Iab(grid[i], grid[j], V_squared) * 2π / grid[i].dV
 end
 
 """
-    electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_squared::Matrix)
+    electron_impurity(grid::Vector{Patch}, i::Int, j::Int, V_squared::Matrix)
 
-Populate the entire collision matrix for electron-impurity scattering on `grid` assuming a constant impurity scattering strength for each band and each interband event given in `V_squared`. It is assumed that `grid` is band-ordered and that the length of each band sector is the same. The ordering of `V_squared` must be the same band ordering.
+Return the `(i, j)` element of the collision matrix for electron-impurity scattering,
+assuming a constant scattering strength for each band pair given in `V_squared`. It is
+assumed that `grid` is band-ordered and that the length of each band sector is the same.
+The ordering of `V_squared` must match the band ordering.
 """
-function electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_squared::Matrix)
-    ℓ = size(L)[1] ÷ size(V_squared)[1]
-    for i in eachindex(grid)
-        for j in eachindex(grid)
-            i == j && continue
-            @inbounds L[i,j] -= Iab(grid[i], grid[j], (x,y) -> V_squared[(i-1)÷ℓ + 1, (j-1)÷ℓ + 1])
-        end
-
-        L[i, :] *= 2π / grid[i].dV
-    end
-    return nothing
+function electron_impurity(grid::Vector{Patch}, i::Int, j::Int, V_squared::Matrix)
+    i == j && return 0.0
+    ℓ = length(grid) ÷ size(V_squared, 1)
+    return -Iab(grid[i], grid[j], (x,y) -> V_squared[(i-1)÷ℓ + 1, (j-1)÷ℓ + 1]) * 2π / grid[i].dV
 end
 
 """
