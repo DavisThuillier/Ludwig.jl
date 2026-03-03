@@ -9,15 +9,16 @@ import ..Lattices: map_to_bz, Lattice, NoLattice, reciprocal_lattice_vectors, ge
 import ..FSMesh: Patch, VirtualPatch, BZSymmetryMap
 import ..Utilities: f0
 
-export electron_electron, electron_impurity, fill_from_ibz!
+export electron_electron, electron_impurity, electron_phonon, fill_from_ibz!
 
 const ρ::Float64 = 4*6^(1/3)/pi
+const ρ3::Float64 = 4*sqrt(2)/pi
 
 "Volume of the 5-dimensional unit sphere"
 const vol::Float64 = (8 * pi^2 / 15)
 
 """
-    Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, εabc, v, T)
+    ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, εabc, v, T)
 
 Compute the integral
 ```math
@@ -30,7 +31,7 @@ with group velocity `v` and energy `εabc` at temperature `T`.
 is an integral over momenta in patch ``\\mathcal{P}_i``.
 
 """
-function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc, T)
+function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc, T)
     δ = a.e + b.e - c.e - εabc
 
     # ζ[1], ζ[2] = v' * a.jinv
@@ -60,21 +61,21 @@ function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc, T)
     return vol * a.djinv * b.djinv * c.djinv * r5 * (1 - f0(εabc + Δε, T)) / norm(u)
 end
 
-function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, ε::Function, T::Real)
+function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, ε::Function, T::Real)
     v::SVector{2,Float64} = ForwardDiff.gradient(ε, k)
-    return Kabc!(ζ, u, a, b, c, v, εabc, T)
+    return ee_kernel!(ζ, u, a, b, c, v, εabc, T)
 end 
 
-function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, itp::ScaledInterpolation, T::Real)
+function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, itp::ScaledInterpolation, T::Real)
     v::SVector{2,Float64} = Interpolations.gradient(itp, k[1], k[2])
-    return Kabc!(ζ, u, a, b, c, v, εabc, T)
+    return ee_kernel!(ζ, u, a, b, c, v, εabc, T)
 end 
 
-Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, d::VirtualPatch, T::Real) = Kabc!(ζ, u, a, b, c, d.v, d.e, T)
+ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, d::VirtualPatch, T::Real) = ee_kernel!(ζ, u, a, b, c, d.v, d.e, T)
 
-function Kabc!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, itp::ScaledInterpolation, invrlv, T::Real)
+function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, itp::ScaledInterpolation, invrlv, T::Real)
     v::SVector{2,Float64} = invrlv * Interpolations.gradient(itp, k[1], k[2])
-    return Kabc!(ζ, u, a, b, c, v, εabc, T)
+    return ee_kernel!(ζ, u, a, b, c, v, εabc, T)
 end
 
 #################################
@@ -131,7 +132,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
             w123 = Weff_squared(grid[i], grid[j], grid[m], p; kwargs)
 
             if w123 != 0
-                Lij += w123 * Kabc!(ζ, u, grid[i], grid[j], grid[m], p, T) * f0s[j] * (1 - f0s[m])
+                Lij += w123 * ee_kernel!(ζ, u, grid[i], grid[j], grid[m], p, T) * f0s[j] * (1 - f0s[m])
             end
         end
 
@@ -159,7 +160,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
             w124 = Weff_squared(grid[i], grid[m], p, grid[j]; kwargs)
 
             if w123 + w124 != 0
-                Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], p, T) * f0s[m] * (1 - f0s[j])
+                Lij -= (w123 + w124) * ee_kernel!(ζ, u, grid[i], grid[m], grid[j], p, T) * f0s[m] * (1 - f0s[j])
             end
         end
     end
@@ -203,7 +204,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         w123 = Weff_squared(grid[i], grid[j], grid[m], p; kwargs...)
 
         if w123 != 0
-            Lij += w123 * Kabc!(ζ, u, grid[i], grid[j], grid[m], p, T) * f0s[j] * (1 - f0s[m])
+            Lij += w123 * ee_kernel!(ζ, u, grid[i], grid[j], grid[m], p, T) * f0s[j] * (1 - f0s[m])
         end
 
         qimj .= qij .+ grid[m].k
@@ -218,53 +219,73 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         w124 = Weff_squared(grid[i], grid[m], p, grid[j]; kwargs...)
 
         if w123 + w124 != 0
-            Lij -= (w123 + w124) * Kabc!(ζ, u, grid[i], grid[m], grid[j], p, T) * f0s[m] * (1 - f0s[j])
+            Lij -= (w123 + w124) * ee_kernel!(ζ, u, grid[i], grid[m], grid[j], p, T) * f0s[m] * (1 - f0s[j])
         end
     end
 
     return π * Lij / (grid[i].dV * (1 - f0s[i])) / (2π)^6
 end
 
-function electron_phonon(a::Patch, b::Patch, T::Real, g, ω, rlv, bz; kwargs...)
-    if abs(a.e - b.e) < a.de / 2
-        return 0.0
-    end
-    R4_squared = 4*sqrt(2)/π
+"""
+    ep_kernel!(ζ, u, a::Patch, b::Patch, v, ω0, T)
 
-    invrlv = inv(rlv) 
-    q = map_to_bz(b.k - a.k, bz, rlv, invrlv)
-    ω0 = ω(q)
-    gij2 = abs(g(b.k, a.k, q, ω0; kwargs))^2
-
-    v = ForwardDiff.gradient(ω, q)
-    ζ = MVector{4,Float64}(undef)
-    u = MVector{4,Float64}(undef)
+Compute the geometric kernel for electron-phonon scattering between patches `a` and `b`,
+given phonon group velocity `v`, phonon frequency `ω0`, and temperature `T`. Uses
+pre-allocated 4-element buffers `ζ` and `u` to avoid allocations.
+"""
+function ep_kernel!(ζ, u, a::Patch, b::Patch, v, ω0::Real, T::Real)
     ζ[1] = -(v[1] * a.jinv[1,1] + v[2] * a.jinv[2,1])
     ζ[2] = -(v[1] * a.jinv[1,2] + v[2] * a.jinv[2,2])
     ζ[3] = v[1] * b.jinv[1,1] + v[2] * b.jinv[2,1]
     ζ[4] = v[1] * b.jinv[1,2] + v[2] * b.jinv[2,2]
 
-    Lij = 0.0
-    for sign ∈ [-1, 1] 
+    Kij = 0.0
+    for sign ∈ (-1, 1)
         δ = b.e - a.e + sign * ω0
 
-        u[1] = - a.de/2.0 + sign * ζ[1]
+        u[1] = -a.de/2.0 + sign * ζ[1]
         u[2] = sign * ζ[2]
         u[3] = b.de/2.0 + sign * ζ[3]
         u[4] = sign * ζ[4]
 
-        if R4_squared > δ^2 / dot(u,u) # Check for intersection of energy conserving 3-plane with coordinate space
-            ω = ω0 - δ * dot(ζ, u) / dot(u,u)
-            V = (4 * π^3 / 3) * (4*sqrt(2)/π - δ^2 / dot(u,u) )^(3/2)
+        ρ3 < δ^2 / dot(u, u) && continue # Check for intersection of energy conserving 3-plane with coordinate space
+        ω_eff = ω0 - δ * dot(ζ, u) / dot(u, u)
+        V = (4π^3 / 3) * (ρ3 - δ^2 / dot(u, u))^(3/2)
 
-            Lij -= sign * V / (2 * cosh(ω / T) - 2) / norm(u)
-        end
+        Kij -= sign * V / (2 * cosh(ω_eff / T) - 2) / norm(u)
     end
-    
+
+    return Kij
+end
+
+"""
+    electron_phonon(grid::Vector{Patch}, i::Int, j::Int, T::Real, g, ω, rlv, bz; kwargs...)
+
+Compute the element (`i`,`j`) of the linearized Boltzmann collision operator for
+electron-phonon scattering. `g(k_b, k_a, q, ω0)` is the electron-phonon coupling and
+`ω(q)` is the phonon dispersion.
+"""
+function electron_phonon(grid::Vector{Patch}, i::Int, j::Int, T::Real, g, ω, rlv, bz; kwargs...)
+    a = grid[i]
+    b = grid[j]
+
+    abs(a.e - b.e) < a.de / 2 && return 0.0
+
+    invrlv = inv(rlv)
+    q = map_to_bz(b.k - a.k, bz, rlv, invrlv)
+    ω0 = ω(q)
+    gij2 = abs(g(b.k, a.k, q, ω0; kwargs...))^2
+
+    v = ForwardDiff.gradient(ω, q)
+    ζ = MVector{4,Float64}(undef)
+    u = MVector{4,Float64}(undef)
+
     f0i = f0(a.e, T)
     f0j = f0(b.e, T)
-    return 4π * Lij * gij2 * (f0j - f0i) * a.djinv * b.djinv / (a.dV * f0i * (1 - f0i)) 
+    return 4π * ep_kernel!(ζ, u, a, b, v, ω0, T) * gij2 * (f0j - f0i) * a.djinv * b.djinv / (a.dV * f0i * (1 - f0i))
 end
+
+electron_phonon(grid::Vector{Patch}, i::Int, j::Int, T::Real, g, ω, l::Lattice; kwargs...) = electron_phonon(grid, i, j, T, g, ω, reciprocal_lattice_vectors(l), get_bz(l); kwargs...)
 
 function exact_volume(u, b, scale = 1)
     vertices = (map(x -> SVector{length(u), UInt8}(digits(x, base=2, pad = length(u))), 0:2^(length(u))-1))
