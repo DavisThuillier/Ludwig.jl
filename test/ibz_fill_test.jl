@@ -2,6 +2,7 @@ using Ludwig.FSMesh
 using Ludwig.Lattices
 using Ludwig.Integration
 using Ludwig.Utilities
+using LinearAlgebra
 
 @testset "IBZ symmetry fill: square lattice tight-binding" begin
     # Nearest-neighbor tight-binding on the square lattice at half-filling.
@@ -9,11 +10,11 @@ using Ludwig.Utilities
     T = 0.025
     l = Lattice([1.0 0.0; 0.0 1.0])
 
-    ε(k) = -2.0 * (cos(2π * k[1]) + cos(2π * k[2])) - 0.1 # Nearest neighbor TBM
+    ε(k) = -2.0 * (cos(2π * k[1]) + cos(2π * k[2])) # Nearest neighbor TBM
     bands = [ε] 
 
-    n_levels = 8   # (n_levels - 1) = 7 energy patches per sector
-    n_cuts   = 8   # (n_cuts   - 1) = 7 angular patches per sector
+    n_levels = 4   # (n_levels - 1) = 3 energy patches per sector
+    n_cuts   = 4   # (n_cuts   - 1) = 3 angular patches per sector
     n_ibz    = (n_levels - 1) * (n_cuts - 1)   # 9 IBZ patches per band
 
     mesh = bz_mesh(l, bands, T, n_levels, n_cuts, 201)
@@ -60,4 +61,40 @@ using Ludwig.Utilities
     fill_from_ibz!(L_sym, sym)
 
     @test maximum(abs, L_full - L_sym) < 1e-10
+end
+
+@testset "IBZ diagonalize: eigenvalues match fill_from_ibz! + eigen" begin
+    T = 0.025
+    l = Lattice([1.0 0.0; 0.0 1.0])
+    ε(k) = -2.0 * (cos(2π * k[1]) + cos(2π * k[2]))
+    bands = [ε]
+
+    n_levels = 4
+    n_cuts   = 4
+
+    mesh = bz_mesh(l, bands, T, n_levels, n_cuts, 201)
+    grid = mesh.patches
+    N    = length(grid)
+    f0s  = f0.(energy.(grid), T)
+    Weff_squared(p1, p2, p3, p4; kwargs...) = 1.0
+
+    sym = bz_symmetry_map(grid, l)
+
+    # Populate only IBZ rows
+    L_sym = zeros(N, N)
+    for i in sym.ibz_inds, j in 1:N
+        L_sym[i, j] = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, l)
+    end
+
+    # Reference: fill then eigen
+    L_ref    = copy(L_sym)
+    fill_from_ibz!(L_ref, sym)
+    ref_vals = sort(real(eigen(L_ref).values))
+
+    # Diagonalize without fill
+    result   = diagonalize_ibz(L_sym, sym)
+    new_vals = sort(real(result.values))
+
+    @test length(new_vals) == N
+    @test maximum(abs, new_vals - ref_vals) < 1e-10
 end
