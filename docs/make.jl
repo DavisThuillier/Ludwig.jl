@@ -24,6 +24,8 @@ makedocs(
 
 deploydocs(
     repo = "github.com/DavisThuillier/Ludwig.jl.git",
+    devbranch = "develop",
+    devurl = "dev",
     versions = ["stable" => "v^", "v0.2.1", "v0.2.2"],
     push_preview = false
 )
