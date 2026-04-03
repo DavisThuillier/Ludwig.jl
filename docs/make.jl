@@ -23,7 +23,6 @@ makedocs(
 )
 
 deploydocs(
-    repo = GitHub("DavisThuillier", "Ludwig.jl"),
-    # repo = "github.com/DavisThuillier/Ludwig.jl.git",
+    repo = "github.com/DavisThuillier/Ludwig.jl.git",
     push_preview = false
 )
