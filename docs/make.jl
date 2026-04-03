@@ -6,23 +6,20 @@ makedocs(
     pages = Any[
         "Home" => "index.md",
         "Installation" => "install.md",
-        "Mesh" => ["Overview" => "mesh/mesh.md",
-        "Marching Squares" => "mesh/marching_squares.md",
+        "Tutorials" => [
+            "Mesh Generation" => "tutorials/mesh_generation.md",
+            "Simple Calculation" => "tutorials/simple_calculation.md",
+        ],
+        "Mesh" => [
+            "Overview" => "mesh/mesh.md",
+            "Marching Squares" => "mesh/marching_squares.md",
         ],
         "Collision Operator" => "collision_operator.md",
-        # "Example" => "example.md"
+        "Transport Properties" => [
+            "Inner Product" => "properties/inner_product.md",
+            "Transport Coefficients" => "properties/transport.md",
+        ],
     ],
-    # format = Documenter.HTML(; mathengine=
-    #     Documenter.KaTeX(
-    #         Dict(:delimiters => [
-    #             Dict(:left => raw"$",   :right => raw"$",   display => false),
-    #             Dict(:left => raw"$$",  :right => raw"$$",  display => true),
-    #             Dict(:left => raw"\[",  :right => raw"\]",  display => true),
-    #             ],
-    #             :macros => Dict(),
-    #         )
-    #     )
-    # )
 )
 
 deploydocs(
