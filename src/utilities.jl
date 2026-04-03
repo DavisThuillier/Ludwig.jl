@@ -1,6 +1,7 @@
 module Utilities
 
-export f0, map_to_first_bz, symmetrize
+import LinearAlgebra: diagm
+export f0, symmetrize
 
 """
         f0(E, T)
