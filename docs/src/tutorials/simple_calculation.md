@@ -118,7 +118,7 @@ println("σ_xy = ", real(σ[1,2]), " S")
 
 ## Running the Calculation Script
 
-All of the steps above, together with particle conservation and symmetry checks, are collected in [`scripts/simple_calculation.jl`](../../scripts/simple_calculation.jl). Run it from the package root:
+All of the steps above, together with particle conservation and symmetry checks, are collected in `scripts/simple_calculation.jl`. Run it from the package root:
 
 ```bash
 julia --project scripts/simple_calculation.jl
