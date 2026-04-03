@@ -5,7 +5,7 @@ using LinearAlgebra
 using ForwardDiff
 using Interpolations
 
-import ..Lattices: map_to_bz, Lattice, NoLattice 
+import ..Lattices: map_to_bz, Lattice, NoLattice, reciprocal_lattice_vectors, get_bz
 import ..FSMesh: Patch, VirtualPatch
 import ..Utilities: f0
 
