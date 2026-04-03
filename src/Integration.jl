@@ -225,6 +225,19 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
     return π * Lij / (grid[i].dV * (1 - f0s[i])) / (2π)^6
 end
 
+"""
+    electron_phonon(a::Patch, b::Patch, T::Real, g, ω, rlv, bz; kwargs...)
+
+Compute the element ``(a, b)`` of the linearized Boltzmann collision operator for
+electron-phonon scattering.
+
+`g(k_b, k_a, q, ω0; kwargs...)` is the electron-phonon coupling matrix element, where
+`q = k_b - k_a` is the phonon momentum and `ω0 = ω(q)` is the phonon frequency at that
+momentum. `ω` must be differentiable via ForwardDiff.
+
+Returns the scattering rate ``L_{ab}`` (same index convention and units as
+[`electron_electron`](@ref)).
+"""
 function electron_phonon(a::Patch, b::Patch, T::Real, g, ω, rlv, bz; kwargs...)
     if abs(a.e - b.e) < a.de / 2
         return 0.0
