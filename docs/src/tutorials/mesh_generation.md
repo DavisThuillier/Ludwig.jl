@@ -153,11 +153,11 @@ println("BZ patches:  ", length(bz.patches), "  (should be 8×)")
 @assert length(bz.patches) == 8 * length(mesh.patches) "BZ patch count is not 8× the IBZ patch count!"
 ```
 
-For the square lattice the BZ mesh is 8× larger than the IBZ mesh. The [Simple Calculation](@ref) tutorial shows how to use the BZ mesh to compute transport coefficients.
+For the square lattice the BZ mesh is 8× larger than the IBZ mesh. The [A Simple Transport Calculation](@ref) tutorial shows how to use the BZ mesh to compute transport coefficients.
 
 ## Running the Validation Script
 
-All of the checks above are collected in [`scripts/validate_mesh.jl`](../../scripts/validate_mesh.jl). Run it directly from the package root:
+All of the checks above are collected in `scripts/validate_mesh.jl`. Run it directly from the package root:
 
 ```bash
 julia --project scripts/validate_mesh.jl          # validation only
