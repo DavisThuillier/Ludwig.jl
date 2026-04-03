@@ -66,6 +66,15 @@ function longitudinal_electrical_conductivity(L, vx, E, dV, T, ω = 0.0)
     return (G0 / (2π)) * (σxx / T)
 end
 
+"""
+    thermal_conductivity(L, v, E, dV, T)
+
+Compute the thermal conductivity tensor using
+``\\kappa_{ij} = \\langle \\varepsilon v_i | L^{-1} | \\varepsilon v_j \\rangle``,
+where the inner product is weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V``.
+
+Returns a 2×2 matrix. Unit conversion must be applied by the caller.
+"""
 function thermal_conductivity(L, v, E, dV, T)
     fd = f0.(E, T) # Fermi dirac on grid points
     weight = fd .* (1 .- fd) .* dV
@@ -82,6 +91,12 @@ function thermal_conductivity(L, v, E, dV, T)
     return λ
 end
 
+"""
+    thermal_conductivity(L, v, E, dV, T, i::Int, j::Int)
+
+Compute the single component ``\\kappa_{ij}`` of the thermal conductivity tensor.
+`i` and `j` must be 1 or 2.
+"""
 function thermal_conductivity(L, v, E, dV, T, i::Int, j::Int)
     if !((0 < i < 3) && (0 < j < 3)) 
         throw(BoundsError((i,j), " indices of tensor must be 1 or 2."))
@@ -96,6 +111,15 @@ function thermal_conductivity(L, v, E, dV, T, i::Int, j::Int)
     return λ
 end
 
+"""
+    thermoelectric_conductivity(L, v, E, dV, T)
+
+Compute the thermoelectric conductivity tensor using
+``\\epsilon_{ij} = \\langle v_i | L^{-1} | \\varepsilon v_j \\rangle``,
+where the inner product is weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V``.
+
+Returns a 2×2 matrix. Unit conversion must be applied by the caller.
+"""
 function thermoelectric_conductivity(L, v, E, dV, T)
     fd = f0.(E, T) # Fermi dirac on grid points
     weight = fd .* (1 .- fd) .* dV
@@ -114,6 +138,12 @@ function thermoelectric_conductivity(L, v, E, dV, T)
     return ϵ
 end
 
+"""
+    thermoelectric_conductivity(L, v, E, dV, T, i::Int, j::Int)
+
+Compute the single component ``\\epsilon_{ij}`` of the thermoelectric conductivity tensor.
+`i` and `j` must be 1 or 2.
+"""
 function thermoelectric_conductivity(L, v, E, dV, T, i::Int, j::Int)
     if !((0 < i < 3) && (0 < j < 3)) 
         throw(BoundsError((i,j), " indices of tensor must be 1 or 2."))
@@ -128,6 +158,15 @@ function thermoelectric_conductivity(L, v, E, dV, T, i::Int, j::Int)
     return ϵ
 end
 
+"""
+    peltier_tensor(L, v, E, dV, T)
+
+Compute the Peltier tensor using
+``\\tau_{ij} = \\langle \\varepsilon v_i | L^{-1} | v_j \\rangle``,
+where the inner product is weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V``.
+
+Returns a 2×2 matrix. Unit conversion must be applied by the caller.
+"""
 function peltier_tensor(L, v, E, dV, T)
     fd = f0.(E, T) # Fermi dirac on grid points
     weight = fd .* (1 .- fd) .* dV
@@ -146,6 +185,12 @@ function peltier_tensor(L, v, E, dV, T)
     return τ
 end
 
+"""
+    peltier_tensor(L, v, E, dV, T, i::Int, j::Int)
+
+Compute the single component ``\\tau_{ij}`` of the Peltier tensor.
+`i` and `j` must be 1 or 2.
+"""
 function peltier_tensor(L, v, E, dV, T, i::Int, j::Int)
     if !((0 < i < 3) && (0 < j < 3)) 
         throw(BoundsError((i,j), " indices of tensor must be 1 or 2."))
