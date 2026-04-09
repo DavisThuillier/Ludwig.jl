@@ -26,9 +26,6 @@ include("properties.jl")
 ### Exports
 ###
 
-# Utilities
-export f0, symmetrize
-
 # GeometryUtilities
 export in_polygon, diameter, signed_area, intersection, param_intersection
 export perpendicular_bisector_intersection, poly_area
@@ -53,6 +50,9 @@ export BZSymmetryMap, bz_symmetry_map
 
 # Integration
 export electron_electron, electron_impurity, electron_phonon
+
+# Utilities
+export f0, symmetrize
 export fill_from_ibz!, ibz_matvec!, diagonalize_ibz
 
 end # module Ludwig
