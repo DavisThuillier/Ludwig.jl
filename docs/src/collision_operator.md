@@ -31,9 +31,7 @@ where
     \mathcal{K}_{ijm} = \int_i d^2 \mathbf{k}_i \int_j d^2 \mathbf{k}_j \int_m d^2 \mathbf{k}_m (1 - f^{(0)}(\mathbf{k}_i + \mathbf{k}_j - \mathbf{k}_m)) \delta(\varepsilon_i + \varepsilon_j - \varepsilon_m - \varepsilon(\mathbf{k}_i + \mathbf{k}_j - \mathbf{k}_m)).
 ```
 
-```@docs
-Ludwig.electron_electron
-```
+See [`electron_electron`](@ref) for the full function signature and keyword arguments.
 
 ## Electron-Impurity Scattering
 
@@ -43,16 +41,8 @@ For elastic scattering from static impurities, the collision matrix element is p
 I_{ab} = 16 \, |V(\mathbf{k}_a, \mathbf{k}_b)|^2 \, \frac{\partial_E s_a \, \partial_E s_b}{\Delta\varepsilon}
 ```
 
-integrated over the intersection of the two patches. Non-zero contributions arise only when patches `a` and `b` lie between the same pair of energy contours (i.e., they share an energy level).
-
-```@docs
-Ludwig.electron_impurity
-```
+integrated over the intersection of the two patches. Non-zero contributions arise only when patches `a` and `b` lie between the same pair of energy contours (i.e., they share an energy level). See [`electron_impurity`](@ref).
 
 ## Electron-Phonon Scattering
 
-For scattering mediated by a bosonic mode, the element ``L_{ab}`` receives contributions from both phonon absorption and emission. The energy-conserving constraint now involves the phonon dispersion ``\omega(\mathbf{q})``, where ``\mathbf{q} = \mathbf{k}_b - \mathbf{k}_a``.
-
-```@docs
-Ludwig.electron_phonon
-```
+For scattering mediated by a bosonic mode, the element ``L_{ab}`` receives contributions from both phonon absorption and emission. The energy-conserving constraint now involves the phonon dispersion ``\omega(\mathbf{q})``, where ``\mathbf{q} = \mathbf{k}_b - \mathbf{k}_a``. See [`electron_phonon`](@ref).

@@ -9,27 +9,11 @@ Ludwig provides a framework for generating the linearized Boltzmann collision op
     symbols in the [Julia Documentation](https://docs.julialang.org/en/v1/manual/unicode-input/).
 
 ## Units
-For all calculations, ``\hbar = k_B = 1.`` For converting output back to physical units, Ludwig includes the values of some important physical constants from the [2022 CODATA Recommended Values of the Fundamental Physical Constants](https://physics.nist.gov/constants).
-```@docs
-G0
-```
-```@docs
-kb
-```
-```@docs
-hbar
-```
-```@docs
-e_charge
-```
+For all calculations, ``\hbar = k_B = 1.`` For converting output back to physical units, Ludwig includes the values of some important physical constants from the [2022 CODATA Recommended Values of the Fundamental Physical Constants](https://physics.nist.gov/constants): [`G0`](@ref), [`kb`](@ref), [`hbar`](@ref), and [`e_charge`](@ref).
 
 !!! danger "Energy Scale" 
     Since we take ``k_B = 1``, temperatures must be expressed in the same energy scale used by the Hamiltonian. 
-    We recommend expressing all energies in units of eV for simplicity in multiband calculations where each band may have an independent natural energy scale. This is particularly important since many function involve the ratio of the energy to temperature; e.g. `f0(E, T)`
-    
-```@docs
-Ludwig.f0
-```
+    We recommend expressing all energies in units of eV for simplicity in multiband calculations where each band may have an independent natural energy scale. This is particularly important since many function involve the ratio of the energy to temperature; e.g. [`f0`](@ref)`(E, T)`.
 
 Moreover, all momentum integrals are normalized by the volume of the Brillouin zone. This simplifies calculations, but again requires appropriate dimension to be restored later:
 ```math

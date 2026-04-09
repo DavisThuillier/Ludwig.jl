@@ -10,43 +10,24 @@ The driving vectors ``\phi`` differ by transport channel: ``\phi = v_i`` for cha
 
 ## Electrical Conductivity
 
-```@docs
-Ludwig.electrical_conductivity
-Ludwig.longitudinal_electrical_conductivity
-```
+See [`electrical_conductivity`](@ref) and [`longitudinal_electrical_conductivity`](@ref).
 
 ## Thermal Conductivity
 
-```@docs
-Ludwig.thermal_conductivity
-```
+See [`thermal_conductivity`](@ref).
 
 ## Thermoelectric Conductivity
 
-```@docs
-Ludwig.thermoelectric_conductivity
-```
+See [`thermoelectric_conductivity`](@ref).
 
 ## Peltier Tensor
 
-```@docs
-Ludwig.peltier_tensor
-```
+See [`peltier_tensor`](@ref).
 
 ## Viscosity
 
-For two-dimensional materials with tetragonal symmetry, the shear viscosity decomposes into B1g and B2g irreducible representations of the D4h point group. These are computed from the corresponding deformation potentials ``D(\mathbf{k})``, which encode the coupling of the quasiparticle momentum to the relevant strain mode.
-
-```@docs
-Ludwig.ηB1g
-Ludwig.ηB2g
-```
+For two-dimensional materials with tetragonal symmetry, the shear viscosity decomposes into B1g and B2g irreducible representations of the D4h point group. These are computed from the corresponding deformation potentials ``D(\mathbf{k})``, which encode the coupling of the quasiparticle momentum to the relevant strain mode. See [`ηB1g`](@ref) and [`ηB2g`](@ref).
 
 ## Effective Lifetimes
 
-It is sometimes useful to characterize the collision operator by a single effective scattering time obtained by projecting onto the relevant transport mode:
-
-```@docs
-Ludwig.σ_lifetime
-Ludwig.η_lifetime
-```
+See [`σ_lifetime`](@ref) and [`η_lifetime`](@ref).

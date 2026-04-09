@@ -16,8 +16,6 @@ where $k_x, k_y$ are measured in units of the inverse lattice constant.  We use 
 
 ```julia
 using Ludwig
-using Ludwig.FSMesh
-using Ludwig.Lattices
 using LinearAlgebra
 
 # Square lattice with unit lattice constant
