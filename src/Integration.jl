@@ -5,92 +5,183 @@ const ρ3::Float64 = 4*sqrt(2)/pi
 "Volume of the 5-dimensional unit sphere"
 const vol::Float64 = (8 * pi^2 / 15)
 
-"""
-    ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, εabc, v, T)
-
-Compute the integral
-```math
-    \\mathcal{K}_{abc} \\equiv \\int_a \\int_b \\int_c (1 - f^{(0)}(\\mathbf{k}_a + \\mathbf{k}_b + \\mathbf{k}_c)) \\delta(\\varepsilon_a + \\varepsilon_b - \\varepsilon_c - \\varepsilon(\\mathbf{k}_a + \\mathbf{k}_b - \\mathbf{k}_c))
-```
-with group velocity `v` and energy `εabc` at temperature `T`.
-```math
-    \\int_i \\equiv \\frac{1}{a^2} \\int_{\\mathbf{k} \\in \\mathcal{P}_i} d^2\\mathbf{k}
-```
-is an integral over momenta in patch ``\\mathcal{P}_i``.
+###
+### Internal helpers
+###
 
 """
-function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc, T)
+    _fill_kernel_vectors!(ζ, u, a, b, c, v, εabc)
+
+Fill the 6-element kernel vectors `ζ` and `u` in-place and return `δ`.
+
+`ζ` contains the group velocity `v` projected onto the Jacobian columns of each patch:
+
+```math
+\\zeta = \\begin{pmatrix} v^\\top J_a^{-1} \\\\ v^\\top J_b^{-1} \\\\ -v^\\top J_c^{-1} \\end{pmatrix}
+```
+
+`u` is the energy-coordinate gradient vector:
+
+```math
+u = \\begin{pmatrix} \\Delta\\varepsilon_a/2 \\\\ 0 \\\\ \\Delta\\varepsilon_b/2 \\\\ 0 \\\\ -\\Delta\\varepsilon_c/2 \\\\ 0 \\end{pmatrix} - \\zeta
+```
+
+`δ = a.e + b.e - c.e - εabc` is the energy mismatch at the patch centers.
+"""
+function _fill_kernel_vectors!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc)
     δ = a.e + b.e - c.e - εabc
-
-    # ζ[1], ζ[2] = v' * a.jinv
-    # ζ[3], ζ[4] = v' * b.jinv
-    # ζ[5], ζ[6] = - v' * c.jinv
     ζ[1] = v[1] * a.jinv[1,1] + v[2] * a.jinv[2,1]
     ζ[2] = v[1] * a.jinv[1,2] + v[2] * a.jinv[2,2]
     ζ[3] = v[1] * b.jinv[1,1] + v[2] * b.jinv[2,1]
     ζ[4] = v[1] * b.jinv[1,2] + v[2] * b.jinv[2,2]
-    ζ[5] = - (v[1] * c.jinv[1,1] + v[2] * c.jinv[2,1])
-    ζ[6] = - (v[1] * c.jinv[1,2] + v[2] * c.jinv[2,2])
-
-    # u = [a.de/2.0, 0.0, b.de/2.0, 0.0, -c.de/2.0, 0.0] - ζ
+    ζ[5] = -(v[1] * c.jinv[1,1] + v[2] * c.jinv[2,1])
+    ζ[6] = -(v[1] * c.jinv[1,2] + v[2] * c.jinv[2,2])
     u[1] = a.de/2.0 - ζ[1]
-    u[2] = - ζ[2]
+    u[2] = -ζ[2]
     u[3] = b.de/2.0 - ζ[3]
-    u[4] = - ζ[4]
-    u[5] = (- c.de/2.0) - ζ[5]
-    u[6] = - ζ[6]
-    
-
-    ρ < δ^2 / dot(u,u) && return 0.0 # Check for intersection of energy conserving 5-plane with coordinate space
-
-    Δε = - δ * dot(ζ, u) / dot(u,u)
-    r5 = (ρ - δ^2 / dot(u,u) )^(5/2)
-
-    return vol * a.djinv * b.djinv * c.djinv * r5 * (1 - f0(εabc + Δε, T)) / norm(u)
+    u[4] = -ζ[4]
+    u[5] = (-c.de/2.0) - ζ[5]
+    u[6] = -ζ[6]
+    return δ
 end
 
 """
-    ee_kernel!(ζ, u, a, b, c, v, εabc, T, ::Val{true})
+    _pournin_inner(u_compact, b, ::Val{D})
 
-Exact variant of `ee_kernel!` that replaces the hyperspherical volume approximation with the
-exact 5-dimensional volume of the intersection of the energy-conserving hyperplane
-`u·x = -δ` with the hypercube `[-1,1]^6`, computed via [`pournin_volume`](@ref).
+Evaluate the Gray-code alternating sum over the 2^D vertices of `[0,1]^D`.
 
-The coordinate change `x = 2y - 1` (mapping `[-1,1]^6 → [0,1]^6`) transforms the
-constraint to `u·y = (Σuᵢ - δ)/2`, and the 5D surface measure scales by `2^5 = 32`.
+`u_compact` holds the D nonzero (normalized) components of u; `b` is the normalized
+right-hand side. For each Gray-code vertex `v`, accumulates
+`(-1)^popcount(v) * (b - u⋅v)^{D-1}` whenever `u⋅v ≤ b`.
+
+All vertex signs, bit-flip indices, and the power exponent are baked in as compile-time
+literals, leaving only float arithmetic and array reads in the emitted machine code.
+
+See also [`pournin_volume`](@ref).
 """
-function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc, T, ::Val{true})
-    δ = a.e + b.e - c.e - εabc
+@generated function _pournin_inner(u_compact, b, ::Val{D}) where D
+    dm1   = D - 1
+    exprs = Expr[]
+    push!(exprs, :(uv     = 0.0))
+    push!(exprs, :(volume = 0.0))
+    for k in 0:2^D - 1
+        g_k    = k ⊻ (k >> 1)
+        sign_k = iseven(count_ones(g_k)) ? 1.0 : -1.0
+        vol_ex = dm1 == 0 ? :($sign_k) : :($sign_k * (b - uv)^$dm1)
+        push!(exprs, :(if uv ≤ b; volume += $vol_ex; end))
+        if k < 2^D - 1
+            bit_k = trailing_zeros(k + 1)
+            dir_k = (g_k >> bit_k) & 1
+            push!(exprs, dir_k == 0 ?
+                :(@inbounds uv += u_compact[$(bit_k + 1)]) :
+                :(@inbounds uv -= u_compact[$(bit_k + 1)]))
+        end
+    end
+    push!(exprs, :(return volume))
+    return Expr(:block, exprs...)
+end
 
-    ζ[1] = v[1] * a.jinv[1,1] + v[2] * a.jinv[2,1]
-    ζ[2] = v[1] * a.jinv[1,2] + v[2] * a.jinv[2,2]
-    ζ[3] = v[1] * b.jinv[1,1] + v[2] * b.jinv[2,1]
-    ζ[4] = v[1] * b.jinv[1,2] + v[2] * b.jinv[2,2]
-    ζ[5] = - (v[1] * c.jinv[1,1] + v[2] * c.jinv[2,1])
-    ζ[6] = - (v[1] * c.jinv[1,2] + v[2] * c.jinv[2,2])
+"""
+    pournin_volume(u, b)
 
-    u[1] = a.de/2.0 - ζ[1]
-    u[2] = - ζ[2]
-    u[3] = b.de/2.0 - ζ[3]
-    u[4] = - ζ[4]
-    u[5] = (- c.de/2.0) - ζ[5]
-    u[6] = - ζ[6]
+Compute the ``(n-1)``-dimensional volume of ``\\{x \\in [0,1]^n : u \\cdot x = b\\}`` using
+Theorem 2.2 from Pournin (2021). The formula is a finite sum over the vertices of
+``[0,1]^n`` that lie on the same side of the hyperplane as the origin:
 
+```math
+\\sum_{v:\\, u \\cdot v \\leq b} (-1)^{\\sigma(v)} \\frac{\\|u\\| (b - u \\cdot v)^{d-1}}{(d-1)!\\, \\pi(u)}
+```
+
+where ``\\sigma(v) = \\sum_i v_i``, ``\\pi(u) = \\prod_i u_i`` (nonzero components only),
+and ``d = \\#\\{i : u_i \\neq 0\\}``. Dimensions with ``u_i = 0`` are free and contribute a
+unit factor to the volume.
+"""
+function pournin_volume(u::StaticVector{6}, b)
+    norm_u_sq = sum(abs2, u)
+    norm_u    = sqrt(norm_u_sq)
+    threshold = 1e-10 * (norm_u + 1)
+
+    # Collect nonzero components; normalize to keep (b - u⋅v)^{d-1} O(1).
+    u_compact = MVector{6, Float64}(undef)
+    d      = 0
+    prod_u = 1.0
+    for i in 1:6
+        ui = Float64(u[i])
+        if abs(ui) > threshold
+            d += 1
+            @inbounds u_compact[d] = ui / norm_u
+            prod_u *= ui
+        end
+    end
+
+    d == 0 && return 0.0
+
+    b_norm    = b / norm_u
+    inv_scale = norm_u^d / (Float64(factorial(d - 1)) * prod_u)
+
+    # Dispatch to Val{d}-specialised @generated inner loop.
+    raw = if d == 1;     _pournin_inner(u_compact, b_norm, Val(1))
+          elseif d == 2; _pournin_inner(u_compact, b_norm, Val(2))
+          elseif d == 3; _pournin_inner(u_compact, b_norm, Val(3))
+          elseif d == 4; _pournin_inner(u_compact, b_norm, Val(4))
+          elseif d == 5; _pournin_inner(u_compact, b_norm, Val(5))
+          else           _pournin_inner(u_compact, b_norm, Val(6))
+          end
+
+    return max(0.0, raw * inv_scale)
+end
+
+###
+### Scattering kernel
+###
+
+"""
+    ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc, T, exact=true)
+
+Compute the integral
+
+```math
+\\mathcal{K}_{abc} \\equiv \\int_a \\int_b \\int_c (1 - f^{(0)}(\\varepsilon_{abc})) \\,
+    \\delta(\\varepsilon_a + \\varepsilon_b - \\varepsilon_c - \\varepsilon(\\mathbf{k}_a + \\mathbf{k}_b - \\mathbf{k}_c))
+```
+
+with group velocity `v` and energy `εabc` at temperature `T`, where
+
+```math
+\\int_i \\equiv \\frac{1}{a^2} \\int_{\\mathbf{k} \\in \\mathcal{P}_i} d^2\\mathbf{k}
+```
+
+is an integral over momenta in patch ``\\mathcal{P}_i``.
+
+When `exact = true` (default), the 5-dimensional intersection volume is computed exactly
+via [`pournin_volume`](@ref): the energy-conserving hyperplane `u·x = -δ` on `[-1,1]^6`
+is mapped to `u·y = (Σuᵢ - δ)/2` on `[0,1]^6` via `x = 2y - 1`, and the 5D surface
+measure scales by `2^5 = 32`.
+
+When `exact = false`, the volume is replaced by a hyperspherical approximation
+``\\rho^{5/2}_{5} \\|u\\|^{-1}``, where ``\\rho_5`` is the 5D sphere radius implied by
+the energy constraint.
+"""
+function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc, T, exact::Bool = true)
+    δ = _fill_kernel_vectors!(ζ, u, a, b, c, v, εabc)
     uu = dot(u, u)
     uu == 0.0 && return 0.0
 
-    # Map the constraint u·x = -δ on [-1,1]^6 to u·y = b on [0,1]^6 via x = 2y - 1.
-    # The 5D surface measure scales by 2^5 = 32.
-    b_pournin = ((u[1] + u[2] + u[3] + u[4] + u[5] + u[6]) - δ) / 2
-    vol_5 = 32.0 * pournin_volume(SVector{6,Float64}(u[1], u[2], u[3], u[4], u[5], u[6]), b_pournin)
-    vol_5 == 0.0 && return 0.0
+    Δε = -δ * dot(ζ, u) / uu
 
-    Δε = - δ * dot(ζ, u) / uu
-    return vol_5 * a.djinv * b.djinv * c.djinv * (1 - f0(εabc + Δε, T)) / sqrt(uu)
+    if exact
+        b_pournin = ((u[1] + u[2] + u[3] + u[4] + u[5] + u[6]) - δ) / 2
+        vol_5 = 32.0 * pournin_volume(u, b_pournin)
+        vol_5 == 0.0 && return 0.0
+
+        return vol_5 * a.djinv * b.djinv * c.djinv * (1 - f0(εabc + Δε, T)) / sqrt(uu)
+    else
+        ρ < δ^2 / uu && return 0.0
+
+        r5 = (ρ - δ^2 / uu)^(5/2)
+        return vol * a.djinv * b.djinv * c.djinv * r5 * (1 - f0(εabc + Δε, T)) / sqrt(uu)
+    end
 end
-
-ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc, T, ::Val{false}) =
-    ee_kernel!(ζ, u, a, b, c, v, εabc, T)
 
 function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, ε::Function, T::Real)
     v::SVector{2,Float64} = ForwardDiff.gradient(ε, k)
@@ -103,7 +194,7 @@ function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, itp::ScaledIn
 end
 
 ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, d::VirtualPatch, T::Real) = ee_kernel!(ζ, u, a, b, c, d.v, d.e, T)
-ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, d::VirtualPatch, T::Real, exact::Val) = ee_kernel!(ζ, u, a, b, c, d.v, d.e, T, exact)
+ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, d::VirtualPatch, T::Real, exact::Bool) = ee_kernel!(ζ, u, a, b, c, d.v, d.e, T, exact)
 
 function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, itp::ScaledInterpolation, invrlv, T::Real)
     v::SVector{2,Float64} = invrlv * Interpolations.gradient(itp, k[1], k[2])
@@ -121,7 +212,7 @@ Compute the element (`i`,`j`) of the linearized Boltzmann collision operator for
 
 The bands used to construct `grid` are callable using the interpolated dispersions in `itps`. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center and can be calculated independent of `i` and `j`. The functions `Fpp` and `Fpk` are vertex factors defined for two Patch variables and for one Patch and one momentum vector respectively, using the orbital weight vectors defined `weights` evaluated at the patch centers of `grid`. 
 """
-function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, rlv, bz; umklapp = true, exact::Bool = false, kwargs...)
+function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, rlv, bz; umklapp = true, exact::Bool = true, kwargs...)
     Lij::Float64 = 0.0
     w123::Float64 = 0.0
     w124::Float64 = 0.0
@@ -140,7 +231,6 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
 
     invrlv = inv(rlv)
     is_function = map(x -> isa(x, Function), bands) # For determining how to evaluate bands
-    exact_val = Val(exact)
 
     for m in eachindex(grid)
         kijm .= kij .- grid[m].k
@@ -165,7 +255,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
             w123 = Weff_squared(grid[i], grid[j], grid[m], p; kwargs)
 
             if w123 != 0
-                Lij += w123 * ee_kernel!(ζ, u, grid[i], grid[j], grid[m], p, T, exact_val) * f0s[j] * (1 - f0s[m])
+                Lij += w123 * ee_kernel!(ζ, u, grid[i], grid[j], grid[m], p, T, exact) * f0s[j] * (1 - f0s[m])
             end
         end
 
@@ -193,7 +283,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
             w124 = Weff_squared(grid[i], grid[m], p, grid[j]; kwargs)
 
             if w123 + w124 != 0
-                Lij -= (w123 + w124) * ee_kernel!(ζ, u, grid[i], grid[m], grid[j], p, T, exact_val) * f0s[m] * (1 - f0s[j])
+                Lij -= (w123 + w124) * ee_kernel!(ζ, u, grid[i], grid[m], grid[j], p, T, exact) * f0s[m] * (1 - f0s[j])
             end
         end
     end
@@ -210,7 +300,7 @@ Compute the element (`i`,`j`) of the linearized Boltzmann collision operator for
 
 Passing the singleton `NoLattice` object identifies that the FS is isotropic and that umklapp is ignored. For the output, an explicit factor of (2π)^-6 is included since the momenta sampled are not rescaled as in the lattice case. The dispersion `ε` is thus taken to be a function of the norm of momentum only. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center and can be calculated independent of `i` and `j`. `Weff_squared` is a user defined function of four Patch variables that computes the effective spinless quasiparticle scattering vertex. Additional parameters needed to evaluate `Weff_squared` can be passed through as keyword arguments. 
 """
-function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, ε::Function, T::Real, Weff_squared, l::NoLattice; exact::Bool = false, kwargs...)
+function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, ε::Function, T::Real, Weff_squared, l::NoLattice; exact::Bool = true, kwargs...)
     Lij::Float64 = 0.0
     w123::Float64 = 0.0
     w124::Float64 = 0.0
@@ -223,8 +313,6 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
 
     kijm = Vector{Float64}(undef, 2)
     qimj = Vector{Float64}(undef, 2)
-
-    exact_val = Val(exact)
 
     for m in eachindex(grid)
         kijm .= kij .- grid[m].k
@@ -239,7 +327,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         w123 = Weff_squared(grid[i], grid[j], grid[m], p; kwargs...)
 
         if w123 != 0
-            Lij += w123 * ee_kernel!(ζ, u, grid[i], grid[j], grid[m], p, T, exact_val) * f0s[j] * (1 - f0s[m])
+            Lij += w123 * ee_kernel!(ζ, u, grid[i], grid[j], grid[m], p, T, exact) * f0s[j] * (1 - f0s[m])
         end
 
         qimj .= qij .+ grid[m].k
@@ -254,7 +342,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         w124 = Weff_squared(grid[i], grid[m], p, grid[j]; kwargs...)
 
         if w123 + w124 != 0
-            Lij -= (w123 + w124) * ee_kernel!(ζ, u, grid[i], grid[m], grid[j], p, T, exact_val) * f0s[m] * (1 - f0s[j])
+            Lij -= (w123 + w124) * ee_kernel!(ζ, u, grid[i], grid[m], grid[j], p, T, exact) * f0s[m] * (1 - f0s[j])
         end
     end
 
@@ -323,87 +411,6 @@ end
 electron_phonon(grid::Vector{Patch}, i::Int, j::Int, T::Real, g, ω, l::Lattice; kwargs...) = electron_phonon(grid, i, j, T, g, ω, reciprocal_lattice_vectors(l), get_bz(l); kwargs...)
 
 """
-    pournin_volume(u, b)
-
-Compute the (n-1)-dimensional volume of `{x ∈ [0,1]^n : u⋅x = b}` using Theorem 2.2
-from Pournin (2021). The formula is a finite sum over the vertices of [0,1]^n that lie
-on the same side of the hyperplane as the origin:
-
-    Σ (-1)^σ(v) ‖u‖ (b - u⋅v)^{d-1} / ((d-1)! π(u))
-
-where the sum is over vertices v with u⋅v ≤ b, σ(v) = Σvᵢ, π(u) = Πuᵢ (nonzero
-components only), and d = #{i : uᵢ ≠ 0}. Dimensions with uᵢ = 0 are free and
-contribute a unit factor to the volume.
-"""
-function pournin_volume(u::SVector{6}, b)
-    norm_u_sq = sum(abs2, u)
-    norm_u    = sqrt(norm_u_sq)
-    threshold = 1e-10 * (norm_u + 1)
-
-    # Compact nonzero components into a stack-allocated buffer (no heap allocation)
-    u_compact = MVector{6, Float64}(undef)
-    d      = 0
-    prod_u = 1.0
-    for i in 1:6
-        ui = Float64(u[i])
-        if abs(ui) > threshold
-            d += 1
-            @inbounds u_compact[d] = ui / norm_u  # normalize: keeps (b_n - u_n⋅v)^{d-1} O(1)
-            prod_u *= ui
-        end
-    end
-
-    d == 0 && return 0.0
-
-    # Scale-invariance of the formula: replacing a → a/‖a‖ and b → b/‖a‖ leaves
-    # the volume unchanged. Normalizing u_compact to unit norm bounds each term
-    # (b_n - u_n⋅v)^{d-1} and avoids catastrophic cancellation in the alternating sum.
-    # The ‖a‖^d / π(a) factor is preserved by absorbing ‖a‖^d into inv_scale.
-    b_norm    = b / norm_u
-    inv_scale = norm_u^d / (Float64(factorial(d - 1)) * prod_u)
-
-    # Dispatch on runtime d to a Val{d}-specialised inner function. Each branch
-    # compiles to fully unrolled code with all vertex signs, bit-flip indices, and
-    # the power exponent baked in as literals — no trailing_zeros, count_ones,
-    # loop overhead, or last-iteration branch remain at runtime.
-    raw = if d == 1;     _pournin_inner(u_compact, b_norm, Val(1))
-          elseif d == 2; _pournin_inner(u_compact, b_norm, Val(2))
-          elseif d == 3; _pournin_inner(u_compact, b_norm, Val(3))
-          elseif d == 4; _pournin_inner(u_compact, b_norm, Val(4))
-          elseif d == 5; _pournin_inner(u_compact, b_norm, Val(5))
-          else           _pournin_inner(u_compact, b_norm, Val(6))
-          end
-
-    return max(0.0, raw * inv_scale)
-end
-
-# Generates fully unrolled Gray-code traversal code for exactly D nonzero components.
-# At code-generation time: Gray(k), vertex sign (-1)^popcount(Gray(k)), the bit index
-# that flips at each step, and the add/subtract direction are all computed as literals.
-# Nothing but float arithmetic and array reads remain in the emitted machine code.
-@generated function _pournin_inner(u_compact, b, ::Val{D}) where D
-    dm1   = D - 1
-    exprs = Expr[]
-    push!(exprs, :(uv     = 0.0))
-    push!(exprs, :(volume = 0.0))
-    for k in 0:2^D - 1
-        g_k    = k ⊻ (k >> 1)                          # Gray(k): compile-time constant
-        sign_k = iseven(count_ones(g_k)) ? 1.0 : -1.0  # vertex sign: compile-time constant
-        vol_ex = dm1 == 0 ? :($sign_k) : :($sign_k * (b - uv)^$dm1)
-        push!(exprs, :(if uv ≤ b; volume += $vol_ex; end))
-        if k < 2^D - 1
-            bit_k = trailing_zeros(k + 1)               # bit that flips next: compile-time
-            dir_k = (g_k >> bit_k) & 1                  # 0 = set (add), 1 = clear (sub)
-            push!(exprs, dir_k == 0 ?
-                :(@inbounds uv += u_compact[$(bit_k + 1)]) :
-                :(@inbounds uv -= u_compact[$(bit_k + 1)]))
-        end
-    end
-    push!(exprs, :(return volume))
-    return Expr(:block, exprs...)
-end
-
-"""
     Iab(a, b, V_squared)
 
 Compute the scattering amplitude for an electron scattering from patch `a` to patch `b` with `V_squared` given by
@@ -412,7 +419,7 @@ Compute the scattering amplitude for an electron scattering from patch `a` to pa
 ```
 """
 function Iab(a::Patch, b::Patch, V_squared::Function)
-    Δε = (a.de + b.de) / 2 # Everage of energy differentials yields ||u||
+    Δε = (a.de + b.de) / 2 # Average of energy differentials yields ||u||
     if abs(a.e - b.e) < a.de/2 # Check for being between the same energy contours
         return 16 * V_squared(a.k, b.k) * a.djinv * b.djinv / Δε
     else
