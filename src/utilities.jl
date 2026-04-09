@@ -1,8 +1,3 @@
-module Utilities
-
-import LinearAlgebra: diagm
-export f0, symmetrize
-
 """
         f0(E, T)
 
@@ -17,7 +12,7 @@ f0(E::Float64, T::Float64) = 1 / (exp(E/T) + 1)
 
 """
         symmetrize(L, dV, E, T)
-        
+
 Enforce that L is symmetric under the inner product ``\\langle a | b \\rangle = \\int d^2\\mathbf{k} \\left ( - \\frac{\\partial f^{(0)}(\\varepsilon_\\mathbf{k})}{\\partial \\varepsilon_\\mathbf{k}}\\right ) a*(\\mathbf{k}) b(\\mathbf{k})``.
 """
 function symmetrize(L, dV, E, T)
@@ -25,6 +20,4 @@ function symmetrize(L, dV, E, T)
     D = diagm(dV .* fd .* (1 .- fd))
 
     return 0.5 * (L + inv(D) * L' * D)
-end
-
 end

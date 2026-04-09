@@ -1,12 +1,7 @@
-module Groups
-
-export Group, PermutationGroup, PermutationGroupElement, GroupElement
-export get_cyclic_group, get_dihedral_group, get_symmetric_group, get_table, inverse
-export get_matrix_representation
-
 abstract type Group end
 abstract type GroupElement end
 
+"Return the order (number of elements) of group `G`."
 order(G::Group) = length(G.elements)
 
 struct PermutationGroupElement <: GroupElement
@@ -45,6 +40,7 @@ function inverse(g::PermutationGroupElement)
     return PermutationGroupElement(invperm)
 end
 
+"Return `true` if `g` is the identity permutation."
 is_identity(g::PermutationGroupElement) = g.permutation == collect(eachindex(g.permutation))
 get_identity_permutation(n::Int) = PermutationGroupElement(collect(1:n))
 
@@ -61,7 +57,7 @@ function closure(generators...)
         end
 
         for h in elements
-            prod = g*h 
+            prod = g*h
             !(prod in elements) && push!(elements, prod)
         end
     end
@@ -69,10 +65,10 @@ function closure(generators...)
     identity_index = findfirst(is_identity, elements)
     circshift!(elements, 1 - identity_index) # Shift identity to first element
 
-    return elements 
+    return elements
 end
 
-struct PermutationGroup <:Group
+struct PermutationGroup <: Group
     elements::Vector{PermutationGroupElement}
     PermutationGroup(elements...) = new(closure(elements...))
 end
@@ -97,7 +93,7 @@ end
 
 function get_dihedral_group(n::Int)
     r = PermutationGroupElement(circshift(collect(1:n), -1)) # Rotation
-    s = PermutationGroupElement(circshift(reverse(collect(1:n)), 1)) # Reflection 
+    s = PermutationGroupElement(circshift(reverse(collect(1:n)), 1)) # Reflection
     return PermutationGroup(r, s)
 end
 
@@ -106,7 +102,7 @@ function get_symmetric_group(n::Int)
         throw(DomainError("Sₙ not defined for n < 1."))
     elseif n == 1
         return PermutationGroup(get_identity_permutation(n))
-    else 
+    else
         elements = Vector{PermutationGroupElement}(undef, 0)
         for i in 1:n-1
             for j in i+1:n
@@ -129,16 +125,14 @@ function get_matrix_representation(g::PermutationGroupElement)
     v₂ = _unity_root_vector(1, n)
     T = hcat(v₁, v₂) # Root of unity basis
 
-    w₁ = _unity_root_vector(g.permutation[1] - 1, n) 
+    w₁ = _unity_root_vector(g.permutation[1] - 1, n)
     w₂ = _unity_root_vector(g.permutation[2] - 1, n)
 
     M = hcat(w₁, w₂) * inv(T) # Change of basis composed with permutation map of roots of polygon vertices
-    
+
     for i in eachindex(M)
         abs(M[i]) < 1e-12 && (M[i] = 0.0)
     end
-    
-    return M
-end
 
+    return M
 end
