@@ -334,60 +334,6 @@ end
 
 electron_phonon(grid::Vector{Patch}, i::Int, j::Int, T::Real, g, ω, l::Lattice; kwargs...) = electron_phonon(grid, i, j, T, g, ω, reciprocal_lattice_vectors(l), get_bz(l); kwargs...)
 
-function exact_volume(u, b, scale = 1)
-    vertices = (map(x -> SVector{length(u), UInt8}(digits(x, base=2, pad = length(u))), 0:2^(length(u))-1))
-    nonzero_indices = MVector{length(u), Int}(undef)
-    α = 2 * u / scale # Normalize by scale to reduce numerical errors in the product of α
-    prod_α::Float64 = 1.0
-    d::Int = 0 # Number of nonzero elements of α
-    for i in eachindex(u)
-        if abs(u[i] / scale) > 1e-2 
-            nonzero_indices[i] = 1 
-            prod_α *= α[i]
-            d += 1
-        else
-            nonzero_indices[i] = 0
-        end
-    end
-
-    β = (- b + sum(u)) / scale
-
-    if d > 1
-        volume = 0.0
-        for v in vertices
-            σ = 0
-            αv = 0.0 
-            for i in eachindex(u)
-                if nonzero_indices[i] == 1
-                    σ += v[i]
-                    αv += α[i]*v[i]
-                end
-            end
-            if αv ≤ β
-                if iseven(σ)
-                    volume += (β - αv)^(d-1)
-                else
-                    volume -= (β - αv)^(d-1)
-                end 
-            end 
-        end
-        
-        volume *= (2^d / factorial(d - 1)) / (scale * prod_α) # Really, volume / norm(u)
-        volume = max(0.0, volume) # Set to zero if small negative error accumulated from sign oscillation
-
-        return volume 
-    elseif d == 1
-        # Then, prod_α == α_i, the nonzero element
-        if 0 ≤ β/prod_α ≤ 1
-            return 2^(length(u) - 1)
-        else
-            return 0.0
-        end
-    else
-        return 0.0
-    end
-end
-
 """
     pournin_volume(u, b)
 
