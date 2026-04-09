@@ -28,7 +28,7 @@ e_charge
     We recommend expressing all energies in units of eV for simplicity in multiband calculations where each band may have an independent natural energy scale. This is particularly important since many function involve the ratio of the energy to temperature; e.g. `f0(E, T)`
     
 ```@docs
-Ludwig.Utilities.f0
+Ludwig.f0
 ```
 
 Moreover, all momentum integrals are normalized by the volume of the Brillouin zone. This simplifies calculations, but again requires appropriate dimension to be restored later:
