@@ -6,10 +6,6 @@ This tutorial computes the electrical conductivity of the nearest-neighbor tight
 
 ```julia
 using Ludwig
-using Ludwig.FSMesh
-using Ludwig.Lattices
-using Ludwig.Utilities
-using Ludwig.Integration
 using LinearAlgebra
 
 l = Lattice([1.0 0.0; 0.0 1.0])
@@ -29,11 +25,20 @@ The collision matrix requires sampling the full Brillouin zone:
 n_levels = 4
 n_cuts   = 10
 
-bz = bz_mesh(l, [ε], T, n_levels, n_cuts)
+bz   = bz_mesh(l, [ε], T, n_levels, n_cuts)
 grid = bz.patches
 N    = length(grid)
 
 println("Total BZ patches: ", N)
+```
+
+## Building the Symmetry Map
+
+Because the square lattice has D₄ symmetry, only 1/8 of the BZ patches are independent. A `BZSymmetryMap` records which BZ patches are related by symmetry and how to permute column indices when copying rows:
+
+```julia
+sym = bz_symmetry_map(grid, l)
+println("IBZ patches: ", length(sym.ibz_inds), " (out of ", N, ")")
 ```
 
 ## Precomputing the Fermi-Dirac Distribution
@@ -56,21 +61,34 @@ Weff_squared(p1, p2, p3, p4; kwargs...) = U^2
 
 ## Building the Collision Matrix
 
-Loop over all pairs `(i, j)` and accumulate the result into an `N×N` matrix. The convenience overload that accepts a `Lattice` object handles the reciprocal lattice vectors and BZ boundary internally:
+Only the IBZ rows need to be computed explicitly. `fill_from_ibz!` then reconstructs all remaining rows from the point-group invariance ``L[O \cdot i, O \cdot j] = L[i, j]``, reducing the computational cost by a factor equal to the order of the point group (8 for the square lattice):
 
 ```julia
 L = zeros(N, N)
 
-for i in 1:N
+Threads.@threads for i in sym.ibz_inds
     for j in 1:N
         L[i, j] = electron_electron(grid, f0s, i, j, [ε], T, Weff_squared, l)
     end
 end
+
+fill_from_ibz!(L, sym)
 ```
 
 !!! tip "Parallelism"
-    For larger meshes, use `Threads.@threads for i in 1:N` to parallelize the outer loop.
-    Each row is independent, so no synchronization is needed.
+    The outer loop over `sym.ibz_inds` is embarrassingly parallel. Each IBZ row is
+    independent, so no synchronization is needed.
+
+### Diagonalization Without Filling
+
+If only the eigenvalues and eigenvectors of `L` are needed (e.g. to identify the slowest-decaying modes or check for zero modes), `diagonalize_ibz` avoids the `fill_from_ibz!` step entirely. It reconstructs the full matrix implicitly, column by column, using `ibz_matvec!`:
+
+```julia
+result = diagonalize_ibz(L, sym)
+vals, vecs = result.values, result.vectors
+```
+
+This saves both the memory and time of explicitly storing the full symmetry-expanded matrix, at the cost of not having `L` available for subsequent linear solves.
 
 ## Imposing and Checking Particle Conservation
 

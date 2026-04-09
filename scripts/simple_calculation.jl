@@ -1,8 +1,4 @@
 using Ludwig
-using Ludwig.FSMesh
-using Ludwig.Lattices
-using Ludwig.Utilities
-using Ludwig.Integration
 using LinearAlgebra
 
 function (@main)(_)
@@ -30,6 +26,11 @@ function (@main)(_)
 
     println("Total BZ patches: ", N)
 
+    ## Symmetry map #######################################################
+
+    sym = bz_symmetry_map(grid, l)
+    println("IBZ patches:      ", length(sym.ibz_inds))
+
     ## Scattering vertex ##################################################
 
     U = 1.0  # eV, Hubbard interaction strength
@@ -39,13 +40,14 @@ function (@main)(_)
 
     f0s = f0.(energy.(grid), T)
 
-    println("Building $(N)×$(N) collision matrix...")
+    println("Building $(N)×$(N) collision matrix (IBZ rows only)...")
     L = zeros(N, N)
-    Threads.@threads for i in 1:N
+    Threads.@threads for i in sym.ibz_inds
         for j in 1:N
             L[i, j] = electron_electron(grid, f0s, i, j, [ε], T, Weff_squared, l)
         end
     end
+    fill_from_ibz!(L, sym)
 
     # Impose particle conservation: set diagonal to negative row sum
     for i in 1:N

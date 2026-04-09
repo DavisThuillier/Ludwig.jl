@@ -1,6 +1,4 @@
 using Ludwig
-using Ludwig.FSMesh
-using Ludwig.Lattices
 using LinearAlgebra
 
 # Run validate_mesh.jl --plot to visualize the mesh with CairoMakie

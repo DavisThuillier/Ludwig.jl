@@ -19,6 +19,7 @@ makedocs(
             "Inner Product" => "properties/inner_product.md",
             "Transport Coefficients" => "properties/transport.md",
         ],
+        "API Reference" => "api.md",
     ],
 )
 
