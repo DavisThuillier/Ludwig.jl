@@ -20,6 +20,7 @@ include("lattices.jl")
 include("marching_squares.jl")
 include("fs_mesh.jl")
 include("integration.jl")
+include("properties.jl")
 
 ###
 ### Exports
@@ -53,7 +54,5 @@ export BZSymmetryMap, bz_symmetry_map
 # Integration
 export electron_electron, electron_impurity, electron_phonon
 export fill_from_ibz!, ibz_matvec!, diagonalize_ibz
-
-include("properties.jl")
 
 end # module Ludwig
