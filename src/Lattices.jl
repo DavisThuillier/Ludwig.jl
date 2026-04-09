@@ -6,10 +6,44 @@ const D₆ = get_dihedral_group(6)
 const point_groups = Dict("Oblique" => C₂, "Rectangular" => D₂, "Square" => D₄, "Hexagonal" => D₆)
 const num_bz_points = Dict("Oblique" => 6, "Rectangular" => 4, "Square" => 4, "Hexagonal" => 6)
 
+"""
+    AbstractLattice
+
+Abstract supertype for all lattice representations.
+
+See also [`Lattice`](@ref), [`NoLattice`](@ref).
+"""
 abstract type AbstractLattice end
 
+"""
+    NoLattice <: AbstractLattice
+
+Singleton type representing the absence of a periodic lattice (free electron gas).
+
+Use `NoLattice()` when no lattice periodicity is needed, for example when constructing
+a circular Fermi surface mesh.
+
+See also [`Lattice`](@ref).
+"""
 struct NoLattice <: AbstractLattice end # Singleton type for free electron gas
 
+"""
+    Lattice(A::AbstractArray)
+    Lattice(a1::AbstractVector, a2::AbstractVector)
+
+Construct a 2D Bravais lattice from primitive vectors.
+
+`A` must be a 2×2 matrix with linearly independent columns. The two-argument form
+assembles the matrix as `hcat(a1, a2)`.
+
+# Examples
+```julia
+julia> Lattice([1.0 0.0; 0.0 1.0])   # square lattice
+julia> Lattice([1.0, 0.0], [0.5, √3/2])  # hexagonal lattice
+```
+
+See also [`NoLattice`](@ref), [`primitives`](@ref), [`lattice_type`](@ref).
+"""
 struct Lattice <: AbstractLattice
     primitives::Matrix
     Lattice(A::AbstractArray) = begin
@@ -34,8 +68,41 @@ Lattice(a1::AbstractVector, a2::AbstractVector) = Lattice(hcat(a1, a2))
 ### Lattice Methods
 ###
 Base.:(==)(l1::Lattice, l2::Lattice) = primitives(l1) == primitives(l2)
+
+"""
+    primitives(l::Lattice)
+
+Return the 2×2 matrix of primitive lattice vectors for `l`.
+
+Columns of the returned matrix are the primitive vectors ``\\mathbf{a}_1`` and
+``\\mathbf{a}_2``.
+
+See also [`reciprocal_lattice_vectors`](@ref).
+"""
 primitives(l::Lattice) = l.primitives
+
+"""
+    reciprocal_lattice_vectors(l::Lattice)
+
+Return the 2×2 matrix of reciprocal lattice vectors for `l`.
+
+Uses the convention ``B = (A^{-1})^\\top``, where `A` is the primitive vector matrix,
+so that ``A^\\top B = I`` (no factor of ``2\\pi``).
+
+See also [`primitives`](@ref), [`get_bz`](@ref).
+"""
 reciprocal_lattice_vectors(l::Lattice) = Array(inv(primitives(l))')
+
+"""
+    point_group(l::Lattice)
+
+Return the point group of `l` as a [`Group`](@ref).
+
+The group is selected based on [`lattice_type`](@ref): Oblique → C₂, Rectangular → D₂,
+Square → D₄, Hexagonal → D₆.
+
+See also [`lattice_type`](@ref), [`get_ibz`](@ref).
+"""
 point_group(l::Lattice) = point_groups[lattice_type(l)]
 
 # https://en.wikipedia.org/wiki/Lattice_reduction
@@ -54,6 +121,28 @@ function gauss_reduce(A, max_iter = 1e4)
     return hcat(u, v)
 end
 
+"""
+    lattice_type(l::Lattice)
+
+Return the Bravais lattice type of `l` as a string.
+
+Classifies the lattice by comparing the angle between primitive vectors and their norms.
+Returns one of `"Square"`, `"Rectangular"`, `"Hexagonal"`, or `"Oblique"`.
+
+# Examples
+```jldoctest
+julia> lattice_type(Lattice([1.0 0.0; 0.0 1.0]))
+"Square"
+
+julia> lattice_type(Lattice([1.0 0.0; 0.0 2.0]))
+"Rectangular"
+
+julia> lattice_type(Lattice([1.0 0.5; 0.0 √3/2]))
+"Hexagonal"
+```
+
+See also [`point_group`](@ref), [`get_bz`](@ref).
+"""
 function lattice_type(l::Lattice)
     p = primitives(l)
     a1 = p[:, 1]
@@ -74,6 +163,17 @@ function lattice_type(l::Lattice)
     end
 end
 
+"""
+    get_bz(l::Lattice)
+
+Return the vertices of the first Brillouin zone for `l` as a vector of
+`SVector{2,Float64}`, sorted counterclockwise by angle from the origin.
+
+The BZ is constructed as the Wigner-Seitz cell of the reciprocal lattice via
+perpendicular bisectors of nearest-neighbor reciprocal lattice vectors.
+
+See also [`get_ibz`](@ref), [`reciprocal_lattice_vectors`](@ref), [`map_to_bz`](@ref).
+"""
 function get_bz(l::Lattice)
     rlv = reciprocal_lattice_vectors(l)
 
@@ -100,6 +200,18 @@ function get_bz(l::Lattice)
     return vertices
 end
 
+"""
+    get_ibz(l::Lattice)
+
+Return the vertices of the irreducible Brillouin zone for `l` as a vector of
+`SVector{2,Float64}`, sorted counterclockwise by angle from the origin.
+
+The IBZ is constructed by iteratively bisecting the BZ with the mirror planes of the
+point group, then rotated to minimize the average angle of its vertices. The origin is
+always included as a vertex.
+
+See also [`get_bz`](@ref), [`point_group`](@ref), [`ibz_mesh`](@ref).
+"""
 function get_ibz(l::Lattice)
     G = point_group(l)
     bz = get_bz(l)
@@ -181,6 +293,26 @@ function get_ibz(l::Lattice)
     return ibz
 end
 
+"""
+    map_to_bz(k, bz, rlv, invrlv)
+    map_to_bz(k, bz, rlv)
+    map_to_bz(k, l::Lattice)
+
+Map the momentum vector `k` into the first Brillouin zone `bz`.
+
+If `k` already lies inside `bz`, it is returned unchanged. Otherwise, a reciprocal
+lattice translation ``\\mathbf{G} = rlv \\cdot \\mathbf{n}`` is found such that
+``k - \\mathbf{G}`` lies inside `bz`. `invrlv` is the inverse of `rlv`; if omitted it is
+computed internally. The `Lattice` method computes `bz` and `rlv` from `l`.
+
+# Arguments
+- `k`: 2-vector momentum to fold back.
+- `bz`: polygon vertices of the first Brillouin zone (from [`get_bz`](@ref)).
+- `rlv`: 2×2 matrix of reciprocal lattice vectors.
+- `invrlv`: precomputed inverse of `rlv`.
+
+See also [`get_bz`](@ref), [`reciprocal_lattice_vectors`](@ref).
+"""
 function map_to_bz(k, bz, rlv, invrlv)
     if in_polygon(k, bz)
         return k
