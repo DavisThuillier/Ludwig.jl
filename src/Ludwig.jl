@@ -55,4 +55,11 @@ export electron_electron, electron_impurity, electron_phonon
 export f0, symmetrize
 export fill_from_ibz!, ibz_matvec!, diagonalize_ibz
 
+# Properties
+export inner_product
+export electrical_conductivity, longitudinal_electrical_conductivity
+export thermal_conductivity, thermoelectric_conductivity, peltier_tensor
+export ηB1g, ηB2g
+export σ_lifetime, η_lifetime
+
 end # module Ludwig
