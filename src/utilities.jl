@@ -28,7 +28,7 @@ Given that the rows `symmetry_map.ibz_inds` of `L` have already been populated (
 [`electron_electron`](@ref) for each `i ∈ symmetry_map.ibz_inds`), fill all remaining rows
 using the point-group invariance `L[O*i, O*j] = L[i, j]`.
 """
-function fill_from_ibz!(L::AbstractMatrix, symmetry_map::BZSymmetryMap)
+function fill_from_ibz!(L::AbstractMatrix, symmetry_map)
     for (i_bz, i_ibz) in symmetry_map.ibz_preimage
         g = symmetry_map.ibz_g_idx[i_bz]
         L[i_bz, :] = L[i_ibz, symmetry_map.g_inv_perms[g]]
@@ -43,7 +43,7 @@ Compute `y = L * x` in-place using only the IBZ rows of `L` (those indexed by
 `sym.ibz_inds`). Non-IBZ rows are reconstructed on the fly via the point-group
 invariance `L[O*i, O*j] = L[i, j]`, without calling [`fill_from_ibz!`](@ref).
 """
-function ibz_matvec!(y::AbstractVector, x::AbstractVector, L::AbstractMatrix, sym::BZSymmetryMap)
+function ibz_matvec!(y::AbstractVector, x::AbstractVector, L::AbstractMatrix, sym)
     for i_ibz in sym.ibz_inds
         y[i_ibz] = dot(view(L, i_ibz, :), x)
     end
@@ -73,7 +73,7 @@ result = diagonalize_ibz(L_sym, sym)
 vals, vecs = result.values, result.vectors
 ```
 """
-function diagonalize_ibz(L::AbstractMatrix, sym::BZSymmetryMap)
+function diagonalize_ibz(L::AbstractMatrix, sym)
     N      = size(L, 1)
     L_full = similar(L)
     e_j    = zeros(eltype(L), N)
