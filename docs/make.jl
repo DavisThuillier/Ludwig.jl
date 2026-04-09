@@ -1,5 +1,5 @@
 using Documenter
-using Ludwig, Ludwig.FSMesh
+using Ludwig
 
 makedocs(
     sitename="Ludwig.jl",

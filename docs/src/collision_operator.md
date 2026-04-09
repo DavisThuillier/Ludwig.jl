@@ -32,7 +32,7 @@ where
 ```
 
 ```@docs
-Ludwig.electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, rlv, bz; umklapp = true, kwargs...)
+Ludwig.electron_electron
 ```
 
 ## Electron-Impurity Scattering
@@ -46,8 +46,7 @@ I_{ab} = 16 \, |V(\mathbf{k}_a, \mathbf{k}_b)|^2 \, \frac{\partial_E s_a \, \par
 integrated over the intersection of the two patches. Non-zero contributions arise only when patches `a` and `b` lie between the same pair of energy contours (i.e., they share an energy level).
 
 ```@docs
-Ludwig.electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_squared)
-Ludwig.electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_squared::Matrix)
+Ludwig.electron_impurity
 ```
 
 ## Electron-Phonon Scattering
@@ -55,5 +54,5 @@ Ludwig.electron_impurity!(L::AbstractArray{<:Real,2}, grid::Vector{Patch}, V_squ
 For scattering mediated by a bosonic mode, the element ``L_{ab}`` receives contributions from both phonon absorption and emission. The energy-conserving constraint now involves the phonon dispersion ``\omega(\mathbf{q})``, where ``\mathbf{q} = \mathbf{k}_b - \mathbf{k}_a``.
 
 ```@docs
-Ludwig.Integration.electron_phonon
+Ludwig.electron_phonon
 ```
