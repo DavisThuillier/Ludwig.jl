@@ -1,7 +1,3 @@
-using Ludwig.FSMesh
-using Ludwig.Lattices
-using Ludwig.Integration
-using Ludwig.Utilities
 using LinearAlgebra
 
 @testset "IBZ symmetry fill: square lattice tight-binding" begin
@@ -11,7 +7,7 @@ using LinearAlgebra
     l = Lattice([1.0 0.0; 0.0 1.0])
 
     ε(k) = -2.0 * (cos(2π * k[1]) + cos(2π * k[2])) # Nearest neighbor TBM
-    bands = [ε] 
+    bands = [ε]
 
     n_levels = 4   # (n_levels - 1) = 3 energy patches per sector
     n_cuts   = 4   # (n_cuts   - 1) = 3 angular patches per sector
@@ -43,7 +39,7 @@ using LinearAlgebra
 
     # IBZ patches must lie inside the IBZ polygon
     ibz = get_ibz(l)
-    @test all(i -> Lattices.in_polygon(grid[i].k, ibz), sym.ibz_inds)
+    @test all(i -> in_polygon(grid[i].k, ibz), sym.ibz_inds)
 
     # --- Correctness check -------------------------------------------------------
 

@@ -1,6 +1,3 @@
-using Ludwig.Lattices
-using Ludwig.MarchingSquares
-
 @testset "Lattice Constructors" begin
     a1 = [1.0, 1.0]
     a2 = [1.0, -2.0]
@@ -26,9 +23,9 @@ end
 
 @testset "Brillouin Zone Mapping" begin
     hex_lat = Lattice([1.0 -0.5; 0.0 sqrt(3)/2.0])
-    bz = Lattices.get_bz(hex_lat)
-    rlv = Lattices.reciprocal_lattice_vectors(hex_lat)
-    x_range, y_range = MarchingSquares.get_bounding_box(bz)
+    bz = get_bz(hex_lat)
+    rlv = reciprocal_lattice_vectors(hex_lat)
+    x_range, y_range = get_bounding_box(bz)
 
     x_range = 2 .* x_range
     y_range = 2 .* y_range
@@ -36,7 +33,7 @@ end
     for i in 1:10000
         kx = x_range[1] + (x_range[2] - x_range[1]) * Random.rand(Float64)
         ky = y_range[1] + (y_range[2] - y_range[1]) * Random.rand(Float64)
-        k = Lattices.map_to_bz([kx, ky], bz, rlv)
-        @test Lattices.in_polygon(k, bz)
+        k = map_to_bz([kx, ky], bz, rlv)
+        @test in_polygon(k, bz)
     end
 end
