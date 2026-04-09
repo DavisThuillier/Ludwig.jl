@@ -14,12 +14,12 @@ using IterativeSolvers
 import ForwardDiff: gradient, derivative
 
 include("utilities.jl")
-include("GeometryUtilities.jl")
-include("Groups.jl")
-include("Lattices.jl")
-include("MarchingSquares.jl")
-include("FSMesh.jl")
-include("Integration.jl")
+include("geometry_utilities.jl")
+include("groups.jl")
+include("lattices.jl")
+include("marching_squares.jl")
+include("fs_mesh.jl")
+include("integration.jl")
 
 ###
 ### Exports
