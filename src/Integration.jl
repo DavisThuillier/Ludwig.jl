@@ -1,15 +1,3 @@
-module Integration
-
-import StaticArrays: SVector, MVector
-using LinearAlgebra
-using ForwardDiff
-using Interpolations
-
-import ..Lattices: map_to_bz, Lattice, NoLattice, reciprocal_lattice_vectors, get_bz
-import ..FSMesh: Patch, VirtualPatch, BZSymmetryMap
-import ..Utilities: f0
-
-export electron_electron, electron_impurity, electron_phonon, fill_from_ibz!, ibz_matvec!, diagonalize_ibz
 
 const ρ::Float64 = 4*6^(1/3)/pi
 const ρ3::Float64 = 4*sqrt(2)/pi
@@ -523,6 +511,4 @@ function diagonalize_ibz(L::AbstractMatrix, sym::BZSymmetryMap)
     end
 
     return eigen(L_full)
-end
-
 end

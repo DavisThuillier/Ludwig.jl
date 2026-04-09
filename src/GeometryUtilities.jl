@@ -1,8 +1,3 @@
-module GeometryUtilities
-
-import LinearAlgebra: det, norm
-export in_polygon, diameter, signed_area, intersection, param_intersection, perpendicular_bisector_intersection, poly_area
-
 function in_polygon(k, p, atol = 1e-12)
     is_vertex = false
     for vertex in p
@@ -17,7 +12,7 @@ end
 function winding_number(v, atol = 1e-12)
     w = 0
     for i in eachindex(v)
-        j = (i == length(v)) ? 1 : i + 1 
+        j = (i == length(v)) ? 1 : i + 1
 
         if v[i][2] * v[j][2] < 0 # [vᵢvⱼ] crosses the x-axis
             m = (v[j][1] - v[i][1]) / (v[i][2] - v[j][2])
@@ -46,7 +41,7 @@ function diameter(p)
     for i in eachindex(p)
         for j in i:length(p)
             d = norm(p[i]-p[j])
-            d > diameter && (diameter = d) 
+            d > diameter && (diameter = d)
         end
     end
 
@@ -84,6 +79,4 @@ function poly_area(poly, c)
         end
     end
     return A/2
-end
-
 end
