@@ -230,7 +230,7 @@ function sort_isolines!(bundle::IsolineBundle)
 end
 
 """
-    _mesh_sheet(sheet_isolines, ε, band_index, n_levels, n_arc_s, foliated_energies, corner_offset)
+    _mesh_sheet(sheet_isolines, ε, band_index, n_arc_s, foliated_energies, corner_offset)
 
 Generate a [`Mesh`](@ref) for a single Fermi surface sheet defined by `sheet_isolines`.
 
@@ -243,16 +243,16 @@ function _mesh_sheet(
     sheet_isolines::Vector{<:Isoline},
     ε,
     band_index::Int,
-    n_levels::Int,
     n_arc_s::Int,
     foliated_energies::Vector{Float64},
     corner_offset::Int,
 )
-    n_cuts = n_arc_s
+    n_levels = (length(foliated_energies) + 1) ÷ 2
+    n_cuts = n_arc_s + 1
 
-    patches    = Matrix{Patch}(undef, n_levels - 1, n_cuts - 1)
+    patches    = Matrix{Patch}(undef, n_levels - 1, n_arc_s)
     corners    = Vector{SVector{2, Float64}}(undef, (2 * n_levels - 2) * n_cuts)
-    corner_ids = Matrix{SVector{4, Int}}(undef, n_levels - 1, n_cuts - 1)
+    corner_ids = Matrix{SVector{4, Int}}(undef, n_levels - 1, n_arc_s)
 
     cind = 1
 
@@ -386,7 +386,7 @@ temperature `T`.
 The mesh covers a tube around the Fermi surface between `-αT` and `+αT`. The energy-direction
 resolution is controlled by `Δε`: the number of patch rows is `2*ceil(α*T/Δε)`, always even
 so that a patch center falls exactly on the Fermi surface. The arc-length resolution along each
-energy contour is controlled by `n_arc`: each Fermi surface sheet is divided into `n_arc - 1`
+energy contour is controlled by `n_arc`: each Fermi surface sheet is divided into `n_arc`
 uniform arc-length segments.
 
 Multiple disconnected Fermi surface sheets (e.g. annular topology) are handled automatically —
@@ -423,6 +423,7 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
     for corner_e ∈ ε.(region)
         if e_min < corner_e < e_max
             i = argmin(abs.(energies .- corner_e))
+            i == 1 && continue # corner is below the first interior level; skip
             energies[1:i] = LinRange(e_min, corner_e, i)
             Δe = (e_max - corner_e) / (n_levels - i)
             energies[i+1:end] = LinRange(corner_e + Δe, e_max, n_levels - i)
@@ -467,7 +468,7 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
         end
 
         mesh_s = _mesh_sheet(
-            isolines_s, ε, band_index, n_levels, n_arc_s,
+            isolines_s, ε, band_index, n_arc_s,
             foliated_energies, length(all_corners)
         )
         append!(all_patches,    mesh_s.patches)
