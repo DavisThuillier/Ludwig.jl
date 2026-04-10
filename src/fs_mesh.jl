@@ -219,6 +219,119 @@ end
 ###
 
 """
+    sort_isolines!(bundle::IsolineBundle)
+
+Sort the isolines in `bundle` by centroid distance from the origin (ascending), so that
+inner contours have smaller indices than outer contours. Returns `bundle`.
+"""
+function sort_isolines!(bundle::IsolineBundle)
+    sort!(bundle.isolines, by = iso -> norm(sum(iso.points) / length(iso.points)))
+    return bundle
+end
+
+"""
+    _mesh_sheet(sheet_isolines, ε, band_index, n_levels, n_arc_s, foliated_energies, corner_offset)
+
+Generate a [`Mesh`](@ref) for a single Fermi surface sheet defined by `sheet_isolines`.
+
+`sheet_isolines[i]` is the isoline at `foliated_energies[i]` for this sheet (no `nothing`
+entries — call site must validate). `n_arc_s` is the number of arc-length divisions of the
+center contour. All corner indices in the returned `Mesh` are offset by `corner_offset` so
+that the caller can concatenate multiple sheet meshes into a single flat `Mesh`.
+"""
+function _mesh_sheet(
+    sheet_isolines::Vector{<:Isoline},
+    ε,
+    band_index::Int,
+    n_levels::Int,
+    n_arc_s::Int,
+    foliated_energies::Vector{Float64},
+    corner_offset::Int,
+)
+    n_cuts = n_arc_s
+
+    patches    = Matrix{Patch}(undef, n_levels - 1, n_cuts - 1)
+    corners    = Vector{SVector{2, Float64}}(undef, (2 * n_levels - 2) * n_cuts)
+    corner_ids = Matrix{SVector{4, Int}}(undef, n_levels - 1, n_cuts - 1)
+
+    cind = 1
+
+    for i in 2:2:2*n_levels-1
+        k, arclengths = arclength_slice(sheet_isolines[i].points, 2 * n_cuts - 1)
+
+        endpoints = [sheet_isolines[i-1].points[begin], sheet_isolines[i-1].points[end]]
+        i3 = argmin(map(x -> norm(x .- k[1]), endpoints))
+        ij3 = (i3, i3)
+        corners[cind] = endpoints[i3]
+
+        endpoints = [sheet_isolines[i+1].points[begin], sheet_isolines[i+1].points[end]]
+        i4 = argmin(map(x -> norm(x .- k[1]), endpoints))
+        ij4 = (i4, i4)
+        corners[cind+1] = endpoints[i4]
+
+        cind += 2
+        for j in 2:2:lastindex(k)
+            corners[cind],   ij1 = contour_intersection(k[j+1], gradient(ε, k[j+1]), sheet_isolines[i-1])
+            corners[cind+1], ij2 = contour_intersection(k[j+1], gradient(ε, k[j+1]), sheet_isolines[i+1])
+            corner_ids[i÷2, j÷2] = SVector{4, Int}(cind-2, cind-1, cind+1, cind) .+ corner_offset
+            cind += 2
+
+            i3, i1 = map(x -> x[argmin(
+                [norm(k[j] - sheet_isolines[i-1].points[x[1]]),
+                 norm(k[j] - sheet_isolines[i-1].points[x[2]])])],
+                (ij3, ij1)
+            )
+            i4, i2 = map(x -> x[argmin(
+                [norm(k[j] - sheet_isolines[i+1].points[x[1]]),
+                 norm(k[j] - sheet_isolines[i+1].points[x[2]])])],
+                (ij4, ij2)
+            )
+
+            dV = poly_area(vcat(
+                corners[cind-4:cind-1],
+                _arc_points(sheet_isolines[i-1], i1, i3),
+                _arc_points(sheet_isolines[i+1], i2, i4)
+            ), k[j])
+
+            ij3 = ij1; ij4 = ij2
+
+            Δε = foliated_energies[i+1] - foliated_energies[i-1]
+            Δs = arclengths[j+1] - arclengths[j-1]
+
+            v  = gradient(ε, k[j])
+            p1, _ = contour_intersection(k[j], v, sheet_isolines[i-1])
+            p2, _ = contour_intersection(k[j], v, sheet_isolines[i+1])
+
+            A = Matrix{Float64}(undef, 2, 2)
+            J = Matrix{Float64}(undef, 2, 2)
+
+            A[1,1] = (p2[1] - p1[1]) / Δε
+            A[1,2] = (p2[2] - p1[2]) / Δε
+            A[2,1] = (k[j+1][1] - k[j-1][1]) / Δs
+            A[2,2] = (k[j+1][2] - k[j-1][2]) / Δs
+
+            J[1,1] =  2 * v[1] / Δε
+            J[1,2] =  2 * v[2] / Δε
+            J[2,1] = -2 * A[1,2] / det(A) / Δs
+            J[2,2] =  2 * A[1,1] / det(A) / Δs
+
+            patches[i÷2, j÷2] = Patch(
+                foliated_energies[i],
+                k[j],
+                v,
+                Δε,
+                dV,
+                inv(J),
+                1 / abs(det(J)),
+                band_index
+            )
+        end
+    end
+
+    return Mesh(vec(patches), corners, vec(corner_ids))
+end
+
+"""
     get_arclengths(curve::AbstractVector)
 
 Get the distance to each point along `curve`. Treats `curve` as an ordered list of points defining a piecewise linear path.
