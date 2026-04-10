@@ -229,6 +229,124 @@ function sort_isolines!(bundle::IsolineBundle)
     return bundle
 end
 
+###
+### _find_critical_energies
+###
+
+"""
+    _find_critical_energies(X, Y, E, region)
+
+Find energies of dispersion critical points (saddle points and local extrema) inside `region`.
+
+Estimates the gradient magnitude of `E` at each interior grid point via finite differences,
+then returns the energy at each grid point that is a strict local minimum of the gradient
+magnitude and lies below the grid mean (indicating a true near-zero critical point rather
+than a boundary artefact).
+
+# Returns
+`Vector{Float64}` of energies at detected critical points, possibly empty.
+"""
+function _find_critical_energies(X, Y, E, region)
+    Nx, Ny = size(E)
+    G = fill(Inf, Nx, Ny)
+    for i in 2:Nx-1, j in 2:Ny-1
+        isnan(E[i,j]) && continue
+        Gx = (E[i+1,j] - E[i-1,j]) / (X[i+1] - X[i-1])
+        Gy = (E[i,j+1] - E[i,j-1]) / (Y[j+1] - Y[j-1])
+        if !isnan(Gx) && !isnan(Gy)
+            G[i,j] = sqrt(Gx^2 + Gy^2)
+        end
+    end
+
+    finite_G = filter(isfinite, vec(G))
+    isempty(finite_G) && return Float64[]
+    G_mean = sum(finite_G) / length(finite_G)
+
+    critical_energies = Float64[]
+    for i in 2:Nx-1, j in 2:Ny-1
+        G[i,j] >= G_mean && continue
+        # Strict local minimum in all 4 cardinal directions
+        if G[i,j] < G[i-1,j] && G[i,j] < G[i+1,j] &&
+           G[i,j] < G[i,j-1] && G[i,j] < G[i,j+1]
+            k = SVector{2,Float64}(X[i], Y[j])
+            k ∈ region || continue
+            push!(critical_energies, E[i,j])
+        end
+    end
+    return critical_energies
+end
+
+###
+### _foliated_energies
+###
+
+"""
+    _foliated_energies(E, ε, region, Δε, α, T)
+
+Compute the interleaved vector of boundary and center energy levels for meshing.
+
+Builds a symmetric grid of boundary contour energies centered at zero with spacing `Δε`,
+spanning `[-α*T, α*T]` (always an even number of levels so that `E = 0` falls on a patch
+center). Grid points outside the range of values in `E` are discarded, except the first
+out-of-range point on each side is retained and pinned to the actual minimum/maximum energy.
+If the dispersion evaluated at a corner of `region` falls within the retained range, the
+levels are shifted so that one boundary contour passes exactly through that energy.
+
+Returns a vector of length `2*n - 1`, where `n` is the number of retained boundary
+contours. Odd-indexed entries are boundary contour energies; even-indexed entries are
+patch center energies (midpoints between adjacent boundaries).
+"""
+function _foliated_energies(E, ε, region, Δε, α, T)
+    n_levels = 2 * max(1, ceil(Int, α * T / Δε)) # always even → E=0 on a patch center
+    energies = collect(LinRange(-α * T, α * T, n_levels))
+
+    E_valid = E[.!isnan.(E)]
+    e_actual_min = minimum(E_valid)
+    e_actual_max = maximum(E_valid)
+
+    # Pin the first out-of-range point on the lower side to the actual minimum
+    i_low = findlast(<(e_actual_min), energies)
+    if i_low !== nothing
+        energies[i_low] = e_actual_min
+        energies = energies[i_low:end]
+    end
+
+    # Pin the first out-of-range point on the upper side to the actual maximum
+    i_high = findfirst(>(e_actual_max), energies)
+    if i_high !== nothing
+        energies[i_high] = e_actual_max
+        energies = energies[1:i_high]
+    end
+
+    # Shift energy levels to include a corner energy if the dispersion crosses it
+    for corner_e ∈ ε.(region)
+        if energies[begin] < corner_e < energies[end]
+            i = argmin(abs.(energies .- corner_e))
+            i == 1 && continue # corner is below the first interior level; skip
+            n = length(energies)
+            energies[1:i] = LinRange(energies[begin], corner_e, i)
+            Δe = (energies[end] - corner_e) / (n - i)
+            energies[i+1:end] = LinRange(corner_e + Δe, energies[end], n - i)
+            break # accept at most one corner crossing
+        end
+    end
+
+    n = length(energies)
+    foliated = Vector{Float64}(undef, 2 * n - 1)
+    for i in eachindex(foliated)
+        if isodd(i)
+            foliated[i] = energies[(i - 1) ÷ 2 + 1]
+        else
+            foliated[i] = (energies[i ÷ 2 + 1] + energies[i ÷ 2]) / 2
+        end
+    end
+    return foliated
+end
+
+###
+### _mesh_sheet
+###
+
 """
     _mesh_sheet(sheet_isolines, ε, band_index, n_arc_s, foliated_energies, corner_offset)
 
@@ -399,8 +517,7 @@ The resolution used for marching squares over `region` is set by `N`, the number
 points in each direction of the bounding rectangle.
 """
 function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001, α = 6.0)
-    n_levels = 2 * max(1, ceil(Int, α * T / Δε)) # always even → patch centered at E = 0
-    n_arc    = max(3, n_arc)
+    n_arc = max(3, n_arc)
 
     # Sample coordinates and energies for marching squares
     ((x_min, x_max), (y_min, y_max)) = get_bounding_box(region)
@@ -415,30 +532,8 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
         end
     end
 
-    e_threshold = α * T # Half-width of Fermi tube
-    e_min = max(-e_threshold, 0.999 * minimum(E[.!isnan.(E)]))
-    e_max = min(e_threshold,  0.999 * maximum(E[.!isnan.(E)]))
-    energies = collect(LinRange(e_min, e_max, n_levels))
-    # Shift energy levels to include a corner energy if the dispersion crosses it
-    for corner_e ∈ ε.(region)
-        if e_min < corner_e < e_max
-            i = argmin(abs.(energies .- corner_e))
-            i == 1 && continue # corner is below the first interior level; skip
-            energies[1:i] = LinRange(e_min, corner_e, i)
-            Δe = (e_max - corner_e) / (n_levels - i)
-            energies[i+1:end] = LinRange(corner_e + Δe, e_max, n_levels - i)
-            break # accept at most one corner crossing
-        end
-    end
-
-    foliated_energies = Vector{Float64}(undef, 2 * n_levels - 1)
-    for i in eachindex(foliated_energies)
-        if isodd(i)
-            foliated_energies[i] = energies[(i - 1) ÷ 2 + 1]
-        else
-            foliated_energies[i] = (energies[i ÷ 2 + 1] + energies[i ÷ 2]) / 2
-        end
-    end
+    foliated_energies = _foliated_energies(E, ε, region, Δε, α, T)
+    n_levels = (length(foliated_energies) + 1) ÷ 2
 
     c = contours(X, Y, E, foliated_energies; mask = region)
     sort_isolines!.(c)
