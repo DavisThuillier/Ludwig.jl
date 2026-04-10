@@ -378,18 +378,29 @@ function arclength_slice(curve, n::Int)
 end
 
 """
-    mesh_region(region, ε::Function, band_index::Int, T::Real, n_levels::Int, n_cuts::Int[, N::Int, α::Real])
+    mesh_region(region, ε::Function, band_index::Int, T::Real, Δε::Real, n_arc::Int[, N::Int, α::Real])
 
-Generate mesh of `region` of momentum space given dispersion `ε` corresponding to band `band_index` at temperature `T`. The resultant mesh covers an annular region of the Fermi surface between -`αT` and + `αT` with `n_levels - 1` patches in the energy direction and `n_cuts - 1` patches along the energy contours bounded by the convex hull of points in `region`.
+Generate a mesh of `region` of momentum space for dispersion `ε` (band `band_index`) at
+temperature `T`.
 
-The resolution used for marching squares over `region` is set by `N`, as the number of points to sample in each direction of the rectangle which bounds `region`.
+The mesh covers a tube around the Fermi surface between `-αT` and `+αT`. The energy-direction
+resolution is controlled by `Δε`: the number of patch rows is `2*ceil(α*T/Δε)`, always even
+so that a patch center falls exactly on the Fermi surface. The arc-length resolution along each
+energy contour is controlled by `n_arc`: each Fermi surface sheet is divided into `n_arc - 1`
+uniform arc-length segments.
 
-It is recommended that `n_levels` be an even integer to enforce that a patch be centered on the Fermi surface
+Multiple disconnected Fermi surface sheets (e.g. annular topology) are handled automatically —
+one sub-mesh is generated per sheet and the results are concatenated. For a closed isoline
+(sheet entirely within `region`), `n_arc` is scaled by the ratio of the closed contour's
+arc-length to that of the outermost open-arc sheet so that the full-BZ patch density is
+consistent across sheets.
+
+The resolution used for marching squares over `region` is set by `N`, the number of sample
+points in each direction of the bounding rectangle.
 """
-function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int, N = 1001, α = 6.0)
-    n_levels = max(3, n_levels) # Enforce minimum of 2 patches in the energy direction
-    n_cuts = max(3, n_cuts) # Enforce minimum of 2 patches in angular direction 
-
+function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001, α = 6.0)
+    n_levels = 2 * max(1, ceil(Int, α * T / Δε)) # always even → patch centered at E = 0
+    n_arc    = max(3, n_arc)
 
     # Sample coordinates and energies for marching squares
     ((x_min, x_max), (y_min, y_max)) = get_bounding_box(region)
@@ -397,31 +408,29 @@ function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int,
     Δx = (x_max - x_min) / (N - 1)
     Ny = round(Int, (y_max - y_min) / Δx)
     Y = LinRange(y_min, y_max, Ny)
-    E = Matrix{Float64}(undef, N, Ny) 
-    for (i,x) in enumerate(X)
-        for (j,y) in enumerate(Y)
-            k = [x,y]
-            E[i,j] = ε(k) # Sample dispersion in bounding box
+    E = Matrix{Float64}(undef, N, Ny)
+    for (i, x) in enumerate(X)
+        for (j, y) in enumerate(Y)
+            E[i,j] = ε([x, y])
         end
     end
 
-    e_threshold = α*T # Half-width of Fermi tube
-    e_min = max(-e_threshold, 0.999 * minimum(E[.!isnan.(E)])) 
-    e_max = min(e_threshold, 0.999 * maximum(E[.!isnan.(E)]))
+    e_threshold = α * T # Half-width of Fermi tube
+    e_min = max(-e_threshold, 0.999 * minimum(E[.!isnan.(E)]))
+    e_max = min(e_threshold,  0.999 * maximum(E[.!isnan.(E)]))
     energies = collect(LinRange(e_min, e_max, n_levels))
-    # Shift energy levels to include corner energy if there is a crossing
+    # Shift energy levels to include a corner energy if the dispersion crosses it
     for corner_e ∈ ε.(region)
-        if e_min < corner_e < e_max 
+        if e_min < corner_e < e_max
             i = argmin(abs.(energies .- corner_e))
             energies[1:i] = LinRange(e_min, corner_e, i)
             Δe = (e_max - corner_e) / (n_levels - i)
             energies[i+1:end] = LinRange(corner_e + Δe, e_max, n_levels - i)
-            break # Accept at most one corner crossing
-        end 
+            break # accept at most one corner crossing
+        end
     end
 
     foliated_energies = Vector{Float64}(undef, 2 * n_levels - 1)
-    # Populate vector of energies for patch centers and contours
     for i in eachindex(foliated_energies)
         if isodd(i)
             foliated_energies[i] = energies[(i - 1) ÷ 2 + 1]
@@ -430,115 +439,72 @@ function mesh_region(region, ε, band_index::Int, T, n_levels::Int, n_cuts::Int,
         end
     end
 
-    c = contours(X, Y, E, foliated_energies; mask = region) # Generate Fermi surface contours
+    c = contours(X, Y, E, foliated_energies; mask = region)
+    sort_isolines!.(c)
 
-    patches = Matrix{Patch}(undef, n_levels-1, n_cuts-1)
-    corners = Vector{SVector{2, Float64}}(undef, (2 * n_levels - 2) * n_cuts)
-    corner_ids = Matrix{SVector{4, Int}}(undef, n_levels-1, n_cuts-1)
+    n_sheets = maximum((length(b.isolines) for b in c if !isempty(b.isolines)), init = 0)
 
-    cind = 1 # Corner iteration index
+    all_patches    = Patch[]
+    all_corners    = SVector{2,Float64}[]
+    all_corner_ids = SVector{4,Int}[]
 
-    for i in 2:2:2*n_levels-1
-        k, arclengths = arclength_slice(c[i].isolines[1].points, 2 * n_cuts - 1)
+    for s in 1:n_sheets
+        sheet_isolines = [length(b.isolines) >= s ? b.isolines[s] : nothing for b in c]
+        any(isnothing, sheet_isolines) && continue
 
-        # Identify endpoints of contours as corners of first patch
-        endpoints = [c[i-1].isolines[1].points[begin], c[i-1].isolines[1].points[end]]
-        i3 = argmin(map(x -> norm(x .- k[1]), endpoints))
-        ij3 = (i3, i3)
-        corners[cind] = endpoints[i3]
+        isolines_s  = Isoline[iso for iso in sheet_isolines] # type-stable, no Nothing
+        center_iso  = isolines_s[n_levels]
 
-        endpoints = [c[i+1].isolines[1].points[begin], c[i+1].isolines[1].points[end]]
-        i4 = argmin(map(x -> norm(x .- k[1]), endpoints))
-        ij4 = (i4, i4)
-        corners[cind+1] = endpoints[i4]
-
-
-        cind += 2        
-        for j in 2:2:lastindex(k)
-            corners[cind], ij1 = contour_intersection(k[j+1], gradient(ε, k[j+1]), c[i-1].isolines[1])
-            corners[cind+1], ij2 = contour_intersection(k[j+1], gradient(ε, k[j+1]), c[i+1].isolines[1])
-            corner_ids[i÷2,j÷2] = [cind-2, cind-1, cind+1, cind]
-            cind += 2
-
-            i3, i1 = map(x -> x[argmin(
-                [norm(k[j] - c[i-1].isolines[1].points[x[1]]),
-                norm(k[j] - c[i-1].isolines[1].points[x[2]])])],
-                (ij3, ij1)
-            )
-            i4, i2 = map(x -> x[argmin(
-                [norm(k[j] - c[i+1].isolines[1].points[x[1]]),
-                norm(k[j] - c[i+1].isolines[1].points[x[2]])])],
-                (ij4, ij2)
-            )
-            
-            # Calculate area of patch using winding method relative to patch center
-            dV = poly_area(vcat(corners[cind-4:cind-1], c[i-1].isolines[1].points[min(i1,i3):max(i1,i3)], c[i+1].isolines[1].points[min(i2,i4):max(i2,i4)]), k[j])
-
-            ij3 = ij1; ij4 = ij2
-
-            Δε = foliated_energies[i+1] - foliated_energies[i-1]
-            Δs = arclengths[j+1] - arclengths[j-1]
-
-            v = gradient(ε, k[j])
-
-            p1, _ = contour_intersection(k[j], gradient(ε, k[j]), c[i-1].isolines[1])
-            p2, _ = contour_intersection(k[j], gradient(ε, k[j]), c[i+1].isolines[1])
-
-            A = Matrix{Float64}(undef, 2, 2) 
-            J = Matrix{Float64}(undef, 2, 2)
-
-            A[1,1] = (p2[1] - p1[1]) / Δε # ∂kx/∂ε |s
-            A[1,2] = (p2[2] - p1[2]) / Δε # ∂ky/∂ε |s
-            A[2,1] = (k[j+1][1] - k[j-1][1]) / Δs   # ∂kx/∂s |ε
-            A[2,2] = (k[j+1][2] - k[j-1][2]) / Δs   # ∂ky/∂s |ε
-            
-            J[1,1] = 2 * v[1] / Δε # ∂ε/∂kx |ky
-            J[1,2] = 2 * v[2] / Δε # ∂ε/∂ky |kx
-            J[2,1] = - 2 * A[1,2] / det(A) / Δs   # ∂s/∂kx |ky
-            J[2,2] = 2 * A[1,1] / det(A) / Δs # ∂s/∂ky |kx
-
-            patches[i÷2,j÷2] = Patch(
-                foliated_energies[i],
-                k[j], 
-                v,
-                Δε, 
-                dV,
-                inv(J),
-                1/abs(det(J)),
-                band_index
-            )
+        # Scale n_arc for closed inner sheets so full-BZ patch density is consistent
+        n_arc_s = n_arc
+        if center_iso.isclosed
+            ref_iso = c[n_levels].isolines[end]   # outermost (largest radius) sheet at E=0
+            if !ref_iso.isclosed
+                L_closed = get_arclengths(center_iso.points)[end]
+                L_ref    = get_arclengths(ref_iso.points)[end]
+                n_arc_s  = max(3, round(Int, n_arc * L_closed / L_ref))
+            end
         end
 
+        mesh_s = _mesh_sheet(
+            isolines_s, ε, band_index, n_levels, n_arc_s,
+            foliated_energies, length(all_corners)
+        )
+        append!(all_patches,    mesh_s.patches)
+        append!(all_corners,    mesh_s.corners)
+        append!(all_corner_ids, mesh_s.corner_inds)
     end
 
-    return Mesh(vec(patches), corners, vec(corner_ids))
+    return Mesh(all_patches, all_corners, all_corner_ids)
 end
 
-mesh_region(region, ε, T, n_levels, n_cuts, N = 1001, α = 6.0) = mesh_region(region, ε, 1, T, n_levels, n_cuts, N, α)
+mesh_region(region, ε, T, Δε, n_arc::Int, N = 1001, α = 6.0) = mesh_region(region, ε, 1, T, Δε, n_arc, N, α)
 
 """
-    ibz_mesh(l::Lattice, bands::AbstractVector, T, n_levels::Int, n_cuts::Int[, N::Int, α::Real])
+    ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int[, N::Int, α::Real])
 
-Generate a mesh of the irreducible Brillouin Zone (IBZ) for lattice `l` given dispersions in `bands` at temperature `T`. The resultant mesh covers an annular region of the Fermi surface between -`αT` and + `αT` with `n_levels - 1` patches in the energy direction and `n_cuts - 1` patches along the energy contours bounded by the IBZ.
+Generate a mesh of the irreducible Brillouin Zone (IBZ) for lattice `l` given dispersions
+in `bands` at temperature `T`. See [`mesh_region`](@ref) for a description of the resolution
+parameters `Δε` and `n_arc`.
 """
-function ibz_mesh(l::Lattice, bands::AbstractVector, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0)
-    full_patches = Vector{Patch}(undef, 0)
-    full_corners = Vector{SVector{2, Float64}}(undef, 0)
-    full_corner_inds = Vector{SVector{4, Int}}
+function ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0)
+    full_patches    = Patch[]
+    full_corners    = SVector{2,Float64}[]
+    full_corner_ids = SVector{4,Int}[]
     ibz = get_ibz(l)
 
     for i in eachindex(bands)
-        mesh = mesh_region(ibz, bands[i], i, T, n_levels, n_cuts, N, α)
-        full_patches = vcat(full_patches, mesh.patches)
+        mesh = mesh_region(ibz, bands[i], i, T, Δε, n_arc, N, α)
         ℓ = length(full_corners)
-        full_corner_inds = vcat(full_corners, map(x -> SVector{4, Int}(x .+ ℓ), mesh.corner_inds))
-        full_corners = vcat(full_corners, mesh.corners)
+        append!(full_patches, mesh.patches)
+        append!(full_corner_ids, map(x -> SVector{4,Int}(x .+ ℓ), mesh.corner_inds))
+        append!(full_corners, mesh.corners)
     end
 
-    return Mesh(full_patches, full_corners, full_corner_inds)
+    return Mesh(full_patches, full_corners, full_corner_ids)
 end
 
-ibz_mesh(l::Lattice, ε::Function, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0) = ibz_mesh(l, [ε], T, n_levels, n_cuts, N, α)
+ibz_mesh(l::Lattice, ε::Function, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0) = ibz_mesh(l, [ε], T, Δε, n_arc, N, α)
 
 """
     _group_angle_perm(G, ibz) -> Vector{Int}
@@ -565,46 +531,37 @@ function _group_angle_perm(G, ibz)
 end
 
 """
-    bz_mesh(l::Lattice, bands::AbstractVector, T, n_levels::Int, n_cuts::Int[, N::Int, α::Real])
+    bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int[, N::Int, α::Real])
 
-Generate a mesh of the Brillouin Zone (BZ) for lattice `l` given dispersions in `bands` at temperature `T`. The resultant mesh covers an annular region of the Fermi surface between -`αT` and + `αT` with `n_levels - 1` patches in the energy direction and `n_cuts - 1` patches along the energy contours bounded by the irreducible BZ.
+Generate a mesh of the Brillouin Zone (BZ) for lattice `l` given dispersions in `bands` at
+temperature `T` by computing the IBZ mesh and replicating it under all point-group operations.
+See [`mesh_region`](@ref) for a description of `Δε` and `n_arc`.
 """
-function bz_mesh(l::Lattice, bands::AbstractVector, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0)
-    G = point_group(l)
-    ibz = get_ibz(l)
+function bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0)
+    G     = point_group(l)
+    ibz   = get_ibz(l)
     θperm = _group_angle_perm(G, ibz)
 
-    full_patches = Matrix{Patch}(undef, n_levels - 1, 0)
-    full_corners = Vector{SVector{2, Float64}}(undef, 0)
-    full_corner_inds = Matrix{SVector{4, Int}}(undef, n_levels - 1, 0)
+    full_patches     = Patch[]
+    full_corners     = SVector{2,Float64}[]
+    full_corner_inds = SVector{4,Int}[]
 
     for j in eachindex(bands)
-        mesh = mesh_region(ibz, bands[j], j, T, n_levels, n_cuts, N, α)
-        
+        mesh = mesh_region(ibz, bands[j], j, T, Δε, n_arc, N, α)
+
         for i in θperm
             O = get_matrix_representation(G.elements[i])
             ℓ = length(full_corners)
-            if det(O) < 0.0 # Improper rotation
-                full_patches = hcat(full_patches, 
-                    reverse( map(x -> patch_op(x, O), reshape(mesh.patches, n_levels - 1, :)), dims = 2)
-                )
-                full_corner_inds = hcat(full_corner_inds, reverse( map(x -> SVector{4, Int}(x .+ ℓ), reshape(mesh.corner_inds,  n_levels - 1, :)), dims = 2))
-            else
-                full_patches = hcat(full_patches, 
-                    map(x -> patch_op(x, O), reshape(mesh.patches, n_levels - 1, :)) 
-                )
-                full_corner_inds = hcat(full_corner_inds, map(x -> SVector{4, Int}(x .+ ℓ), reshape(mesh.corner_inds,  n_levels - 1, :)))
-            end
-            
-            
-            full_corners = vcat(full_corners, map(x -> O*x, mesh.corners))
+            append!(full_patches,     map(x -> patch_op(x, O), mesh.patches))
+            append!(full_corner_inds, map(x -> SVector{4,Int}(x .+ ℓ), mesh.corner_inds))
+            append!(full_corners,     map(x -> O * x, mesh.corners))
         end
     end
 
-    return Mesh(vec(full_patches), vec(full_corners), vec(full_corner_inds))
+    return Mesh(full_patches, full_corners, full_corner_inds)
 end
 
-bz_mesh(l::Lattice, ε, T, n_levels::Int, n_cuts::Int, N::Int = 1001, α::Real = 6.0) = bz_mesh(l, [ε], T, n_levels, n_cuts, N, α)
+bz_mesh(l::Lattice, ε, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0) = bz_mesh(l, [ε], T, Δε, n_arc, N, α)
 
 """
     secant_method(f, x0, x1, maxiter[; atol])
