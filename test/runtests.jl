@@ -13,3 +13,7 @@ end
 @testset "IBZ Fill Tests" begin
     include("ibz_fill_test.jl")
 end
+
+@testset "FS Mesh Tests" begin
+    include("fs_mesh_test.jl")
+end
