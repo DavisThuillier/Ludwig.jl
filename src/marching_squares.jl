@@ -260,38 +260,75 @@ end
 """
     contour_intersection(a, v, iso::Isoline[, i = 1])
 
-Find intersection of contour `iso` with line parameterized as x = `a` + t `v` for real parameter t.
+Find intersection of contour `iso` with the line x = `a` + t `v` for real parameter t.
+
+All sign changes of the cross product (iso.points[i] - a) × v are located; the crossing
+with minimum |t| is returned. This handles both open arcs (typically one crossing) and
+closed isolines (typically two crossings, only the nearest is wanted).
 
 If `i` is specified, the search starts at point `i` of `iso.points`.
 """
 function contour_intersection(a, v, iso::Isoline, i = 1)
-    imax = lastindex(iso.points)
-    oldsign = 0 # Flag to indicate first iteration
-    area = 0.0
-    while i <= imax
-        w = iso.points[i] - a
-        area = w[1] * v[2] - w[2]*v[1]
-        newsign = sign(area) # Sign of cross product area
-        if oldsign != 0 && newsign*oldsign < 0
-            i -= 1
-            break
-        end
+    imax    = lastindex(iso.points)
+    oldsign = 0
+    area    = 0.0
+    best_p  = iso.points[begin]
+    best_t  = Inf
+    best_ij = (firstindex(iso.points), firstindex(iso.points))
 
+    while i <= imax
+        w       = iso.points[i] - a
+        area    = w[1] * v[2] - w[2] * v[1]
+        newsign = sign(area)
+        if oldsign != 0 && newsign * oldsign < 0
+            i_cross = i - 1
+            p = intersection(a, v, iso.points[i_cross], iso.points[i] - iso.points[i_cross])
+            t = dot(p - a, v) / dot(v, v)
+            if abs(t) < abs(best_t)
+                best_t  = t
+                best_p  = p
+                best_ij = (i_cross, i)
+            end
+            if !iso.isclosed
+                return best_p, best_ij # open arc: first crossing is the only one
+            end
+        end
         oldsign = newsign
         i += 1
     end
 
-    if i == imax + 1
-        θmax = atan(abs(area), abs(dot(v, iso.points[imax] - a)))
-        θ1 = atan(abs((iso.points[1][1] - a[1]) * v[2] - (iso.points[1][2] - a[2])*v[1]), abs(dot(v, iso.points[1] - a)))
-
+    if isinf(best_t) # no crossing found — fall back to nearest endpoint
+        area_end = let w = iso.points[imax] - a; w[1] * v[2] - w[2] * v[1] end
+        area_beg = let w = iso.points[begin] - a; w[1] * v[2] - w[2] * v[1] end
+        θmax = atan(abs(area_end), abs(dot(v, iso.points[imax] - a)))
+        θ1   = atan(abs(area_beg), abs(dot(v, iso.points[begin] - a)))
         if abs(θmax) < abs(θ1)
             return iso.points[imax], (imax, imax)
         else
-            return iso.points[1], (1,1)
+            return iso.points[begin], (firstindex(iso.points), firstindex(iso.points))
         end
+    end
+
+    return best_p, best_ij
+end
+
+"""
+    _arc_points(iso::Isoline, ia::Int, ib::Int)
+
+Return the points of `iso` between indices `ia` and `ib`, taking the shorter arc.
+
+For open isolines this is a plain slice. For closed isolines, if the direct slice
+`min(ia,ib):max(ia,ib)` covers more than half the loop, the wrap-around arc (from
+the larger index to the end and from the beginning to the smaller index) is returned
+instead.
+"""
+function _arc_points(iso::Isoline, ia::Int, ib::Int)
+    a, b = min(ia, ib), max(ia, ib)
+    pts  = iso.points
+    imax = lastindex(pts)
+    if !iso.isclosed || b - a <= imax ÷ 2
+        return pts[a:b]
     else
-        p1 = iso.points[i]; p2 = iso.points[i+1]
-        return intersection(a, v, p1, p2-p1), (i, i+1)
+        return vcat(pts[b:end], pts[begin:a])
     end
 end
