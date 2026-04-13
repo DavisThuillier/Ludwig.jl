@@ -54,7 +54,7 @@ end
 
 function param_intersection(a1, v1, a2, v2)
     V = hcat(v1, -v2)
-    det(V) == 0 && return [NaN, NaN] # No intersection
+    det(V) == 0 && return [NaN, NaN], [NaN, NaN] # No intersection (parallel lines)
 
     t = inv(V) * (a2 - a1)
     return a1 + t[1] * v1, t
