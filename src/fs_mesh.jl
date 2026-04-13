@@ -281,28 +281,58 @@ end
 ###
 
 """
-    _foliated_energies(E, ε, region, Δε, α, T)
+    _foliated_energies(X, Y, E, ε, region, Δε, α, T)
 
 Compute the interleaved vector of boundary and center energy levels for meshing.
 
 Builds a symmetric grid of boundary contour energies centered at zero with spacing `Δε`,
 spanning `[-α*T, α*T]` (always an even number of levels so that `E = 0` falls on a patch
-center). Grid points outside the range of values in `E` are discarded, except the first
-out-of-range point on each side is retained and pinned to the actual minimum/maximum energy.
-If the dispersion evaluated at a corner of `region` falls within the retained range, the
-levels are shifted so that one boundary contour passes exactly through that energy.
+center). Grid points outside the range of values in `E` restricted to `region` are discarded,
+except the first out-of-range point on each side is retained and pinned to the second-lowest
+or second-highest distinct energy value within `region`. Using the second extremum rather than
+the true extremum ensures the boundary contour level is straddled by at least a full ring of
+grid cells, avoiding the degenerate single-point isoline that arises when the extremum is
+attained at only one grid point. If the dispersion evaluated at a corner of `region` falls
+within the retained range, the levels are shifted so that one boundary contour passes exactly
+through that energy.
 
 Returns a vector of length `2*n - 1`, where `n` is the number of retained boundary
 contours. Odd-indexed entries are boundary contour energies; even-indexed entries are
 patch center energies (midpoints between adjacent boundaries).
 """
-function _foliated_energies(E, ε, region, Δε, α, T)
+function _foliated_energies(X, Y, E, ε, region, Δε, α, T)
     n_levels = 2 * max(1, ceil(Int, α * T / Δε)) # always even → E=0 on a patch center
     energies = collect(LinRange(-α * T, α * T, n_levels))
 
-    E_valid = E[.!isnan.(E)]
-    e_actual_min = minimum(E_valid)
-    e_actual_max = maximum(E_valid)
+    e_actual_min, e_actual_max = if length(region) > 2
+        lo, hi = Inf, -Inf
+        second_lo, second_hi = Inf, -Inf
+        for (i, x) in enumerate(X), (j, y) in enumerate(Y)
+            isnan(E[i, j]) && continue
+            in_polygon([x, y], region) || continue
+            e = E[i, j]
+            if e < lo
+                second_lo, lo = lo, e
+            elseif e > lo && e < second_lo
+                second_lo = e
+            end
+            if e > hi
+                second_hi, hi = hi, e
+            elseif e < hi && e > second_hi
+                second_hi = e
+            end
+        end
+        if isinf(lo)
+            E_valid = E[.!isnan.(E)]
+            minimum(E_valid), maximum(E_valid)
+        else
+            isinf(second_lo) ? lo : second_lo,
+            isinf(second_hi) ? hi : second_hi
+        end
+    else
+        E_valid = E[.!isnan.(E)]
+        minimum(E_valid), maximum(E_valid)
+    end
 
     # Pin the first out-of-range point on the lower side to the actual minimum
     i_low = findlast(<(e_actual_min), energies)
@@ -318,8 +348,10 @@ function _foliated_energies(E, ε, region, Δε, α, T)
         energies = energies[1:i_high]
     end
 
-    # Shift energy levels to include a corner energy if the dispersion crosses it
-    for corner_e ∈ ε.(region)
+    # # Shift energy levels to include a corner energy if the dispersion crosses it
+    for k ∈ region
+        k == [0.0, 0.0] && continue
+        corner_e =  ε(k)
         if energies[begin] < corner_e < energies[end]
             i = argmin(abs.(energies .- corner_e))
             i == 1 && continue # corner is below the first interior level; skip
@@ -327,7 +359,6 @@ function _foliated_energies(E, ε, region, Δε, α, T)
             energies[1:i] = LinRange(energies[begin], corner_e, i)
             Δe = (energies[end] - corner_e) / (n - i)
             energies[i+1:end] = LinRange(corner_e + Δe, energies[end], n - i)
-            break # accept at most one corner crossing
         end
     end
 
@@ -343,19 +374,38 @@ function _foliated_energies(E, ε, region, Δε, α, T)
     return foliated
 end
 
-###
-### _mesh_sheet
-###
+"""
+    _aligned_arclength_slice(iso, ref_start, ref_tangent, n)
+
+Resample `iso` at `n` arclength-uniform points, aligned to `ref_start`.
+
+The endpoint of `iso.points` closest to `ref_start` is chosen as the starting
+point of the resampled arc. The traversal direction is then checked against
+`ref_tangent` (the tangent of the reference contour at its start): if the dot
+product of the adjacent arc's initial tangent with `ref_tangent` is negative, the
+arc is reversed so that all contours in a sheet are traversed in the same direction.
+"""
+function _aligned_arclength_slice(iso::Isoline, ref_start, ref_tangent, n::Int)
+    pts = iso.points
+    if norm(pts[end] - ref_start) < norm(pts[begin] - ref_start)
+        pts = reverse(pts)
+    end
+    if length(pts) >= 2 && dot(pts[2] - pts[1], ref_tangent) < 0
+        pts = reverse(pts)
+    end
+    return arclength_slice(pts, n)[1]
+end
 
 """
-    _mesh_sheet(sheet_isolines, ε, band_index, n_arc_s, foliated_energies, corner_offset)
+    _mesh_sheet(sheet_isolines, ε, band_index, n_arc_s, foliated_energies, corner_offset, region)
 
 Generate a [`Mesh`](@ref) for a single Fermi surface sheet defined by `sheet_isolines`.
 
 `sheet_isolines[i]` is the isoline at `foliated_energies[i]` for this sheet (no `nothing`
 entries — call site must validate). `n_arc_s` is the number of arc-length divisions of the
 center contour. All corner indices in the returned `Mesh` are offset by `corner_offset` so
-that the caller can concatenate multiple sheet meshes into a single flat `Mesh`.
+that the caller can concatenate multiple sheet meshes into a single flat `Mesh`. `region`
+is the masking polygon passed to [`mesh_region`](@ref) and is used for kink detection.
 """
 function _mesh_sheet(
     sheet_isolines::Vector{<:Isoline},
@@ -364,19 +414,26 @@ function _mesh_sheet(
     n_arc_s::Int,
     foliated_energies::Vector{Float64},
     corner_offset::Int,
+    region,
 )
     n_levels = (length(foliated_energies) + 1) ÷ 2
-    n_cuts = n_arc_s + 1
 
     patches    = Matrix{Patch}(undef, n_levels - 1, n_arc_s)
-    corners    = Vector{SVector{2, Float64}}(undef, (2 * n_levels - 2) * n_cuts)
+    corners    = Vector{SVector{2, Float64}}(undef, (2 * n_levels - 2) * (n_arc_s + 1))
     corner_ids = Matrix{SVector{4, Int}}(undef, n_levels - 1, n_arc_s)
 
     cind = 1
 
     for i in 2:2:2*n_levels-1
-        k, arclengths = arclength_slice(sheet_isolines[i].points, 2 * n_cuts - 1)
+        arclength_fractions = LinRange(0, 1, 2 * n_arc_s + 1)
 
+        k, arclengths = arclength_slice(sheet_isolines[i].points, 2 * n_arc_s + 1)
+        ref_tangent = k[2] - k[1]
+
+        k_inner = _aligned_arclength_slice(sheet_isolines[i-1], k[1], ref_tangent, 2 * n_arc_s + 1)
+        k_outer = _aligned_arclength_slice(sheet_isolines[i+1], k[1], ref_tangent, 2 * n_arc_s + 1)
+
+        # Identify endpoints of contours as corners of first patch
         endpoints = [sheet_isolines[i-1].points[begin], sheet_isolines[i-1].points[end]]
         i3 = argmin(map(x -> norm(x .- k[1]), endpoints))
         ij3 = (i3, i3)
@@ -387,38 +444,44 @@ function _mesh_sheet(
         ij4 = (i4, i4)
         corners[cind+1] = endpoints[i4]
 
+        corners[cind]   = k_inner[1]
+        corners[cind+1] = k_outer[1]
         cind += 2
+
         for j in 2:2:lastindex(k)
-            corners[cind],   ij1 = contour_intersection(k[j+1], gradient(ε, k[j+1]), sheet_isolines[i-1])
-            corners[cind+1], ij2 = contour_intersection(k[j+1], gradient(ε, k[j+1]), sheet_isolines[i+1])
+            corners[cind]   = k_inner[j+1]
+            corners[cind+1] = k_outer[j+1]
             corner_ids[i÷2, j÷2] = SVector{4, Int}(cind-2, cind-1, cind+1, cind) .+ corner_offset
             cind += 2
 
+            ij1 = sortperm(get_arclengths(sheet_isolines[i-1].points) / sheet_isolines[i-1].arclength; by = x -> abs(x - arclength_fractions[j-1]))[1:2]
+            ij2 = sortperm(get_arclengths(sheet_isolines[i+1].points) / sheet_isolines[i+1].arclength; by = x -> abs(x - arclength_fractions[j+1]))[1:2]
+
             i3, i1 = map(x -> x[argmin(
                 [norm(k[j] - sheet_isolines[i-1].points[x[1]]),
-                 norm(k[j] - sheet_isolines[i-1].points[x[2]])])],
+                norm(k[j] - sheet_isolines[i-1].points[x[2]])])],
                 (ij3, ij1)
             )
             i4, i2 = map(x -> x[argmin(
                 [norm(k[j] - sheet_isolines[i+1].points[x[1]]),
-                 norm(k[j] - sheet_isolines[i+1].points[x[2]])])],
+                norm(k[j] - sheet_isolines[i+1].points[x[2]])])],
                 (ij4, ij2)
             )
 
-            dV = poly_area(vcat(
-                corners[cind-4:cind-1],
-                _arc_points(sheet_isolines[i-1], i1, i3),
-                _arc_points(sheet_isolines[i+1], i2, i4)
-            ), k[j])
+            poly = vcat(corners[cind-4:cind-1], sheet_isolines[i-1].points[min(i1,i3):max(i1,i3)], sheet_isolines[i+1].points[min(i2,i4):max(i2,i4)])
+
+            dV = poly_area(vcat(corners[cind-4:cind-1], sheet_isolines[i-1].points[min(i1,i3):max(i1,i3)], sheet_isolines[i+1].points[min(i2,i4):max(i2,i4)]), k[j])
 
             ij3 = ij1; ij4 = ij2
+
+            # dV = poly_area(vcat(k_inner[j-1:j+1], k_outer[j-1:j+1]), k[j])
 
             Δε = foliated_energies[i+1] - foliated_energies[i-1]
             Δs = arclengths[j+1] - arclengths[j-1]
 
             v  = gradient(ε, k[j])
-            p1, _ = contour_intersection(k[j], v, sheet_isolines[i-1])
-            p2, _ = contour_intersection(k[j], v, sheet_isolines[i+1])
+            p1 = k_inner[j]
+            p2 = k_outer[j]
 
             A = Matrix{Float64}(undef, 2, 2)
             J = Matrix{Float64}(undef, 2, 2)
@@ -474,6 +537,10 @@ Cut `curve` into `n` uniformly spaced points. Treats `curve` as an ordered list 
 For best results, points in `curve` should have approximately uniform spacing and `n` should be much less than the number of points in `curve`.  
 """
 function arclength_slice(curve, n::Int)
+    if length(curve) == 1
+        return fill(curve[begin], n), zeros(Float64, n)
+    end
+
     arclengths = get_arclengths(curve)
     
     τ = LinRange(0.0, arclengths[end], n)
@@ -493,6 +560,30 @@ function arclength_slice(curve, n::Int)
     end
 
     return grid, collect(τ)   
+end
+
+"""
+    _find_marginal_energy(X, Y, E_mat, region, e_inner, e_outer, target_n_iso)
+
+Bisect in the interval `[e_inner, e_outer]` to find the energy threshold at which the
+number of isolines transitions through `target_n_iso`. `e_inner` must satisfy
+`n_iso >= target_n_iso`; `e_outer` must not.
+
+Returns the last energy (closest to `e_outer`) where `n_iso >= target_n_iso` still holds.
+"""
+function _find_marginal_energy(X, Y, E_mat, region, e_target, e_outer, n_iso_target; iter = 32)
+    a, b = e_target, e_outer
+    for _ in 1:iter
+        mid = (a + b) / 2
+        bundle = contours(X, Y, E_mat, [mid]; mask=region)[1]
+        sort_isolines!(bundle)
+        if length(bundle.isolines) == n_iso_target
+            a = mid
+        else
+            b = mid
+        end
+    end
+    return a
 end
 
 """
@@ -532,43 +623,105 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
         end
     end
 
-    foliated_energies = _foliated_energies(E, ε, region, Δε, α, T)
+    foliated_energies = _foliated_energies(X, Y, E, ε, region, Δε, α, T)
     n_levels = (length(foliated_energies) + 1) ÷ 2
 
     c = contours(X, Y, E, foliated_energies; mask = region)
     sort_isolines!.(c)
 
-    n_sheets = maximum((length(b.isolines) for b in c if !isempty(b.isolines)), init = 0)
+    n_isolines = [length(bundle.isolines) for bundle in c]
 
     all_patches    = Patch[]
     all_corners    = SVector{2,Float64}[]
     all_corner_ids = SVector{4,Int}[]
 
-    for s in 1:n_sheets
-        sheet_isolines = [length(b.isolines) >= s ? b.isolines[s] : nothing for b in c]
-        any(isnothing, sheet_isolines) && continue
-
-        isolines_s  = Isoline[iso for iso in sheet_isolines] # type-stable, no Nothing
-        center_iso  = isolines_s[n_levels]
-
-        # Scale n_arc for closed inner sheets so full-BZ patch density is consistent
-        n_arc_s = n_arc
-        if center_iso.isclosed
-            ref_iso = c[n_levels].isolines[end]   # outermost (largest radius) sheet at E=0
-            if !ref_iso.isclosed
-                L_closed = get_arclengths(center_iso.points)[end]
-                L_ref    = get_arclengths(ref_iso.points)[end]
-                n_arc_s  = max(3, round(Int, n_arc * L_closed / L_ref))
-            end
+    # Partition energy levels into contiguous runs with the same isoline count,
+    # then process each sheet within each run independently.
+    #
+    # _mesh_sheet requires foliated_energies to start and end at boundary energies
+    # (odd 1-based indices). If a run starts or ends at an even index (a patch-center
+    # energy), extend it with a marginal boundary found by bisection at the transition.
+    i = 1
+    while i <= length(n_isolines)
+        j = i
+        while j <= length(n_isolines) && n_isolines[j] == n_isolines[i]
+            j += 1
         end
 
-        mesh_s = _mesh_sheet(
-            isolines_s, ε, band_index, n_arc_s,
-            foliated_energies, length(all_corners)
-        )
-        append!(all_patches,    mesh_s.patches)
-        append!(all_corners,    mesh_s.corners)
-        append!(all_corner_ids, mesh_s.corner_inds)
+        run   = i:(j-1)
+        n_iso = n_isolines[i]
+        i     = j
+
+        (n_iso == 0 || run.stop == run.start) && continue
+
+        need_lo = iseven(run.start)
+        need_hi = iseven(run.stop)
+        shift_lo = run.start != 1 && isodd(run.start)
+        shift_hi = run.stop != length(n_isolines) && isodd(run.stop) 
+
+        if need_lo
+            e_lo_m    = _find_marginal_energy(X, Y, E, region,
+                            foliated_energies[run.start], foliated_energies[run.start - 1], n_iso)
+            bundle_lo = contours(X, Y, E, [e_lo_m]; mask=region)[1]
+            sort_isolines!(bundle_lo)
+        end
+        if need_hi
+            e_hi_m    = _find_marginal_energy(X, Y, E, region,
+                            foliated_energies[run.stop], foliated_energies[run.stop + 1], n_iso)
+            bundle_hi = contours(X, Y, E, [e_hi_m]; mask=region)[1]
+            sort_isolines!(bundle_hi)
+        end
+        if shift_lo
+            e_lo_m    = _find_marginal_energy(X, Y, E, region,
+                            foliated_energies[run.start], foliated_energies[run.start - 1], n_iso)
+            bundle_lo = contours(X, Y, E, [e_lo_m]; mask=region)[1]
+            sort_isolines!(bundle_lo)
+        end
+        if shift_hi
+            e_hi_m    = _find_marginal_energy(X, Y, E, region,
+                            foliated_energies[run.stop], foliated_energies[run.stop + 1], n_iso)
+            bundle_hi = contours(X, Y, E, [e_hi_m]; mask=region)[1]
+            sort_isolines!(bundle_hi)
+        end
+
+        for s in 1:n_iso
+            base_isolines = Isoline[c[idx].isolines[s] for idx in run]
+            base_energies = collect(foliated_energies[run])
+
+            if need_lo && need_hi
+                isolines_s          = [bundle_lo.isolines[s]; base_isolines; bundle_hi.isolines[s]]
+                foliated_energies_s = [e_lo_m; base_energies; e_hi_m]
+                foliated_energies_s[2]   = (foliated_energies_s[1]   + foliated_energies_s[3])   / 2
+                foliated_energies_s[end-1] = (foliated_energies_s[end-2] + foliated_energies_s[end]) / 2
+            elseif need_lo
+                isolines_s          = [bundle_lo.isolines[s]; base_isolines]
+                foliated_energies_s = [e_lo_m; base_energies]
+                foliated_energies_s[2] = (foliated_energies_s[1] + foliated_energies_s[3]) / 2
+            elseif need_hi
+                isolines_s          = [base_isolines; bundle_hi.isolines[s]]
+                foliated_energies_s = [base_energies; e_hi_m]
+                foliated_energies_s[end-1] = (foliated_energies_s[end-2] + foliated_energies_s[end]) / 2
+            elseif shift_lo
+                isolines_s          = [bundle_lo.isolines[s]; base_isolines[2:end]]
+                foliated_energies_s = [e_lo_m; base_energies[2:end]]
+                foliated_energies_s[2] = (foliated_energies_s[1] + foliated_energies_s[3]) / 2
+            elseif shift_hi
+                isolines_s          = [base_isolines[begin:end-1]; bundle_hi.isolines[s]]
+                foliated_energies_s = [base_energies[begin:end-1]; e_hi_m]
+                foliated_energies_s[end-1] = (foliated_energies_s[end-2] + foliated_energies_s[end]) / 2
+            else 
+                isolines_s          = base_isolines
+                foliated_energies_s = base_energies
+            end
+
+            mesh_s = _mesh_sheet(
+                isolines_s, ε, band_index, n_arc,
+                foliated_energies_s, length(all_corners), region
+            )
+            append!(all_patches,    mesh_s.patches)
+            append!(all_corners,    mesh_s.corners)
+            append!(all_corner_ids, mesh_s.corner_inds)
+        end
     end
 
     return Mesh(all_patches, all_corners, all_corner_ids)
