@@ -143,10 +143,24 @@ function find_contour(x, y, A::AbstractMatrix, level::Real = 0.0; mask = [])
         end
         isclosed && (seg_length += norm(last(segment) - first(segment)))
 
+        remove_duplicates!(segment)
+
         push!(bundle.isolines, Isoline(segment, isclosed, seg_length))
     end
 
     return bundle
+end
+
+function remove_duplicates!(segment)
+    to_delete = []
+    for i ∈ eachindex(segment)
+        i == 1 && continue
+        if isapprox(segment[i], segment[i-1]; rtol = 1e-10)
+            push!(to_delete, i)
+        end
+    end
+
+    return deleteat!(segment, to_delete)
 end
 
 """
@@ -170,6 +184,7 @@ function follow_contour!(cells, border_cells, contour, x, y, A, is, js, start_in
             edge, index = get_next_cell(edge, index)
 
             (!(index[1] ∈ is) || !(index[2] ∈ js) || index == start_index) && break
+            continue
         end
 
         if index ∈ keys(border_cells)
@@ -192,11 +207,13 @@ function follow_contour!(cells, border_cells, contour, x, y, A, is, js, start_in
                 push!(contour, p)
                 edge, index = get_next_cell(edge, index)
 
-                !(index ∈ keys(border_cells)) && (@show index;  break)
+                !(index ∈ keys(border_cells)) && break
             end
 
             break
         end
+
+        break # next cell has already been removed or was never a crossing cell
     end
 
     return index
@@ -263,8 +280,9 @@ end
 Find intersection of contour `iso` with the line x = `a` + t `v` for real parameter t.
 
 All sign changes of the cross product (iso.points[i] - a) × v are located; the crossing
-with minimum |t| is returned. This handles both open arcs (typically one crossing) and
-closed isolines (typically two crossings, only the nearest is wanted).
+with minimum |t| is returned. For closed isolines there are typically two crossings; for
+open arcs there may also be two crossings when the arc is U-shaped and the gradient line
+cuts both arms. In all cases only the nearest crossing is returned.
 
 If `i` is specified, the search starts at point `i` of `iso.points`.
 """
@@ -288,9 +306,6 @@ function contour_intersection(a, v, iso::Isoline, i = 1)
                 best_t  = t
                 best_p  = p
                 best_ij = (i_cross, i)
-            end
-            if !iso.isclosed
-                return best_p, best_ij # open arc: first crossing is the only one
             end
         end
         oldsign = newsign
