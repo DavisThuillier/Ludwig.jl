@@ -3,7 +3,7 @@ abstract type AbstractPatch end
 """
     Patch(e::Float64, k::SVector{2,Float64}, v::SVector{2,Float64}, de::Float64, dV::Float64, jinv::Matrix{Float64}, djinv::Float64, band_index::Int)
 
-Construct a `Patch' object defining regions of momentum space over which to integrate. 
+Construct a `Patch` object defining regions of momentum space over which to integrate. 
 # Fields
 - `e`: energy
 - `k`: momentum 
@@ -28,7 +28,7 @@ end
 """
     VirtualPatch(e::Float64, k::SVector{2,Float64}, v::SVector{2,Float64}, band_index::Int)
 
-Construct a `VirtualPatch' object that can be operated on as if it were a `Patch` for the purposes of sampling momentum, energy, and group velocity but which cannot be integrated over. 
+Construct a `VirtualPatch` object that can be operated on as if it were a `Patch` for the purposes of sampling momentum, energy, and group velocity but which cannot be integrated over. 
 # Fields
 - `e`: energy
 - `k`: momentum 
@@ -66,11 +66,6 @@ function patch_op(p::Patch, M::Matrix)
     )
 end
 
-"""
-    patch_op(p::VirtualPatch, M::Matrix)
-
-Apply the active transformation defined by matrix `M` on the relevant fields of virtual patch `p`.
-"""
 function patch_op(p::VirtualPatch, M::Matrix)
     return VirtualPatch(
         p.energy,
@@ -81,7 +76,7 @@ function patch_op(p::VirtualPatch, M::Matrix)
 end
 
 """
-    Mesh(patches::Vector{Patch}, corners::Vector{SVector{2,Float64}}, corner_inds::Vector{SVector{4,Int}}})
+    Mesh(patches::Vector{Patch}, corners::Vector{SVector{2,Float64}}, corner_inds::Vector{SVector{4,Int}})
 
 Construct a container struct of patches which contains information for plotting functions defined on patch centers.
 # Fields
@@ -102,7 +97,7 @@ corner_indices(m::Mesh) = m.corner_inds
 """
     BZSymmetryMap
 
-Precomputed symmetry information for a BZ mesh, relating each non-IBZ patch to its IBZ
+Store precomputed symmetry information for a BZ mesh, relating each non-IBZ patch to its IBZ
 representative via a point-group operation. Built via [`bz_symmetry_map`](@ref).
 
 # Fields
@@ -136,7 +131,7 @@ function bz_symmetry_map(grid::Vector{Patch}, l::Lattice)
     N   = length(grid)
     G_order = length(G.elements)
 
-    θperm = _group_angle_perm(G, ibz)
+    θperm = group_angle_perm(G, ibz)
 
     # Build momentum → grid index dictionary (robust: does not depend on ordering)
     momentum_to_idx = Dict(round.(p.k, digits = 10) => i for (i, p) in enumerate(grid))
@@ -171,7 +166,7 @@ function bz_symmetry_map(grid::Vector{Patch}, l::Lattice)
 end
 
 ###
-# Nonuniform Energy Gridding
+### Nonuniform Energy Gridding
 ###
 
 function populate_abscissas!(x, δ)
@@ -215,7 +210,7 @@ function get_abscissas(n, α, threshold = 1e-10, max_iter = 1000)
 end
 
 ###
-# General IBZ Meshes
+### General IBZ Meshes
 ###
 
 """
@@ -230,11 +225,11 @@ function sort_isolines!(bundle::IsolineBundle)
 end
 
 ###
-### _foliated_energies
+### foliated_energies
 ###
 
 """
-    _foliated_energies(X, Y, E, ε, region, Δε, α, T)
+    foliated_energies(X, Y, E, ε, region, Δε, α, T)
 
 Compute the interleaved vector of boundary and center energy levels for meshing.
 
@@ -253,7 +248,7 @@ Returns a vector of length `2*n - 1`, where `n` is the number of retained bounda
 contours. Odd-indexed entries are boundary contour energies; even-indexed entries are
 patch center energies (midpoints between adjacent boundaries).
 """
-function _foliated_energies(X, Y, E, ε, region, Δε, α, T)
+function foliated_energies(X, Y, E, ε, region, Δε, α, T)
     n_levels = 2 * max(1, ceil(Int, α * T / Δε)) # always even → E=0 on a patch center
     energies = collect(LinRange(-α * T, α * T, n_levels))
 
@@ -328,7 +323,7 @@ function _foliated_energies(X, Y, E, ε, region, Δε, α, T)
 end
 
 """
-    _aligned_arclength_slice(iso, ref_start, ref_tangent, n)
+    aligned_arclength_slice(iso, ref_start, ref_tangent, n)
 
 Resample `iso` at `n` arclength-uniform points, aligned to `ref_start`.
 
@@ -338,19 +333,19 @@ point of the resampled arc. The traversal direction is then checked against
 product of the adjacent arc's initial tangent with `ref_tangent` is negative, the
 arc is reversed so that all contours in a sheet are traversed in the same direction.
 """
-function _aligned_arclength_slice(iso::Isoline, ref_start, ref_tangent, n::Int)
+function aligned_arclength_slice(iso::Isoline, ref_start, ref_tangent, n::Int)
     pts = iso.points
-    if norm(pts[end] - ref_start) < norm(pts[begin] - ref_start)
-        pts = reverse(pts)
-    end
-    if length(pts) >= 2 && dot(pts[2] - pts[1], ref_tangent) < 0
+
+    reverse_iso = norm(pts[end] - ref_start) < norm(pts[begin] - ref_start)
+    reverse_iso = reverse_iso || (length(pts) >= 2 && dot(pts[2] - pts[1], ref_tangent) < 0)
+    if reverse_iso
         pts = reverse(pts)
     end
     return arclength_slice(pts, n)[1]
 end
 
 """
-    _mesh_sheet(sheet_isolines, ε, band_index, n_arc_s, foliated_energies, corner_offset, region)
+    mesh_sheet(sheet_isolines, ε, band_index, n_arc_s, foliated_energies, corner_offset, region)
 
 Generate a [`Mesh`](@ref) for a single Fermi surface sheet defined by `sheet_isolines`.
 
@@ -360,7 +355,7 @@ center contour. All corner indices in the returned `Mesh` are offset by `corner_
 that the caller can concatenate multiple sheet meshes into a single flat `Mesh`. `region`
 is the masking polygon passed to [`mesh_region`](@ref) and is used for kink detection.
 """
-function _mesh_sheet(
+function mesh_sheet(
     sheet_isolines::Vector{<:Isoline},
     ε,
     band_index::Int,
@@ -383,8 +378,8 @@ function _mesh_sheet(
         k, arclengths = arclength_slice(sheet_isolines[i].points, 2 * n_arc_s + 1)
         ref_tangent = k[2] - k[1]
 
-        k_inner = _aligned_arclength_slice(sheet_isolines[i-1], k[1], ref_tangent, 2 * n_arc_s + 1)
-        k_outer = _aligned_arclength_slice(sheet_isolines[i+1], k[1], ref_tangent, 2 * n_arc_s + 1)
+        k_inner = aligned_arclength_slice(sheet_isolines[i-1], k[1], ref_tangent, 2 * n_arc_s + 1)
+        k_outer = aligned_arclength_slice(sheet_isolines[i+1], k[1], ref_tangent, 2 * n_arc_s + 1)
 
         # Identify endpoints of contours as corners of first patch
         endpoints = [sheet_isolines[i-1].points[begin], sheet_isolines[i-1].points[end]]
@@ -468,9 +463,11 @@ function _mesh_sheet(
 end
 
 """
-    get_arclengths(curve::AbstractVector)
+    get_arclengths(curve)
 
-Get the distance to each point along `curve`. Treats `curve` as an ordered list of points defining a piecewise linear path.
+Get the distance to each point along `curve`. 
+
+Treats `curve` as an ordered list of points defining a piecewise linear path.
 """
 function get_arclengths(curve)
     s = 0.0
@@ -485,10 +482,11 @@ function get_arclengths(curve)
 end
 
 """
-    arclength_slice(curve::AbstractVector, n::Int)
+    arclength_slice(curve, n::Int)
 
-Cut `curve` into `n` uniformly spaced points. Treats `curve` as an ordered list of points defining a piecewise linear path, and linear interpolation is used to find intermediate points. Returns interpolated points and arclengths along original curve of interpolated points.
+Cut `curve` into `n` uniformly spaced points. 
 
+Treats `curve` as an ordered list of points defining a piecewise linear path, and linear interpolation is used to find intermediate points. Returns interpolated points and arclengths along original curve of interpolated points.
 For best results, points in `curve` should have approximately uniform spacing and `n` should be much less than the number of points in `curve`.  
 """
 function arclength_slice(curve, n::Int)
@@ -518,15 +516,15 @@ function arclength_slice(curve, n::Int)
 end
 
 """
-    _find_marginal_energy(X, Y, E_mat, region, e_inner, e_outer, target_n_iso)
+    find_marginal_energy(X, Y, E_mat, region, e_target, e_outer, n_iso_target[; iter])
 
-Bisect in the interval `[e_inner, e_outer]` to find the energy threshold at which the
-number of isolines transitions through `target_n_iso`. `e_inner` must satisfy
-`n_iso >= target_n_iso`; `e_outer` must not.
+Bisect in the interval `[e_target, e_outer]` to find the energy threshold at which the
+number of isolines transitions through `n_iso_target`. `e_target` must satisfy
+`n_iso >= n_iso_target`; `e_outer` must not.
 
 Returns the last energy (closest to `e_outer`) where `n_iso >= target_n_iso` still holds.
 """
-function _find_marginal_energy(X, Y, E_mat, region, e_target, e_outer, n_iso_target; iter = 32)
+function find_marginal_energy(X, Y, E_mat, region, e_target, e_outer, n_iso_target; iter = 32)
     a, b = e_target, e_outer
     for _ in 1:iter
         mid = (a + b) / 2
@@ -542,7 +540,7 @@ function _find_marginal_energy(X, Y, E_mat, region, e_target, e_outer, n_iso_tar
 end
 
 """
-    mesh_region(region, ε::Function, band_index::Int, T::Real, Δε::Real, n_arc::Int[, N::Int, α::Real])
+    mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int[, N::Int, α::Real])
 
 Generate a mesh of `region` of momentum space for dispersion `ε` (band `band_index`) at
 temperature `T`.
@@ -578,10 +576,9 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
         end
     end
 
-    foliated_energies = _foliated_energies(X, Y, E, ε, region, Δε, α, T)
-    n_levels = (length(foliated_energies) + 1) ÷ 2
+    fe = foliated_energies(X, Y, E, ε, region, Δε, α, T)
 
-    c = contours(X, Y, E, foliated_energies; mask = region)
+    c = contours(X, Y, E, fe; mask = region)
     sort_isolines!.(c)
 
     n_isolines = [length(bundle.isolines) for bundle in c]
@@ -593,7 +590,7 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
     # Partition energy levels into contiguous runs with the same isoline count,
     # then process each sheet within each run independently.
     #
-    # _mesh_sheet requires foliated_energies to start and end at boundary energies
+    # mesh_sheet requires fe to start and end at boundary energies
     # (odd 1-based indices). If a run starts or ends at an even index (a patch-center
     # energy), extend it with a marginal boundary found by bisection at the transition.
     i = 1
@@ -612,24 +609,24 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
         need_lo = iseven(run.start)
         need_hi = iseven(run.stop)
         shift_lo = run.start != 1 && isodd(run.start)
-        shift_hi = run.stop != length(n_isolines) && isodd(run.stop) 
+        shift_hi = run.stop != length(n_isolines) && isodd(run.stop)
 
         if need_lo || shift_lo
-            e_lo_m    = _find_marginal_energy(X, Y, E, region,
-                            foliated_energies[run.start], foliated_energies[run.start - 1], n_iso)
+            e_lo_m    = find_marginal_energy(X, Y, E, region,
+                            fe[run.start], fe[run.start - 1], n_iso)
             bundle_lo = contours(X, Y, E, [e_lo_m]; mask=region)[1]
             sort_isolines!(bundle_lo)
         end
         if need_hi || shift_hi
-            e_hi_m    = _find_marginal_energy(X, Y, E, region,
-                            foliated_energies[run.stop], foliated_energies[run.stop + 1], n_iso)
+            e_hi_m    = find_marginal_energy(X, Y, E, region,
+                            fe[run.stop], fe[run.stop + 1], n_iso)
             bundle_hi = contours(X, Y, E, [e_hi_m]; mask=region)[1]
             sort_isolines!(bundle_hi)
         end
 
         for s in 1:n_iso
             base_isolines = Isoline[c[idx].isolines[s] for idx in run]
-            base_energies = collect(foliated_energies[run])
+            base_energies = collect(fe[run])
 
             lo_start = shift_lo ? 2 : 1
             hi_stop  = shift_hi ? length(base_isolines) - 1 : length(base_isolines)
@@ -651,7 +648,7 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
                 foliated_energies_s[end-1] = (foliated_energies_s[end-2] + foliated_energies_s[end]) / 2
             end
 
-            mesh_s = _mesh_sheet(
+            mesh_s = mesh_sheet(
                 isolines_s, ε, band_index, n_arc,
                 foliated_energies_s, length(all_corners), region
             )
@@ -693,7 +690,7 @@ end
 ibz_mesh(l::Lattice, ε::Function, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0) = ibz_mesh(l, [ε], T, Δε, n_arc, N, α)
 
 """
-    _group_angle_perm(G, ibz) -> Vector{Int}
+    group_angle_perm(G, ibz) -> Vector{Int}
 
 Return the permutation that sorts the elements of point group `G` by the polar angle of
 the image of the IBZ centroid under each element's matrix representation.
@@ -705,7 +702,7 @@ The returned index vector `p` satisfies `θ_{p[1]} ≤ θ_{p[2]} ≤ … ≤ θ_
 This ordering assigns each group element to a unique angular sector of the BZ and is the
 canonical sector ordering shared by [`bz_mesh`](@ref) and [`bz_symmetry_map`](@ref).
 """
-function _group_angle_perm(G, ibz)
+function group_angle_perm(G, ibz)
     centroid = sum(ibz)
     θs = Vector{Float64}(undef, length(G.elements))
     for i in eachindex(G.elements)
@@ -726,7 +723,7 @@ See [`mesh_region`](@ref) for a description of `Δε` and `n_arc`.
 function bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0)
     G     = point_group(l)
     ibz   = get_ibz(l)
-    θperm = _group_angle_perm(G, ibz)
+    θperm = group_angle_perm(G, ibz)
 
     full_patches     = Patch[]
     full_corners     = SVector{2,Float64}[]
@@ -752,7 +749,9 @@ bz_mesh(l::Lattice, ε, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0) = bz
 """
     secant_method(f, x0, x1, maxiter[; atol])
 
-Find a root of the function `f` in the interval [`x0`, `x1`] via the secant method. Root finding will iterate until `maxiter` iterations is reached or the root is within the absolute tolerance `atol`.
+Find a root of the function `f` in the interval [`x0`, `x1`] via the secant method. 
+    
+Root finding will iterate until `maxiter` iterations is reached or the root is within the absolute tolerance `atol`.
 """
 function secant_method(f, x0, x1, maxiter; atol = eps(Float64))
     x2 = 0.0
@@ -766,9 +765,11 @@ function secant_method(f, x0, x1, maxiter; atol = eps(Float64))
 end
 
 """
-    circular_mesh(ε::Function, T::Real, n_levels::Int, n_angles::Int[, α::Real; maxiter, atol])
+    circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int[, α::Real; maxiter, atol])
 
-Generate a mesh for the isotropic Fermi surface given radial dispersion `ε` at temperature `T`. The resultant mesh covers an annular region of the Fermi surface between -`αT` and + `αT` with `n_levels - 1` patches in the energy direction and `n_angles - 1` patches along the energy contours.
+Generate a mesh for the isotropic Fermi surface given radial dispersion `ε` at temperature `T`. 
+    
+The resultant mesh covers an annular region of the Fermi surface between -`αT` and + `αT` with `n_levels - 1` patches in the energy direction and `n_angles - 1` patches along the energy contours.
 
 The parameters `maxiter` and `atol` determine the maximum number of iterations and absolute tolerance used for inverting the dispersion to find the radial distance corresponding to the energy contours. 
 """
