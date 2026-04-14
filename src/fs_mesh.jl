@@ -454,8 +454,10 @@ function _mesh_sheet(
             corner_ids[i÷2, j÷2] = SVector{4, Int}(cind-2, cind-1, cind+1, cind) .+ corner_offset
             cind += 2
 
-            ij1 = sortperm(get_arclengths(sheet_isolines[i-1].points) / sheet_isolines[i-1].arclength; by = x -> abs(x - arclength_fractions[j-1]))[1:2]
-            ij2 = sortperm(get_arclengths(sheet_isolines[i+1].points) / sheet_isolines[i+1].arclength; by = x -> abs(x - arclength_fractions[j+1]))[1:2]
+            sp1 = sortperm(get_arclengths(sheet_isolines[i-1].points) / sheet_isolines[i-1].arclength; by = x -> abs(x - arclength_fractions[j-1]))
+            ij1 = length(sp1) >= 2 ? sp1[1:2] : [sp1[1], sp1[1]]
+            sp2 = sortperm(get_arclengths(sheet_isolines[i+1].points) / sheet_isolines[i+1].arclength; by = x -> abs(x - arclength_fractions[j+1]))
+            ij2 = length(sp2) >= 2 ? sp2[1:2] : [sp2[1], sp2[1]]
 
             i3, i1 = map(x -> x[argmin(
                 [norm(k[j] - sheet_isolines[i-1].points[x[1]]),
@@ -659,25 +661,13 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
         shift_lo = run.start != 1 && isodd(run.start)
         shift_hi = run.stop != length(n_isolines) && isodd(run.stop) 
 
-        if need_lo
+        if need_lo || shift_lo
             e_lo_m    = _find_marginal_energy(X, Y, E, region,
                             foliated_energies[run.start], foliated_energies[run.start - 1], n_iso)
             bundle_lo = contours(X, Y, E, [e_lo_m]; mask=region)[1]
             sort_isolines!(bundle_lo)
         end
-        if need_hi
-            e_hi_m    = _find_marginal_energy(X, Y, E, region,
-                            foliated_energies[run.stop], foliated_energies[run.stop + 1], n_iso)
-            bundle_hi = contours(X, Y, E, [e_hi_m]; mask=region)[1]
-            sort_isolines!(bundle_hi)
-        end
-        if shift_lo
-            e_lo_m    = _find_marginal_energy(X, Y, E, region,
-                            foliated_energies[run.start], foliated_energies[run.start - 1], n_iso)
-            bundle_lo = contours(X, Y, E, [e_lo_m]; mask=region)[1]
-            sort_isolines!(bundle_lo)
-        end
-        if shift_hi
+        if need_hi || shift_hi
             e_hi_m    = _find_marginal_energy(X, Y, E, region,
                             foliated_energies[run.stop], foliated_energies[run.stop + 1], n_iso)
             bundle_hi = contours(X, Y, E, [e_hi_m]; mask=region)[1]
@@ -688,30 +678,24 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
             base_isolines = Isoline[c[idx].isolines[s] for idx in run]
             base_energies = collect(foliated_energies[run])
 
-            if need_lo && need_hi
-                isolines_s          = [bundle_lo.isolines[s]; base_isolines; bundle_hi.isolines[s]]
-                foliated_energies_s = [e_lo_m; base_energies; e_hi_m]
-                foliated_energies_s[2]   = (foliated_energies_s[1]   + foliated_energies_s[3])   / 2
-                foliated_energies_s[end-1] = (foliated_energies_s[end-2] + foliated_energies_s[end]) / 2
-            elseif need_lo
-                isolines_s          = [bundle_lo.isolines[s]; base_isolines]
-                foliated_energies_s = [e_lo_m; base_energies]
+            lo_start = shift_lo ? 2 : 1
+            hi_stop  = shift_hi ? length(base_isolines) - 1 : length(base_isolines)
+            base_iso = base_isolines[lo_start:hi_stop]
+            base_en  = base_energies[lo_start:hi_stop]
+
+            pre_iso = (need_lo || shift_lo) ? [bundle_lo.isolines[s]] : Isoline[]
+            pre_en  = (need_lo || shift_lo) ? [e_lo_m]                : Float64[]
+            suf_iso = (need_hi || shift_hi) ? [bundle_hi.isolines[s]] : Isoline[]
+            suf_en  = (need_hi || shift_hi) ? [e_hi_m]                : Float64[]
+
+            isolines_s          = [pre_iso; base_iso; suf_iso]
+            foliated_energies_s = [pre_en;  base_en;  suf_en]
+
+            if need_lo || shift_lo
                 foliated_energies_s[2] = (foliated_energies_s[1] + foliated_energies_s[3]) / 2
-            elseif need_hi
-                isolines_s          = [base_isolines; bundle_hi.isolines[s]]
-                foliated_energies_s = [base_energies; e_hi_m]
+            end
+            if need_hi || shift_hi
                 foliated_energies_s[end-1] = (foliated_energies_s[end-2] + foliated_energies_s[end]) / 2
-            elseif shift_lo
-                isolines_s          = [bundle_lo.isolines[s]; base_isolines[2:end]]
-                foliated_energies_s = [e_lo_m; base_energies[2:end]]
-                foliated_energies_s[2] = (foliated_energies_s[1] + foliated_energies_s[3]) / 2
-            elseif shift_hi
-                isolines_s          = [base_isolines[begin:end-1]; bundle_hi.isolines[s]]
-                foliated_energies_s = [base_energies[begin:end-1]; e_hi_m]
-                foliated_energies_s[end-1] = (foliated_energies_s[end-2] + foliated_energies_s[end]) / 2
-            else 
-                isolines_s          = base_isolines
-                foliated_energies_s = base_energies
             end
 
             mesh_s = _mesh_sheet(
