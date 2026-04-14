@@ -230,53 +230,6 @@ function sort_isolines!(bundle::IsolineBundle)
 end
 
 ###
-### _find_critical_energies
-###
-
-"""
-    _find_critical_energies(X, Y, E, region)
-
-Find energies of dispersion critical points (saddle points and local extrema) inside `region`.
-
-Estimates the gradient magnitude of `E` at each interior grid point via finite differences,
-then returns the energy at each grid point that is a strict local minimum of the gradient
-magnitude and lies below the grid mean (indicating a true near-zero critical point rather
-than a boundary artefact).
-
-# Returns
-`Vector{Float64}` of energies at detected critical points, possibly empty.
-"""
-function _find_critical_energies(X, Y, E, region)
-    Nx, Ny = size(E)
-    G = fill(Inf, Nx, Ny)
-    for i in 2:Nx-1, j in 2:Ny-1
-        isnan(E[i,j]) && continue
-        Gx = (E[i+1,j] - E[i-1,j]) / (X[i+1] - X[i-1])
-        Gy = (E[i,j+1] - E[i,j-1]) / (Y[j+1] - Y[j-1])
-        if !isnan(Gx) && !isnan(Gy)
-            G[i,j] = sqrt(Gx^2 + Gy^2)
-        end
-    end
-
-    finite_G = filter(isfinite, vec(G))
-    isempty(finite_G) && return Float64[]
-    G_mean = sum(finite_G) / length(finite_G)
-
-    critical_energies = Float64[]
-    for i in 2:Nx-1, j in 2:Ny-1
-        G[i,j] >= G_mean && continue
-        # Strict local minimum in all 4 cardinal directions
-        if G[i,j] < G[i-1,j] && G[i,j] < G[i+1,j] &&
-           G[i,j] < G[i,j-1] && G[i,j] < G[i,j+1]
-            k = SVector{2,Float64}(X[i], Y[j])
-            k ∈ region || continue
-            push!(critical_energies, E[i,j])
-        end
-    end
-    return critical_energies
-end
-
-###
 ### _foliated_energies
 ###
 
