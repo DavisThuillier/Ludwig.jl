@@ -86,12 +86,12 @@ primitives(l::Lattice) = l.primitives
 
 Return the 2×2 matrix of reciprocal lattice vectors for `l`.
 
-Uses the convention ``B = (A^{-1})^\\top``, where `A` is the primitive vector matrix,
-so that ``A^\\top B = I`` (no factor of ``2\\pi``).
+Uses the convention ``B = 2π (A^{-1})^\\top``, where `A` is the primitive vector matrix,
+so that ``A^\\top B = 2π I``.
 
 See also [`primitives`](@ref), [`get_bz`](@ref).
 """
-reciprocal_lattice_vectors(l::Lattice) = Array(inv(primitives(l))')
+reciprocal_lattice_vectors(l::Lattice) = 2π * Array(inv(primitives(l))')
 
 """
     point_group(l::Lattice)
