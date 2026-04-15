@@ -345,15 +345,14 @@ function aligned_arclength_slice(iso::Isoline, ref_start, ref_tangent, n::Int)
 end
 
 """
-    mesh_sheet(sheet_isolines, ε, band_index, n_arc_s, foliated_energies, corner_offset, region)
+    mesh_sheet(sheet_isolines, ε, band_index, n_arc_s, foliated_energies, corner_offset)
 
 Generate a [`Mesh`](@ref) for a single Fermi surface sheet defined by `sheet_isolines`.
 
 `sheet_isolines[i]` is the isoline at `foliated_energies[i]` for this sheet (no `nothing`
 entries — call site must validate). `n_arc_s` is the number of arc-length divisions of the
 center contour. All corner indices in the returned `Mesh` are offset by `corner_offset` so
-that the caller can concatenate multiple sheet meshes into a single flat `Mesh`. `region`
-is the masking polygon passed to [`mesh_region`](@ref) and is used for kink detection.
+that the caller can concatenate multiple sheet meshes into a single flat `Mesh`.
 """
 function mesh_sheet(
     sheet_isolines::Vector{<:Isoline},
@@ -362,7 +361,6 @@ function mesh_sheet(
     n_arc_s::Int,
     foliated_energies::Vector{Float64},
     corner_offset::Int,
-    region,
 )
     n_levels = (length(foliated_energies) + 1) ÷ 2
 
@@ -372,7 +370,7 @@ function mesh_sheet(
 
     cind = 1
 
-    for i in 2:2:2*n_levels-1
+    for i in 2:2:2*n_levels-1 # Loop over center energy indices
         arclength_fractions = LinRange(0, 1, 2 * n_arc_s + 1)
 
         k, arclengths = arclength_slice(sheet_isolines[i].points, 2 * n_arc_s + 1)
@@ -402,11 +400,13 @@ function mesh_sheet(
             corner_ids[i÷2, j÷2] = SVector{4, Int}(cind-2, cind-1, cind+1, cind) .+ corner_offset
             cind += 2
 
+            # Identify contour points bordering corners
             sp1 = sortperm(get_arclengths(sheet_isolines[i-1].points) / sheet_isolines[i-1].arclength; by = x -> abs(x - arclength_fractions[j-1]))
             ij1 = length(sp1) >= 2 ? sp1[1:2] : [sp1[1], sp1[1]]
             sp2 = sortperm(get_arclengths(sheet_isolines[i+1].points) / sheet_isolines[i+1].arclength; by = x -> abs(x - arclength_fractions[j+1]))
             ij2 = length(sp2) >= 2 ? sp2[1:2] : [sp2[1], sp2[1]]
 
+            # Identify which if the points which border the corner on the contour are closer to patch center
             i3, i1 = map(x -> x[argmin(
                 [norm(k[j] - sheet_isolines[i-1].points[x[1]]),
                 norm(k[j] - sheet_isolines[i-1].points[x[2]])])],
@@ -420,11 +420,9 @@ function mesh_sheet(
 
             poly = vcat(corners[cind-4:cind-1], sheet_isolines[i-1].points[min(i1,i3):max(i1,i3)], sheet_isolines[i+1].points[min(i2,i4):max(i2,i4)])
 
-            dV = poly_area(vcat(corners[cind-4:cind-1], sheet_isolines[i-1].points[min(i1,i3):max(i1,i3)], sheet_isolines[i+1].points[min(i2,i4):max(i2,i4)]), k[j])
+            dV = poly_area(poly, k[j])
 
             ij3 = ij1; ij4 = ij2
-
-            # dV = poly_area(vcat(k_inner[j-1:j+1], k_outer[j-1:j+1]), k[j])
 
             Δε = foliated_energies[i+1] - foliated_energies[i-1]
             Δs = arclengths[j+1] - arclengths[j-1]
@@ -650,7 +648,7 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
 
             mesh_s = mesh_sheet(
                 isolines_s, ε, band_index, n_arc,
-                foliated_energies_s, length(all_corners), region
+                foliated_energies_s, length(all_corners)
             )
             append!(all_patches,    mesh_s.patches)
             append!(all_corners,    mesh_s.corners)
