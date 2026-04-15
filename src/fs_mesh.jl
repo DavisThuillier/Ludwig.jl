@@ -746,105 +746,166 @@ end
 
 bz_mesh(l::Lattice, ε, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0) = bz_mesh(l, [ε], T, Δε, n_arc, N, α)
 
-"""
-    secant_method(f, x0, x1, maxiter[; atol])
+function radial_extrema(ε, kf::AbstractVector{<:Real}, e_window; N_prelim = 100)
+    # Use the known Fermi crossings to bracket extrema and bound r_max.
+    isempty(kf) && return Float64[], 0.0
 
-Find a root of the function `f` in the interval [`x0`, `x1`] via the secant method. 
-    
-Root finding will iterate until `maxiter` iterations is reached or the root is within the absolute tolerance `atol`.
-"""
-function secant_method(f, x0, x1, maxiter; atol = eps(Float64))
-    x2 = 0.0
-    for i in 1:maxiter
-        x2 = x1 - f(x1) * (x1 - x0) / (f(x1) - f(x0))
-        x0, x1 = x1, x2
-        abs(f(x2)) < atol && break
+    kf_sorted = sort(kf)
+    r_last    = kf_sorted[end]
+
+    ###
+    ### r_max
+    ###
+    dε_last = derivative(ε, r_last)
+    r_far   = r_last + 4 * e_window / abs(dε_last)
+    r_max   = bisect(r -> ε(r) - sign(dε_last) * e_window, r_last, r_far)
+
+    ###
+    ### Extrema between consecutive Fermi crossings
+    ###
+    critical_radii = Float64[]
+    for i in 1:(length(kf_sorted) - 1)
+        push!(critical_radii, bisect(r -> derivative(ε, r), kf_sorted[i], kf_sorted[i + 1]))
     end
 
-    return x2
+    ###
+    ### Extrema before kf[1] (zone-centre pockets)
+    ###
+    r_grid  = range(eps(), kf_sorted[1], N_prelim)
+    dε_vals = [derivative(ε, ri) for ri in r_grid]
+    for i in 1:(N_prelim - 1)
+        dε_vals[i] * dε_vals[i + 1] < 0 || continue
+        push!(critical_radii, bisect(r -> derivative(ε, r), r_grid[i], r_grid[i + 1]))
+    end
+
+    return sort!(critical_radii), r_max
 end
 
-"""
-    circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int[, α::Real; maxiter, atol])
+function isotropic_sheet_mesh(ε, energies_s, n_arc, corner_offset, r_lo, r_hi)
+    # Mesh a single monotone radial section at the given boundary energy levels.
+    n_levels = length(energies_s)
+    n_angles = n_arc + 1
+    Δθ       = 2π / n_arc
 
-Generate a mesh for the isotropic Fermi surface given radial dispersion `ε` at temperature `T`. 
-    
-The resultant mesh covers an annular region of the Fermi surface between -`αT` and + `αT` with `n_levels - 1` patches in the energy direction and `n_angles - 1` patches along the energy contours.
+    corners     = Matrix{SVector{2,Float64}}(undef, n_levels, n_angles)
+    k           = Matrix{SVector{2,Float64}}(undef, n_levels - 1, n_arc)
+    corner_inds = Matrix{SVector{4,Int}}(undef, n_levels - 1, n_arc)
+    radius      = Vector{Float64}(undef, 2 * n_levels - 1)
 
-The parameters `maxiter` and `atol` determine the maximum number of iterations and absolute tolerance used for inverting the dispersion to find the radial distance corresponding to the energy contours. 
-"""
-function circular_fs_mesh(ε, T::Real, n_levels::Int, n_angles::Int, α::Real = 6.0; maxiter = 10000, atol = 1e-10)
-    n_levels = max(4, n_levels) # Enforce minimum of 3 patches in the energy direction
-    if isodd(n_levels)
-        n_levels += 1
-    end
-    n_angles = max(3, n_angles) # Enforce minimum of 2 patches in angular direction
-    Δθ = 2π / (n_angles - 1) 
-    Δε = 2*α*T / (n_levels - 1) # From uniform spacing for sense of energy scale
-    
-    # Slice contours to generate patch corners
-    corners = Matrix{SVector{2,Float64}}(undef, n_levels, n_angles)
-    k = Matrix{SVector{2,Float64}}(undef, n_levels-1, n_angles-1)
-    corner_indices = Matrix{SVector{4,Int}}(undef, n_levels-1, n_angles-1)
-    radius = Vector{Float64}(undef, 2*n_levels - 1)
-    energies = LinRange(-α, α, n_levels) * T
-
-    for i ∈ 1:2*n_levels-1
+    foliated = Vector{Float64}(undef, 2 * n_levels - 1)
+    for i in eachindex(foliated)
         if isodd(i)
-            E = energies[(i+1)÷2]
+            foliated[i] = energies_s[(i + 1) ÷ 2]
         else
-            E = (energies[i÷2+1] + energies[i÷2]) / 2.0
+            foliated[i] = (energies_s[i ÷ 2 + 1] + energies_s[i ÷ 2]) / 2
         end
+    end
 
-        r0 = i == 1 ? 0.0 : radius[i-1]
-        r1 = r0 + Δε / derivative(ε, r0)
-        isinf(r1) && (r1 = Δε)
-        radius[i] = secant_method(r -> ε(r) - E, r0, r1, maxiter; atol)
+    r_a = min(r_lo, r_hi)
+    r_b = max(r_lo, r_hi)
+
+    for i in eachindex(foliated)
+        radius[i] = bisect(r -> ε(r) - foliated[i], r_a, r_b)
 
         if isodd(i)
-            corners[i÷2 + 1, :] = map(θ -> SVector{2, Float64}(radius[i]*cos(θ), radius[i]*sin(θ)), LinRange(0, 2π, n_angles))
+            corners[(i + 1) ÷ 2, :] = map(
+                θ -> SVector{2,Float64}(radius[i] * cos(θ), radius[i] * sin(θ)),
+                LinRange(0, 2π, n_angles)
+            )
         else
-            k[i÷2, :] = map(θ -> SVector{2, Float64}(radius[i]*cos(θ), radius[i]*sin(θ)), (Δθ/2):Δθ:2π)
-            for j in 1:n_angles-1
-                ref_index = (j - 1) * n_levels + (i÷2)
-                corner_indices[i÷2, j] = [
-                    ref_index, 
-                    ref_index + 1,
-                    ref_index + n_levels + 1,
-                    ref_index + n_levels,
-                    ]
+            k[i ÷ 2, :] = map(
+                θ -> SVector{2,Float64}(radius[i] * cos(θ), radius[i] * sin(θ)),
+                (Δθ/2):Δθ:2π
+            )
+            for j in 1:n_arc
+                ref = corner_offset + (j - 1) * n_levels + (i ÷ 2)
+                corner_inds[i ÷ 2, j] = SVector{4,Int}(ref, ref + 1, ref + n_levels + 1, ref + n_levels)
             end
         end
     end
 
     v = map(x -> derivative(ε, norm(x)) * x / norm(x), k)
 
-    patches = Matrix{Patch}(undef, n_levels-1, n_angles-1)
-    for i in 1:size(patches)[1]
-        E = (energies[i+1] + energies[i]) / 2.0
-        Δε = energies[i+1] - energies[i] 
-        dV = abs(0.5 * Δθ * (radius[2*i + 1]^2 - radius[2*i - 1]^2))
-        for j in 1:size(patches)[2]
-            θ = atan(k[i,j][2], k[i,j][1])
+    patches = Matrix{Patch}(undef, n_levels - 1, n_arc)
+    for i in 1:(n_levels - 1)
+        E    = (energies_s[i + 1] + energies_s[i]) / 2
+        Δε_i = energies_s[i + 1] - energies_s[i]
+        dV   = abs(0.5 * Δθ * (radius[2*i + 1]^2 - radius[2*i - 1]^2))
+        for j in 1:n_arc
+            θ = atan(k[i, j][2], k[i, j][1])
 
             Jinv = zeros(Float64, 2, 2)
-            Jinv[1,1] = (Δε/2) * cos(θ) / norm(v[i,j])
-            Jinv[2,1] = (Δε/2) * sin(θ) / norm(v[i,j])
-            Jinv[1,2] = - (Δθ/2) * norm(k[i,j]) * sin(θ)
-            Jinv[2,2] = (Δθ/2) * norm(k[i,j]) * cos(θ)
+            Jinv[1,1] =  (Δε_i / 2) * cos(θ) / norm(v[i, j])
+            Jinv[2,1] =  (Δε_i / 2) * sin(θ) / norm(v[i, j])
+            Jinv[1,2] = -(Δθ / 2) * norm(k[i, j]) * sin(θ)
+            Jinv[2,2] =  (Δθ / 2) * norm(k[i, j]) * cos(θ)
 
-            patches[i, j] = Patch(
-                E,   
-                k[i,j], 
-                v[i,j],
-                Δε,
-                dV,
-                Jinv,
-                abs(det(Jinv)),
-                1
-            )
+            patches[i, j] = Patch(E, k[i, j], v[i, j], Δε_i, dV, Jinv, abs(det(Jinv)), 1)
         end
     end
 
-    return Mesh(vec(patches), vec(corners), vec(corner_indices))
+    return vec(patches), vec(corners), vec(corner_inds)
 end
+
+"""
+    isotropic_mesh(ε, kf::AbstractVector{<:Real}, T::Real, Δε::Real, n_arc::Int[, α::Real])
+
+Generate a mesh for an isotropic Fermi surface given the radial dispersion `ε` at temperature `T`.
+
+`kf` is a vector of Fermi momenta — the radii at which `ε` is zero. The number of Fermi surface
+sheets and the radial extent of the mesh are inferred directly from `kf`: radial extrema are
+located by bisection in the intervals between consecutive Fermi crossings, and `r_max` is the
+radius beyond `kf[end]` where `|ε| = αT`.
+
+The mesh covers all sheets of the Fermi surface within the energy window [-`αT`, +`αT`]. The
+dispersion is partitioned at each extremum into monotone sections, and each section intersecting
+the energy window is meshed as a separate annular sheet and combined into a single `Mesh`.
+
+The energy spacing `Δε` controls the resolution in the energy direction: each sheet of clipped
+energy range `ΔE` receives `max(4, round(Int, ΔE / Δε) + 1)` levels (rounded up to an even
+number). Each energy contour carries `n_arc` patches in the angular direction.
+
+See also [`mesh_region`](@ref), [`bz_mesh`](@ref).
+"""
+function isotropic_mesh(ε, kf::AbstractVector{<:Real}, T::Real, Δε::Real, n_arc::Int, α::Real = 6.0)
+    n_arc    = max(2, n_arc)
+    e_window = α * T
+
+    critical_radii, r_max = radial_extrema(ε, kf, e_window)
+    r_max == 0.0 && return Mesh(Patch[], SVector{2,Float64}[], SVector{4,Int}[])
+
+    boundaries = [0.0; critical_radii; r_max]
+
+    all_patches    = Patch[]
+    all_corners    = SVector{2,Float64}[]
+    all_corner_ids = SVector{4,Int}[]
+    corner_offset  = 0
+
+    for s in 1:(length(boundaries) - 1)
+        r_lo, r_hi = boundaries[s], boundaries[s + 1]
+        r_lo ≈ r_hi && continue
+
+        E_lo, E_hi = ε(r_lo), ε(r_hi)
+        E_bot = max(min(E_lo, E_hi), -e_window)
+        E_top = min(max(E_lo, E_hi),  e_window)
+        E_top <= E_bot && continue
+
+        n_levels_s = max(4, round(Int, (E_top - E_bot) / Δε) + 1)
+        isodd(n_levels_s) && (n_levels_s += 1)
+
+        energies_s = collect(LinRange(E_bot, E_top, n_levels_s))
+
+        patches_s, corners_s, ids_s = isotropic_sheet_mesh(
+            ε, energies_s, n_arc, corner_offset, r_lo, r_hi
+        )
+
+        append!(all_patches,    patches_s)
+        append!(all_corners,    corners_s)
+        append!(all_corner_ids, ids_s)
+        corner_offset += n_levels_s * (n_arc + 1)
+    end
+
+    return Mesh(all_patches, all_corners, all_corner_ids)
+end
+
+isotropic_mesh(ε, kf::Real, T::Real, Δε::Real, n_arc::Int, α::Real = 6.0) = isotropic_mesh(ε, [kf], T, Δε, n_arc, α)
