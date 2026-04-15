@@ -80,3 +80,18 @@ function poly_area(poly, c)
     end
     return A/2
 end
+
+###
+### Root finding
+###
+
+function bisect(f, a, b; iter = 64)
+    # Bracketed bisection: find root of f on [a, b] where f(a) and f(b) have opposite signs.
+    fa = f(a)
+    for _ in 1:iter
+        mid = (a + b) / 2
+        fmid = f(mid)
+        fmid * fa > 0 ? (a = mid; fa = fmid) : (b = mid)
+    end
+    return (a + b) / 2
+end
