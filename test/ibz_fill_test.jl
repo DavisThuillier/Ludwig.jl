@@ -9,11 +9,12 @@ using LinearAlgebra
     ε(k) = -2.0 * (cos(2π * k[1]) + cos(2π * k[2])) # Nearest neighbor TBM
     bands = [ε]
 
-    n_levels = 4   # (n_levels - 1) = 3 energy patches per sector
-    n_cuts   = 4   # (n_cuts   - 1) = 3 angular patches per sector
-    n_ibz    = (n_levels - 1) * (n_cuts - 1)   # 9 IBZ patches per band
+    Δε    = 0.075  # → n_levels = 2*ceil(α*T/Δε), i.e. n_levels-1 energy patch rows
+    n_arc = 4      # n_arc arc-length segments (patches) per row
+    n_levels = 2 * max(1, ceil(Int, 6.0 * T / Δε))
+    n_ibz    = (n_levels - 1) * n_arc   # IBZ patches per band
 
-    mesh = bz_mesh(l, bands, T, n_levels, n_cuts, 201)
+    mesh = bz_mesh(l, bands, T, Δε, n_arc, 201)
     grid = mesh.patches
     N    = length(grid)
 
@@ -65,10 +66,10 @@ end
     ε(k) = -2.0 * (cos(2π * k[1]) + cos(2π * k[2]))
     bands = [ε]
 
-    n_levels = 4
-    n_cuts   = 4
+    Δε    = 0.075
+    n_arc = 4
 
-    mesh = bz_mesh(l, bands, T, n_levels, n_cuts, 201)
+    mesh = bz_mesh(l, bands, T, Δε, n_arc, 201)
     grid = mesh.patches
     N    = length(grid)
     f0s  = f0.(energy.(grid), T)
