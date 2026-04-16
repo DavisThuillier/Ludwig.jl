@@ -62,4 +62,64 @@ export thermal_conductivity, thermoelectric_conductivity, peltier_tensor
 export ηB1g, ηB2g
 export σ_lifetime, η_lifetime
 
+###
+### Makie extension (loaded when Makie is available)
+###
+
+"""
+    plot_mesh!(ax, mesh; color, colormap, colorrange, strokecolor, strokewidth)
+
+Plot the Fermi surface `mesh` as a polygon collection into an existing `Makie.Axis`.
+
+Each patch is drawn as a quadrilateral colored by its energy by default.
+Requires `Makie` (or any backend such as `CairoMakie`) to be loaded.
+
+# Arguments
+- `ax`: a `Makie.Axis`.
+- `mesh::Mesh`: the Fermi surface mesh to plot.
+
+# Keyword Arguments
+- `color`: per-patch colors; defaults to `energy.(mesh.patches)`.
+- `colormap=:RdBu`: colormap passed to `poly!`.
+- `colorrange`: `(lo, hi)` colormap limits; defaults to `(-emax, emax)` where
+  `emax = maximum(abs, energies)`.
+- `strokecolor=:black`: patch edge color.
+- `strokewidth=0.3`: patch edge width in scene units.
+
+# Returns
+The `PolyPlot` returned by the underlying `poly!` call.
+
+See also [`plot_mesh`](@ref).
+"""
+function plot_mesh! end
+
+"""
+    plot_mesh(mesh; color, colormap, colorrange, strokecolor, strokewidth, axis, figure)
+
+Create a `Figure` containing a plot of the Fermi surface `mesh`.
+
+Requires `Makie` (or any backend such as `CairoMakie`) to be loaded.
+
+# Arguments
+- `mesh::Mesh`: the Fermi surface mesh to plot.
+
+# Keyword Arguments
+- `color`: per-patch colors; defaults to `energy.(mesh.patches)`.
+- `colormap=:RdBu`: colormap passed to `poly!`.
+- `colorrange`: `(lo, hi)` colormap limits; defaults to `(-emax, emax)` where
+  `emax = maximum(abs, energies)`.
+- `strokecolor=:black`: patch edge color.
+- `strokewidth=0.3`: patch edge width in scene units.
+- `axis=(;)`: keyword arguments forwarded to `Makie.Axis`.
+- `figure=(;)`: keyword arguments forwarded to `Makie.Figure`.
+
+# Returns
+A `Makie.FigureAxisPlot`.
+
+See also [`plot_mesh!`](@ref).
+"""
+function plot_mesh end
+
+export plot_mesh!, plot_mesh
+
 end # module Ludwig
