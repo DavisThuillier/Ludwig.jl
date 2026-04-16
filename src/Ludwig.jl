@@ -44,6 +44,7 @@ export Isoline, IsolineBundle, contour_intersection, get_bounding_box
 
 # FSMesh
 export Patch, VirtualPatch, AbstractPatch, energy, momentum, velocity
+export HamiltonianBand, band_velocity
 export Mesh, patches, corners, corner_indices
 export mesh_region, ibz_mesh, bz_mesh, isotropic_mesh
 export BZSymmetryMap, bz_symmetry_map

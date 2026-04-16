@@ -188,6 +188,11 @@ function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, ε::Function,
     return ee_kernel!(ζ, u, a, b, c, v, εabc, T)
 end
 
+function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, band::HamiltonianBand, T::Real)
+    v::SVector{2,Float64} = band_velocity(band, k)
+    return ee_kernel!(ζ, u, a, b, c, v, εabc, T)
+end
+
 function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, itp::ScaledInterpolation, T::Real)
     v::SVector{2,Float64} = Interpolations.gradient(itp, k[1], k[2])
     return ee_kernel!(ζ, u, a, b, c, v, εabc, T)
@@ -230,7 +235,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
     qimj_rlb = Vector{Float64}(undef, 2)
 
     invrlv = inv(rlv)
-    is_function = map(x -> isa(x, Function), bands) # For determining how to evaluate bands
+    is_function = map(x -> isa(x, Function) || isa(x, HamiltonianBand), bands) # For determining how to evaluate bands
 
     for m in eachindex(grid)
         kijm .= kij .- grid[m].k
@@ -241,7 +246,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
                 p = VirtualPatch(
                     bands[μ](kijm),
                     umklapp ? map_to_bz(kijm, bz, rlv, invrlv) : kijm,
-                    ForwardDiff.gradient(bands[μ], kijm),
+                    band_velocity(bands[μ], kijm),
                     μ
                 )
             else # Otherwise assume this is an interpolation
@@ -267,7 +272,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
                 p = VirtualPatch(
                     bands[μ](qimj),
                     umklapp ? map_to_bz(qimj, bz, rlv, invrlv) : qimj,
-                    ForwardDiff.gradient(bands[μ], qimj),
+                    band_velocity(bands[μ], qimj),
                     μ
                 )
             else
