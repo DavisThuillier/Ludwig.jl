@@ -12,16 +12,18 @@ LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [weakdeps]
+LaTeXStrings = "b964fa9f-0449-5ba5-b518-d353b35cb35f"
 Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
 
 [extensions]
-LudwigMakieExt = "Makie"
+LudwigMakieExt = ["Makie", "LaTeXStrings"]
 
 [compat]
 DataStructures = "0.18.20"
 ForwardDiff = "0.10"
 Interpolations = "0.15.1"
 IterativeSolvers = "0.9.4"
+LaTeXStrings = "1"
 Makie = "0.21, 0.22, 0.23, 0.24"
 StaticArrays = "^1.9.4"
 LinearAlgebra = ">= 1.1.0"
