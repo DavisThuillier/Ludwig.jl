@@ -2,6 +2,7 @@ module LudwigMakieExt
 
 using Ludwig
 import Makie
+using LaTeXStrings
 
 ###
 ### plot_mesh!
@@ -55,8 +56,8 @@ function Ludwig.plot_mesh(
         aspect       = Makie.DataAspect(),
         xgridvisible = false,
         ygridvisible = false,
-        xlabel       = "kₓ",
-        ylabel       = "k_y",
+        xlabel       = L"k_x",
+        ylabel       = L"k_y",
         axis...,
     )
     p = Ludwig.plot_mesh!(ax, mesh; kwargs...)
