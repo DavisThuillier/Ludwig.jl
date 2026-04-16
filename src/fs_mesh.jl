@@ -569,11 +569,12 @@ consistent across sheets.
 The resolution used for marching squares over `region` is set by `N`, the number of sample
 points in each direction of the bounding rectangle.
 """
-function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001, α = 6.0)
+function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001, α = 6.0;
+                     bbox = nothing)
     n_arc = max(3, n_arc)
 
     # Sample coordinates and energies for marching squares
-    ((x_min, x_max), (y_min, y_max)) = get_bounding_box(region)
+    ((x_min, x_max), (y_min, y_max)) = get_bounding_box(isnothing(bbox) ? region : bbox)
     X = LinRange(x_min, x_max, N)
     Δx = (x_max - x_min) / (N - 1)
     Ny = round(Int, (y_max - y_min) / Δx)
@@ -670,23 +671,31 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
     return Mesh(all_patches, all_corners, all_corner_ids)
 end
 
-mesh_region(region, ε, T, Δε, n_arc::Int, N = 1001, α = 6.0) = mesh_region(region, ε, 1, T, Δε, n_arc, N, α)
+mesh_region(region, ε, T, Δε, n_arc::Int, N = 1001, α = 6.0; bbox = nothing) =
+    mesh_region(region, ε, 1, T, Δε, n_arc, N, α; bbox)
 
 """
-    ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int[, N::Int, α::Real])
+    ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int[, N::Int, α::Real]; mask)
 
 Generate a mesh of the irreducible Brillouin Zone (IBZ) for lattice `l` given dispersions
 in `bands` at temperature `T`. See [`mesh_region`](@ref) for a description of the resolution
 parameters `Δε` and `n_arc`.
+
+# Arguments
+- `mask`: optional vector of vertices defining a convex polygonal sub-region of the BZ. When
+  `length(mask) > 2` the mesh is restricted to `mask` instead of the full IBZ, which is
+  useful for finer gridding around a small Fermi surface pocket.
 """
-function ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0)
+function ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0;
+                  mask = SVector{2,Float64}[])
     full_patches    = Patch[]
     full_corners    = SVector{2,Float64}[]
     full_corner_ids = SVector{4,Int}[]
-    ibz = get_ibz(l)
+    ibz  = get_ibz(l)
+    bbox = length(mask) > 2 ? mask : nothing
 
     for i in eachindex(bands)
-        mesh = mesh_region(ibz, bands[i], i, T, Δε, n_arc, N, α)
+        mesh = mesh_region(ibz, bands[i], i, T, Δε, n_arc, N, α; bbox)
         ℓ = length(full_corners)
         append!(full_patches, mesh.patches)
         append!(full_corner_ids, map(x -> SVector{4,Int}(x .+ ℓ), mesh.corner_inds))
@@ -696,7 +705,8 @@ function ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int
     return Mesh(full_patches, full_corners, full_corner_ids)
 end
 
-ibz_mesh(l::Lattice, ε::Function, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0) = ibz_mesh(l, [ε], T, Δε, n_arc, N, α)
+ibz_mesh(l::Lattice, ε::Function, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0; mask = SVector{2,Float64}[]) =
+    ibz_mesh(l, [ε], T, Δε, n_arc, N, α; mask)
 
 """
     group_angle_perm(G, ibz) -> Vector{Int}
@@ -723,13 +733,19 @@ function group_angle_perm(G, ibz)
 end
 
 """
-    bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int[, N::Int, α::Real])
+    bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int[, N::Int, α::Real]; mask)
 
 Generate a mesh of the Brillouin Zone (BZ) for lattice `l` given dispersions in `bands` at
 temperature `T` by computing the IBZ mesh and replicating it under all point-group operations.
 See [`mesh_region`](@ref) for a description of `Δε` and `n_arc`.
+
+# Arguments
+- `mask`: optional vector of vertices passed through to [`ibz_mesh`](@ref). When
+  `length(mask) > 2` the IBZ mesh is restricted to `mask` instead of the full IBZ before
+  being replicated across the BZ.
 """
-function bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0)
+function bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0;
+                 mask = SVector{2,Float64}[])
     G     = point_group(l)
     ibz   = get_ibz(l)
     θperm = group_angle_perm(G, ibz)
@@ -738,8 +754,10 @@ function bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int 
     full_corners     = SVector{2,Float64}[]
     full_corner_inds = SVector{4,Int}[]
 
+    bbox = length(mask) > 2 ? mask : nothing
+
     for j in eachindex(bands)
-        mesh = mesh_region(ibz, bands[j], j, T, Δε, n_arc, N, α)
+        mesh = mesh_region(ibz, bands[j], j, T, Δε, n_arc, N, α; bbox)
 
         for i in θperm
             O = get_matrix_representation(G.elements[i])
@@ -753,7 +771,8 @@ function bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int 
     return Mesh(full_patches, full_corners, full_corner_inds)
 end
 
-bz_mesh(l::Lattice, ε, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0) = bz_mesh(l, [ε], T, Δε, n_arc, N, α)
+bz_mesh(l::Lattice, ε, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0; mask = SVector{2,Float64}[]) =
+    bz_mesh(l, [ε], T, Δε, n_arc, N, α; mask)
 
 function radial_extrema(ε, kf::AbstractVector{<:Real}, e_window; N_prelim = 100)
     # Use the known Fermi crossings to bracket extrema and bound r_max.
