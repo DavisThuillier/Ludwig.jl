@@ -221,50 +221,6 @@ function bz_symmetry_map(grid::Vector{Patch}, l::Lattice)
 end
 
 ###
-### Nonuniform Energy Gridding
-###
-
-function populate_abscissas!(x, δ)
-    Δx = 0.0
-    for i ∈ eachindex(x)
-        if i == 1
-            x[i] = δ
-        else
-            x[i] = x[i-1] + Δx
-        end
-        Δx = 4 * δ * cosh(x[i]/2)^2
-    end
-    return nothing
-end
-
-function get_abscissas(n, α, threshold = 1e-10, max_iter = 1000)
-    x = Vector{Float64}(undef, n)
-
-    ϵ = α / n
-    iter = 1
-    step = 0.1 * ϵ^(1/3)
-    populate_abscissas!(x, ϵ^(1/3))
-    old_sign = sign(x[end] - α)
-
-    while abs(x[end] - α) >= threshold && iter <= max_iter
-        new_sign = sign(x[end] - α)
-        if new_sign != old_sign
-            old_sign = new_sign
-            step /= 10.0
-        end
-        while ϵ - new_sign * step < 0
-            step /= 2.0
-        end
-        ϵ += - new_sign * step
-        populate_abscissas!(x, ϵ^(1/3))
-
-        iter += 1
-    end
-
-    return vcat(-reverse(x), x)#, ϵ
-end
-
-###
 ### General IBZ Meshes
 ###
 
