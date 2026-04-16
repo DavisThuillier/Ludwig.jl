@@ -265,28 +265,18 @@ function foliated_energies(X, Y, E, ε, region, Δε, α, T)
 
     e_actual_min, e_actual_max = if length(region) > 2
         lo, hi = Inf, -Inf
-        second_lo, second_hi = Inf, -Inf
         for (i, x) in enumerate(X), (j, y) in enumerate(Y)
             isnan(E[i, j]) && continue
             in_polygon([x, y], region) || continue
             e = E[i, j]
-            if e < lo
-                second_lo, lo = lo, e
-            elseif e > lo && e < second_lo
-                second_lo = e
-            end
-            if e > hi
-                second_hi, hi = hi, e
-            elseif e < hi && e > second_hi
-                second_hi = e
-            end
+            e < lo && (lo = e)
+            e > hi && (hi = e)
         end
         if isinf(lo)
             E_valid = E[.!isnan.(E)]
             minimum(E_valid), maximum(E_valid)
         else
-            isinf(second_lo) ? lo : second_lo,
-            isinf(second_hi) ? hi : second_hi
+            lo, hi
         end
     else
         E_valid = E[.!isnan.(E)]
@@ -313,7 +303,7 @@ function foliated_energies(X, Y, E, ε, region, Δε, α, T)
         corner_e =  ε(k)
         if energies[begin] < corner_e < energies[end]
             i = argmin(abs.(energies .- corner_e))
-            i == 1 && continue # corner is below the first interior level; skip
+            # i == 1 && continue # corner is below the first interior level; skip
             n = length(energies)
             energies[1:i] = LinRange(energies[begin], corner_e, i)
             Δe = (energies[end] - corner_e) / (n - i)
