@@ -324,7 +324,7 @@ function foliated_energies(X, Y, E, ε, region, Δε, α, T)
 end
 
 """
-    aligned_arclength_slice(iso, ref_start, ref_tangent, n)
+    aligned_arclength_slice(iso, ref_start, ref_tangent, n; cusp_fractions, angle_threshold)
 
 Resample `iso` at `n` arclength-uniform points, aligned to `ref_start`.
 
@@ -333,8 +333,16 @@ point of the resampled arc. The traversal direction is then checked against
 `ref_tangent` (the tangent of the reference contour at its start): if the dot
 product of the adjacent arc's initial tangent with `ref_tangent` is negative, the
 arc is reversed so that all contours in a sheet are traversed in the same direction.
+
+# Arguments
+- `cusp_fractions`: arclength fractions in [0, 1] (relative to the *original* traversal
+  direction of `iso`) at which cuts should be snapped. Fractions are mirrored when the
+  isoline is reversed. Any cusps intrinsic to this contour are detected and merged
+  automatically.
+- `angle_threshold`: turning-angle threshold (radians) passed to [`find_cusp_fraction`](@ref).
 """
-function aligned_arclength_slice(iso::Isoline, ref_start, ref_tangent, n::Int)
+function aligned_arclength_slice(iso::Isoline, ref_start, ref_tangent, n::Int;
+                                  cusp_fractions = Float64[], angle_threshold = π/8)
     pts = iso.points
 
     reverse_iso = norm(pts[end] - ref_start) < norm(pts[begin] - ref_start)
@@ -342,7 +350,10 @@ function aligned_arclength_slice(iso::Isoline, ref_start, ref_tangent, n::Int)
     if reverse_iso
         pts = reverse(pts)
     end
-    return arclength_slice(pts, n)[1]
+    fractions = reverse_iso ? (1.0 .- cusp_fractions) : copy(cusp_fractions)
+    append!(fractions, find_cusp_fraction(pts; angle_threshold))
+    L = get_arclengths(pts)[end]
+    return arclength_slice(pts, n; pinned_arclengths = fractions .* L)[1]
 end
 
 """
@@ -361,7 +372,8 @@ function mesh_sheet(
     band_index::Int,
     n_arc_s::Int,
     foliated_energies::Vector{Float64},
-    corner_offset::Int,
+    corner_offset::Int;
+    angle_threshold = π/8,
 )
     n_levels = (length(foliated_energies) + 1) ÷ 2
 
@@ -374,11 +386,27 @@ function mesh_sheet(
     for i in 2:2:2*n_levels-1 # Loop over center energy indices
         arclength_fractions = LinRange(0, 1, 2 * n_arc_s + 1)
 
-        k, arclengths = arclength_slice(sheet_isolines[i].points, 2 * n_arc_s + 1)
+        cusp_fractions = mapreduce(
+            iso -> find_cusp_fraction(iso.points; angle_threshold),
+            vcat,
+            (sheet_isolines[i-1], sheet_isolines[i], sheet_isolines[i+1]),
+        )
+
+        L_center = sheet_isolines[i].arclength
+        k, arclengths = arclength_slice(
+            sheet_isolines[i].points, 2 * n_arc_s + 1;
+            pinned_arclengths = cusp_fractions .* L_center,
+        )
         ref_tangent = k[2] - k[1]
 
-        k_inner = aligned_arclength_slice(sheet_isolines[i-1], k[1], ref_tangent, 2 * n_arc_s + 1)
-        k_outer = aligned_arclength_slice(sheet_isolines[i+1], k[1], ref_tangent, 2 * n_arc_s + 1)
+        k_inner = aligned_arclength_slice(
+            sheet_isolines[i-1], k[1], ref_tangent, 2 * n_arc_s + 1;
+            cusp_fractions, angle_threshold,
+        )
+        k_outer = aligned_arclength_slice(
+            sheet_isolines[i+1], k[1], ref_tangent, 2 * n_arc_s + 1;
+            cusp_fractions, angle_threshold,
+        )
 
         # Identify endpoints of contours as corners of first patch
         endpoints = [sheet_isolines[i-1].points[begin], sheet_isolines[i-1].points[end]]
@@ -464,7 +492,7 @@ end
 """
     get_arclengths(curve)
 
-Get the distance to each point along `curve`. 
+Get the distance to each point along `curve`.
 
 Treats `curve` as an ordered list of points defining a piecewise linear path.
 """
@@ -481,21 +509,84 @@ function get_arclengths(curve)
 end
 
 """
-    arclength_slice(curve, n::Int)
+    find_cusp_fraction(curve; angle_threshold = π/8)
 
-Cut `curve` into `n` uniformly spaced points. 
+Return the arclength fractions in [0, 1] of cusp points in `curve`.
 
-Treats `curve` as an ordered list of points defining a piecewise linear path, and linear interpolation is used to find intermediate points. Returns interpolated points and arclengths along original curve of interpolated points.
-For best results, points in `curve` should have approximately uniform spacing and `n` should be much less than the number of points in `curve`.  
+A cusp is detected at interior point `i` when the angle between the incoming
+tangent `curve[i] - curve[i-1]` and outgoing tangent `curve[i+1] - curve[i]`
+exceeds `angle_threshold`.
 """
-function arclength_slice(curve, n::Int)
+function find_cusp_fraction(curve; angle_threshold = π/8)
+    n = length(curve)
+    n < 3 && return Float64[]
+    arclengths = get_arclengths(curve)
+    L = arclengths[end]
+    L < eps() && return Float64[]
+    fractions = Float64[]
+    for i in 2:n-1
+        t1 = curve[i] - curve[i-1]
+        t2 = curve[i+1] - curve[i]
+        l1, l2 = norm(t1), norm(t2)
+        (l1 < eps() || l2 < eps()) && continue
+        cos_θ = clamp(dot(t1, t2) / (l1 * l2), -1.0, 1.0)
+        if acos(cos_θ) > angle_threshold
+            push!(fractions, arclengths[i] / L)
+        end
+    end
+    return fractions
+end
+
+"""
+    arclength_slice(curve, n::Int; pinned_arclengths)
+
+Cut `curve` into `n` uniformly spaced points.
+
+Treats `curve` as an ordered list of points defining a piecewise linear path, and linear
+interpolation is used to find intermediate points. Returns interpolated points and
+arclengths along original curve of interpolated points.
+For best results, points in `curve` should have approximately uniform spacing and `n`
+should be much less than the number of points in `curve`.
+
+# Arguments
+- `pinned_arclengths`: optional list of arclength values at which a cut must be placed.
+  For each value, the nearest interior corner position (odd 1-based index, excluding the
+  two endpoints) is snapped to that arclength. The two adjacent even-indexed (patch-center)
+  positions are then recentered halfway between their bounding corners. Values within one
+  uniform corner step (`δs = L / n_arc`) of either endpoint are skipped.
+"""
+function arclength_slice(curve, n::Int; pinned_arclengths = Float64[])
     if length(curve) == 1
         return fill(curve[begin], n), zeros(Float64, n)
     end
 
     arclengths = get_arclengths(curve)
-    
-    τ = LinRange(0.0, arclengths[end], n)
+    τ = collect(LinRange(0.0, arclengths[end], n))
+
+    δs = n > 1 ? 2 * arclengths[end] / (n - 1) : arclengths[end]
+    for s_pin in pinned_arclengths
+        s = clamp(s_pin, 0.0, arclengths[end])
+        (s < δs || s > arclengths[end] - δs) && continue
+        best_idx = 0
+        best_dist = Inf
+        for k in 3:2:n-2
+            d = abs(τ[k] - s)
+            if d < best_dist
+                best_dist = d
+                best_idx = k
+            end
+        end
+        if best_idx > 0
+            τ[best_idx] = s
+            if best_idx > 2
+                τ[best_idx - 1] = (τ[best_idx - 2] + τ[best_idx]) / 2
+            end
+            if best_idx < n - 1
+                τ[best_idx + 1] = (τ[best_idx] + τ[best_idx + 2]) / 2
+            end
+        end
+    end
+    isempty(pinned_arclengths) || sort!(τ)
 
     grid = [curve[begin]]
 
@@ -506,12 +597,10 @@ function arclength_slice(curve, n::Int)
         while j < jmax && arclengths[j] <= τ[i]
             j += 1
         end
-
-        # Perform linear interpolation between curve points
         push!(grid, curve[j-1] + (curve[j] - curve[j - 1]) * (τ[i] - arclengths[j-1]) / (arclengths[j] - arclengths[j-1]))
     end
 
-    return grid, collect(τ)   
+    return grid, collect(τ)
 end
 
 """
@@ -560,7 +649,7 @@ The resolution used for marching squares over `region` is set by `N`, the number
 points in each direction of the bounding rectangle.
 """
 function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001, α = 6.0;
-                     bbox = nothing)
+                     bbox = nothing, angle_threshold = π/8)
     n_arc = max(3, n_arc)
 
     # Sample coordinates and energies for marching squares
@@ -650,7 +739,8 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
 
             mesh_s = mesh_sheet(
                 isolines_s, ε, band_index, n_arc,
-                foliated_energies_s, length(all_corners)
+                foliated_energies_s, length(all_corners);
+                angle_threshold,
             )
             append!(all_patches,    mesh_s.patches)
             append!(all_corners,    mesh_s.corners)
@@ -661,8 +751,8 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
     return Mesh(all_patches, all_corners, all_corner_ids)
 end
 
-mesh_region(region, ε, T, Δε, n_arc::Int, N = 1001, α = 6.0; bbox = nothing) =
-    mesh_region(region, ε, 1, T, Δε, n_arc, N, α; bbox)
+mesh_region(region, ε, T, Δε, n_arc::Int, N = 1001, α = 6.0; bbox = nothing, angle_threshold = π/8) =
+    mesh_region(region, ε, 1, T, Δε, n_arc, N, α; bbox, angle_threshold)
 
 """
     ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int[, N::Int, α::Real]; mask)
@@ -677,7 +767,7 @@ parameters `Δε` and `n_arc`.
   useful for finer gridding around a small Fermi surface pocket.
 """
 function ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0;
-                  mask = SVector{2,Float64}[])
+                  mask = SVector{2,Float64}[], angle_threshold = π/8)
     full_patches    = Patch[]
     full_corners    = SVector{2,Float64}[]
     full_corner_ids = SVector{4,Int}[]
@@ -685,7 +775,7 @@ function ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int
     bbox = length(mask) > 2 ? mask : nothing
 
     for i in eachindex(bands)
-        mesh = mesh_region(ibz, bands[i], i, T, Δε, n_arc, N, α; bbox)
+        mesh = mesh_region(ibz, bands[i], i, T, Δε, n_arc, N, α; bbox, angle_threshold)
         ℓ = length(full_corners)
         append!(full_patches, mesh.patches)
         append!(full_corner_ids, map(x -> SVector{4,Int}(x .+ ℓ), mesh.corner_inds))
@@ -695,8 +785,9 @@ function ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int
     return Mesh(full_patches, full_corners, full_corner_ids)
 end
 
-ibz_mesh(l::Lattice, ε::Function, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0; mask = SVector{2,Float64}[]) =
-    ibz_mesh(l, [ε], T, Δε, n_arc, N, α; mask)
+ibz_mesh(l::Lattice, ε::Function, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0;
+         mask = SVector{2,Float64}[], angle_threshold = π/8) =
+    ibz_mesh(l, [ε], T, Δε, n_arc, N, α; mask, angle_threshold)
 
 """
     group_angle_perm(G, ibz) -> Vector{Int}
@@ -735,7 +826,7 @@ See [`mesh_region`](@ref) for a description of `Δε` and `n_arc`.
   being replicated across the BZ.
 """
 function bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0;
-                 mask = SVector{2,Float64}[])
+                 mask = SVector{2,Float64}[], angle_threshold = π/8)
     G     = point_group(l)
     ibz   = get_ibz(l)
     θperm = group_angle_perm(G, ibz)
@@ -747,7 +838,7 @@ function bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int 
     bbox = length(mask) > 2 ? mask : nothing
 
     for j in eachindex(bands)
-        mesh = mesh_region(ibz, bands[j], j, T, Δε, n_arc, N, α; bbox)
+        mesh = mesh_region(ibz, bands[j], j, T, Δε, n_arc, N, α; bbox, angle_threshold)
 
         for i in θperm
             O = get_matrix_representation(G.elements[i])
@@ -761,8 +852,9 @@ function bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int 
     return Mesh(full_patches, full_corners, full_corner_inds)
 end
 
-bz_mesh(l::Lattice, ε, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0; mask = SVector{2,Float64}[]) =
-    bz_mesh(l, [ε], T, Δε, n_arc, N, α; mask)
+bz_mesh(l::Lattice, ε, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0;
+        mask = SVector{2,Float64}[], angle_threshold = π/8) =
+    bz_mesh(l, [ε], T, Δε, n_arc, N, α; mask, angle_threshold)
 
 function radial_extrema(ε, kf::AbstractVector{<:Real}, e_window; N_prelim = 100)
     # Use the known Fermi crossings to bracket extrema and bound r_max.
