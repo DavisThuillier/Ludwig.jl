@@ -627,6 +627,195 @@ function find_marginal_energy(X, Y, E_mat, region, e_target, e_outer, n_iso_targ
     return a
 end
 
+###
+### IBZ corner crossing detection
+###
+
+# Returns 1-based index of the edge of polygon `region` on which point `p` lies, or 0.
+function edge_index(p, region; tol = 1e-8)
+    n = length(region)
+    for k in 1:n
+        a  = region[k]
+        b  = region[mod1(k + 1, n)]
+        v  = b - a
+        w  = p - a
+        lv = norm(v)
+        lv < eps() && continue
+        abs(v[1] * w[2] - v[2] * w[1]) / lv > tol && continue
+        t = dot(w, v) / dot(v, v)
+        -tol ≤ t ≤ 1 + tol && return k
+    end
+    return 0
+end
+
+"""
+    find_boundary_extrema(p1, corner, p2, ε[; n_sample, iter])
+
+Return the locations of local extrema of `ε` along the piecewise-linear path
+`p1 → corner → p2` on the boundary of the IBZ.
+
+The path is parameterised by arclength. Each segment is scanned independently with
+`n_sample ÷ 2` evenly spaced points; the interval bordering the corner is excluded
+from each segment so that the corner itself is never returned. Sign changes in the
+finite-difference derivative are refined by bisection.
+
+# Arguments
+- `p1::SVector{2,Float64}`: start of path, lying on one IBZ edge.
+- `corner::SVector{2,Float64}`: IBZ corner vertex shared by the two edges.
+- `p2::SVector{2,Float64}`: end of path, lying on the adjacent IBZ edge.
+- `ε`: dispersion function accepting an `AbstractVector` of length 2.
+- `n_sample::Int=200`: number of points for the coarse scan.
+- `iter::Int=64`: bisection iteration count per bracketed extremum.
+
+# Returns
+`Vector{SVector{2,Float64}}` of extremum locations, ordered by arclength.
+
+# Examples
+```jldoctest
+julia> using StaticArrays
+julia> ε(k) = k[1] + k[2];  # linear dispersion, no interior extrema
+julia> p1 = SVector(0.0, 0.0); corner = SVector(1.0, 0.0); p2 = SVector(1.0, 1.0);
+julia> isempty(find_boundary_extrema(p1, corner, p2, ε))
+true
+```
+
+See also [`detect_ibz_corner_crossings`](@ref).
+"""
+function find_boundary_extrema(
+    p1::SVector{2,Float64},
+    corner::SVector{2,Float64},
+    p2::SVector{2,Float64},
+    ε;
+    n_sample::Int = 200,
+    iter::Int = 64,
+) :: Vector{SVector{2,Float64}}
+    L1 = norm(corner - p1)
+    L2 = norm(p2 - corner)
+    L  = L1 + L2
+    L < eps() && return SVector{2,Float64}[]
+
+    lerp(t) = t ≤ L1 ? p1 + (t / L1) * (corner - p1) :
+                        corner + ((t - L1) / L2) * (p2 - corner)
+
+    # Search each segment separately so the path kink at the corner does not produce
+    # a spurious sign change in the cross-segment finite-difference derivative.
+    # The interval bordering the corner is excluded from each segment: the last
+    # interval of p1→corner and the first interval of corner→p2.
+    extrema_pts = SVector{2,Float64}[]
+    n_seg = max(4, n_sample ÷ 2)
+    for (t_lo, t_hi, i_start) in ((0.0, L1, 1), (L1, L, 2))
+        t_hi - t_lo < eps() && continue
+        ts_seg = LinRange(t_lo, t_hi, n_seg)
+        es_seg = [ε(lerp(t)) for t in ts_seg]
+        δ = step(ts_seg) / 2
+        for i in i_start:(n_seg - 2)
+            Δ_left  = es_seg[i + 1] - es_seg[i]
+            Δ_right = es_seg[i + 2] - es_seg[i + 1]
+            Δ_left * Δ_right < 0 || continue
+            t_ext = bisect(t -> ε(lerp(t + δ)) - ε(lerp(t - δ)), ts_seg[i], ts_seg[i + 1]; iter)
+            push!(extrema_pts, lerp(t_ext))
+        end
+    end
+
+    return extrema_pts
+end
+
+"""
+    detect_ibz_corner_crossings(c, region, ε[; tol])
+
+Detect crossings of open isoline endpoints across corners of the IBZ polygon `region`
+as energy varies through the bundles in `c`, and return the boundary energy extrema at
+each crossing.
+
+For each adjacent bundle pair `(c[b], c[b+1])` sharing a common sheet count, checks
+whether one endpoint of the open isoline slides from one IBZ edge to an adjacent edge.
+For each such corner crossing, calls [`find_boundary_extrema`](@ref) on the IBZ boundary
+path through the corner. Returns all resulting extremal momentum points, flattened across
+all detected crossings.
+
+# Arguments
+- `c::Vector{IsolineBundle}`: isoline bundles ordered by energy.
+- `region`: IBZ polygon vertices as a counterclockwise `Vector{SVector{2,Float64}}`.
+- `ε`: dispersion function accepting an `AbstractVector` of length 2.
+- `tol`: collinearity/range tolerance passed to `edge_index` (default `1e-8`).
+
+# Returns
+`Vector{SVector{2,Float64}}` of extremal momentum points along IBZ boundary paths,
+collected across all detected corner crossings.
+
+# Examples
+```julia
+# After generating contours over an IBZ mesh:
+c = contours(X, Y, E, fe; mask = region)
+sort_isolines!.(c)
+for q in detect_ibz_corner_crossings(c, region, ε)
+    # ε(q) is an energy at which a new contour should be inserted
+end
+```
+
+See also [`find_boundary_extrema`](@ref).
+"""
+function detect_ibz_corner_crossings(
+    c::Vector{IsolineBundle},
+    region,
+    ε;
+    tol = 1e-8,
+) :: Vector{SVector{2,Float64}}
+    n_region     = length(region)
+    extrema_all  = SVector{2,Float64}[]
+
+    for b in 1:(length(c) - 1)
+        n_s = min(length(c[b].isolines), length(c[b + 1].isolines))
+        n_s == 0 && continue
+
+        for s in 1:n_s
+            iso_a = c[b].isolines[s]
+            iso_b = c[b + 1].isolines[s]
+            (iso_a.isclosed || iso_b.isclosed) && continue
+
+            pa1 = iso_a.points[begin]
+            pa2 = iso_a.points[end]
+            pb1 = iso_b.points[begin]
+            pb2 = iso_b.points[end]
+
+            # Match endpoints by minimum total distance.
+            if norm(pa1 - pb1) + norm(pa2 - pb2) ≤ norm(pa1 - pb2) + norm(pa2 - pb1)
+                ea1, ea2 = edge_index(pa1, region; tol), edge_index(pa2, region; tol)
+                eb1, eb2 = edge_index(pb1, region; tol), edge_index(pb2, region; tol)
+                pa_cands = (pa1, pa2)
+                pb_cands = (pb1, pb2)
+            else
+                ea1, ea2 = edge_index(pa1, region; tol), edge_index(pa2, region; tol)
+                eb1, eb2 = edge_index(pb2, region; tol), edge_index(pb1, region; tol)
+                pa_cands = (pa1, pa2)
+                pb_cands = (pb2, pb1)
+            end
+            ea_cands = (ea1, ea2)
+            eb_cands = (eb1, eb2)
+
+            jumped1 = ea_cands[1] != 0 && eb_cands[1] != 0 && ea_cands[1] != eb_cands[1]
+            jumped2 = ea_cands[2] != 0 && eb_cands[2] != 0 && ea_cands[2] != eb_cands[2]
+            jumped1 ⊻ jumped2 || continue
+
+            j = jumped1 ? 1 : 2
+            old_edge, new_edge = ea_cands[j], eb_cands[j]
+            pa_j, pb_j = pa_cands[j], pb_cands[j]
+
+            corner = if new_edge == mod1(old_edge + 1, n_region)
+                region[new_edge]
+            elseif new_edge == mod1(old_edge - 1, n_region)
+                region[old_edge]
+            else
+                continue
+            end
+
+            append!(extrema_all, find_boundary_extrema(pa_j, corner, pb_j, ε))
+        end
+    end
+
+    return extrema_all
+end
+
 """
     mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int[, N::Int, α::Real])
 
@@ -669,6 +858,28 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
 
     c = contours(X, Y, E, fe; mask = region)
     sort_isolines!.(c)
+
+    for q in detect_ibz_corner_crossings(c, region, ε)
+        e_ext = ε(q)
+        any(abs(e_ext - e) < 1e-10 * abs(e_ext) + 1e-14 for e in fe) && continue
+        # Find the adjacent boundary energies (odd indices) that bracket e_ext.
+        # Replacing the center between them and inserting 2 new entries keeps
+        # length(fe) odd, preserving the boundary/center interleaving invariant.
+        idx  = searchsortedfirst(fe, e_ext)
+        b_hi = isodd(idx) ? idx : idx + 1
+        b_lo = b_hi - 2
+        (b_lo < 1 || b_hi > length(fe)) && continue
+        c_idx    = b_lo + 1
+        e_new_lo = (fe[b_lo] + e_ext) / 2
+        e_new_hi = (e_ext + fe[b_hi]) / 2
+        bndl_ext    = contours(X, Y, E, [e_ext];    mask = region)[1]
+        bndl_new_lo = contours(X, Y, E, [e_new_lo]; mask = region)[1]
+        bndl_new_hi = contours(X, Y, E, [e_new_hi]; mask = region)[1]
+        sort_isolines!(bndl_ext); sort_isolines!(bndl_new_lo); sort_isolines!(bndl_new_hi)
+        fe[c_idx] = e_new_lo;   c[c_idx] = bndl_new_lo
+        insert!(fe, c_idx + 1, e_ext);    insert!(c, c_idx + 1, bndl_ext)
+        insert!(fe, c_idx + 2, e_new_hi); insert!(c, c_idx + 2, bndl_new_hi)
+    end
 
     n_isolines = [length(bundle.isolines) for bundle in c]
 
