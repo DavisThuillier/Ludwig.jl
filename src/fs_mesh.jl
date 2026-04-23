@@ -235,6 +235,54 @@ function sort_isolines!(bundle::IsolineBundle)
     return bundle
 end
 
+"""
+    split_bouncing_isolines!(bundle, region[; tol])
+
+Split any open isoline in `bundle` that touches an interior IBZ boundary point.
+
+An open isoline "bounces" when a non-endpoint interior point lies on an edge of `region`.
+Such a point divides the contour into two geometrically distinct pieces that marching
+squares incorrectly joined. Each bounce point becomes an endpoint of the two resulting
+isolines, which replace the original in `bundle`. The bundle is re-sorted by centroid
+distance after any splits.
+"""
+function split_bouncing_isolines!(bundle::IsolineBundle, region; tol = 1e-8)
+    new_isolines = Isoline[]
+    changed = false
+
+    for iso in bundle.isolines
+        if iso.isclosed || length(iso.points) < 3
+            push!(new_isolines, iso)
+            continue
+        end
+
+        pts = iso.points
+        bounce_inds = Int[]
+        for i in 2:length(pts)-1
+            edge_index(pts[i], region; tol) != 0 && push!(bounce_inds, i)
+        end
+
+        if isempty(bounce_inds)
+            push!(new_isolines, iso)
+        else
+            changed = true
+            arcs = get_arclengths(pts)
+            split_inds = [1; bounce_inds; length(pts)]
+            for k in 1:length(split_inds)-1
+                a, b = split_inds[k], split_inds[k+1]
+                seg = pts[a:b]
+                push!(new_isolines, Isoline(seg, false, arcs[b] - arcs[a]))
+            end
+        end
+    end
+
+    changed || return bundle
+    empty!(bundle.isolines)
+    append!(bundle.isolines, new_isolines)
+    sort_isolines!(bundle)
+    return bundle
+end
+
 ###
 ### foliated_energies
 ###
@@ -858,6 +906,7 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
 
     c = contours(X, Y, E, fe; mask = region)
     sort_isolines!.(c)
+    split_bouncing_isolines!.(c, Ref(region))
 
     for q in detect_ibz_corner_crossings(c, region, ε)
         e_ext = ε(q)
@@ -876,10 +925,14 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
         bndl_new_lo = contours(X, Y, E, [e_new_lo]; mask = region)[1]
         bndl_new_hi = contours(X, Y, E, [e_new_hi]; mask = region)[1]
         sort_isolines!(bndl_ext); sort_isolines!(bndl_new_lo); sort_isolines!(bndl_new_hi)
+        split_bouncing_isolines!(bndl_ext,    region)
+        split_bouncing_isolines!(bndl_new_lo, region)
+        split_bouncing_isolines!(bndl_new_hi, region)
         fe[c_idx] = e_new_lo;   c[c_idx] = bndl_new_lo
         insert!(fe, c_idx + 1, e_ext);    insert!(c, c_idx + 1, bndl_ext)
         insert!(fe, c_idx + 2, e_new_hi); insert!(c, c_idx + 2, bndl_new_hi)
     end
+
 
     n_isolines = [length(bundle.isolines) for bundle in c]
 
@@ -916,12 +969,14 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
                             fe[run.start], fe[run.start - 1], n_iso)
             bundle_lo = contours(X, Y, E, [e_lo_m]; mask=region)[1]
             sort_isolines!(bundle_lo)
+            split_bouncing_isolines!(bundle_lo, region)
         end
         if need_hi || shift_hi
             e_hi_m    = find_marginal_energy(X, Y, E, region,
                             fe[run.stop], fe[run.stop + 1], n_iso)
             bundle_hi = contours(X, Y, E, [e_hi_m]; mask=region)[1]
             sort_isolines!(bundle_hi)
+            split_bouncing_isolines!(bundle_hi, region)
         end
 
         for s in 1:n_iso
