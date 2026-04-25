@@ -17,10 +17,10 @@ function (@main)(_)
 
     ## BZ mesh ############################################################
 
-    n_levels = 4   # number of energy contour boundaries (n_levels - 1 patches in energy)
-    n_cuts   = 10  # number of angular cuts along the Fermi surface (n_cuts - 1 patches per sector)
+    Δε    = 0.1   # energy spacing between boundary contours (eV)
+    n_arc = 10    # patches per arc segment
 
-    bz   = bz_mesh(l, [ε], T, n_levels, n_cuts)
+    bz   = bz_mesh(l, [ε], T, Δε, n_arc)
     grid = bz.patches
     N    = length(grid)
 
