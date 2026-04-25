@@ -95,3 +95,28 @@ function bisect(f, a, b; iter = 64)
     end
     return (a + b) / 2
 end
+
+"""
+    edge_index(p, region[; tol]) -> Int
+
+Return the 1-based index of the edge of polygon `region` on which point `p` lies, or `0`.
+
+Edge `k` is the segment from `region[k]` to `region[mod1(k+1, n)]`. Point `p` is considered
+to lie on that edge when it is collinear with the segment (cross-product residual per unit
+length ≤ `tol`) and the projection parameter `t ∈ [0, 1]` (within `tol`).
+"""
+function edge_index(p, region; tol = 1e-8)
+    n = length(region)
+    for k in 1:n
+        a  = region[k]
+        b  = region[mod1(k + 1, n)]
+        v  = b - a
+        w  = p - a
+        lv = norm(v)
+        lv < eps() && continue
+        abs(v[1] * w[2] - v[2] * w[1]) / lv > tol && continue
+        t = dot(w, v) / dot(v, v)
+        -tol ≤ t ≤ 1 + tol && return k
+    end
+    return 0
+end

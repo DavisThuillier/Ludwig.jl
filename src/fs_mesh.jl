@@ -306,46 +306,6 @@ function boundary_energies(X, Y, E, ε, region, e_min, e_max, Δε)
 end
 
 """
-    aligned_arclength_slice(iso, ref_iso, n; cusp_fractions, angle_threshold)
-
-Resample `iso` at `n` arclength-uniform points, oriented to match `ref_iso`.
-
-The traversal direction of `iso` is chosen so that its starting tangent best agrees
-with the starting tangent of `ref_iso`. Both the forward tangent at `iso.points[begin]`
-and the reversed tangent at `iso.points[end]` are compared against the tangent at
-`ref_iso.points[begin]`; the orientation with the larger dot product is used.
-
-# Arguments
-- `cusp_fractions`: arclength fractions in [0, 1] (relative to the *original* traversal
-  direction of `iso`) at which cuts should be snapped. Fractions are mirrored when the
-  isoline is reversed. Any cusps intrinsic to this contour are detected and merged
-  automatically.
-- `angle_threshold`: turning-angle threshold (radians) passed to [`find_cusp_fraction`](@ref).
-"""
-function aligned_arclength_slice(iso::Isoline, ref_iso::Isoline, n::Int;
-                                  cusp_fractions = Float64[], angle_threshold = π/8)
-    pts = iso.points
-    ref_pts = ref_iso.points
-
-    fractions = copy(cusp_fractions)
-
-    if length(pts) > 1 
-        ref_tangent = ref_pts[2] - ref_pts[1]
-        t_fwd = pts[2] - pts[1]
-        t_rev = pts[end-1] - pts[end]
-        reverse_iso = dot(t_rev, ref_tangent) > dot(t_fwd, ref_tangent)
-
-        if reverse_iso
-            pts = reverse(pts)
-            fractions = 1.0 .- cusp_fractions
-        end
-    end
-    append!(fractions, find_cusp_fraction(pts; angle_threshold))
-    L = get_arclengths(pts)[end]
-    return arclength_slice(pts, n; pinned_arclengths = fractions .* L)[1]
-end
-
-"""
     mesh_sheet(sheet_isolines, ε, band_index, n_arc_s, foliated_energies, corner_offset; angle_threshold)
 
 Generate a [`Mesh`](@ref) for a single Fermi surface sheet defined by `sheet_isolines`.
@@ -477,120 +437,6 @@ function mesh_sheet(
 end
 
 """
-    get_arclengths(curve)
-
-Get the distance to each point along `curve`.
-
-Treats `curve` as an ordered list of points defining a piecewise linear path.
-"""
-function get_arclengths(curve)
-    s = 0.0
-    arclengths = Vector{Float64}(undef, length(curve))
-    arclengths[1] = 0.0
-    for i in eachindex(curve)
-        i == 1 && continue
-        s += norm(curve[i] - curve[i-1])
-        arclengths[i] = s
-    end
-    return arclengths
-end
-
-"""
-    find_cusp_fraction(curve; angle_threshold = π/8)
-
-Return the arclength fractions in [0, 1] of cusp points in `curve`.
-
-A cusp is detected at interior point `i` when the angle between the incoming
-tangent `curve[i] - curve[i-1]` and outgoing tangent `curve[i+1] - curve[i]`
-exceeds `angle_threshold`.
-"""
-function find_cusp_fraction(curve; angle_threshold = π/8)
-    n = length(curve)
-    n < 3 && return Float64[]
-    arclengths = get_arclengths(curve)
-    L = arclengths[end]
-    L < eps() && return Float64[]
-    fractions = Float64[]
-    for i in 2:n-1
-        t1 = curve[i] - curve[i-1]
-        t2 = curve[i+1] - curve[i]
-        l1, l2 = norm(t1), norm(t2)
-        (l1 < eps() || l2 < eps()) && continue
-        cos_θ = clamp(dot(t1, t2) / (l1 * l2), -1.0, 1.0)
-        if acos(cos_θ) > angle_threshold
-            push!(fractions, arclengths[i] / L)
-        end
-    end
-    return fractions
-end
-
-"""
-    arclength_slice(curve, n::Int; pinned_arclengths)
-
-Cut `curve` into `n` uniformly spaced points.
-
-Treats `curve` as an ordered list of points defining a piecewise linear path, and linear
-interpolation is used to find intermediate points. Returns interpolated points and
-arclengths along original curve of interpolated points.
-For best results, points in `curve` should have approximately uniform spacing and `n`
-should be much less than the number of points in `curve`.
-
-# Arguments
-- `pinned_arclengths`: optional list of arclength values at which a cut must be placed.
-  For each value, the nearest interior corner position (odd 1-based index, excluding the
-  two endpoints) is snapped to that arclength. The two adjacent even-indexed (patch-center)
-  positions are then recentered halfway between their bounding corners. Values within one
-  uniform corner step (`δs = L / n_arc`) of either endpoint are skipped.
-"""
-function arclength_slice(curve, n::Int; pinned_arclengths = Float64[])
-    if length(curve) == 1
-        return fill(curve[begin], n), zeros(Float64, n)
-    end
-
-    arclengths = get_arclengths(curve)
-    τ = collect(LinRange(0.0, arclengths[end], n))
-
-    δs = n > 1 ? 2 * arclengths[end] / (n - 1) : arclengths[end]
-    for s_pin in pinned_arclengths
-        s = clamp(s_pin, 0.0, arclengths[end])
-        (s < δs || s > arclengths[end] - δs) && continue
-        best_idx = 0
-        best_dist = Inf
-        for k in 3:2:n-2
-            d = abs(τ[k] - s)
-            if d < best_dist
-                best_dist = d
-                best_idx = k
-            end
-        end
-        if best_idx > 0
-            τ[best_idx] = s
-            if best_idx > 2
-                τ[best_idx - 1] = (τ[best_idx - 2] + τ[best_idx]) / 2
-            end
-            if best_idx < n - 1
-                τ[best_idx + 1] = (τ[best_idx] + τ[best_idx + 2]) / 2
-            end
-        end
-    end
-    isempty(pinned_arclengths) || sort!(τ)
-
-    grid = [curve[begin]]
-
-    j = 1
-    jmax = length(arclengths)
-    for i in eachindex(τ)
-        i == 1 && continue
-        while j < jmax && arclengths[j] <= τ[i]
-            j += 1
-        end
-        push!(grid, curve[j-1] + (curve[j] - curve[j - 1]) * (τ[i] - arclengths[j-1]) / (arclengths[j] - arclengths[j-1]))
-    end
-
-    return grid, collect(τ)
-end
-
-"""
     find_marginal_energy(X, Y, E_mat, region, e_target, e_outer, n_iso_target[; iter])
 
 Bisect in the interval `[e_target, e_outer]` to find the energy threshold at which the
@@ -616,41 +462,6 @@ end
 ###
 ### IBZ corner crossing detection
 ###
-
-# Returns 1-based index of the edge of polygon `region` on which point `p` lies, or 0.
-function edge_index(p, region; tol = 1e-8)
-    n = length(region)
-    for k in 1:n
-        a  = region[k]
-        b  = region[mod1(k + 1, n)]
-        v  = b - a
-        w  = p - a
-        lv = norm(v)
-        lv < eps() && continue
-        abs(v[1] * w[2] - v[2] * w[1]) / lv > tol && continue
-        t = dot(w, v) / dot(v, v)
-        -tol ≤ t ≤ 1 + tol && return k
-    end
-    return 0
-end
-
-centroid(iso::Isoline) = sum(iso.points) / length(iso.points)
-
-function match_contour_segments(b1::Vector{Isoline}, b2::Vector{Isoline})
-    length(b1) != length(b2) && return nothing
-    c1 = centroid.(b1)
-    c2 = centroid.(b2)
-
-    perm = [] # Permutation of b2 isolines that matches with b1 isolines
-    for i ∈ eachindex(c2)
-        order = sortperm(norm.(Ref(c2[i]) .- c1)) # Order centroid c2[i] by distance to all centroids, c1
-        push!(perm, order[findfirst(x -> !(x ∈ perm), order)])
-    end
-
-    return perm
-end
-
-match_contour_segments(b1::IsolineBundle, b2::IsolineBundle) = match_contour_segments(b1.isolines, b2.isolines)
 
 """
     detect_skipped_corners(c, region, ε[; tol])
