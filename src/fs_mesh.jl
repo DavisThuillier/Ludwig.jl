@@ -741,25 +741,6 @@ function detect_skipped_corners(
     return events
 end
 
-function split_range_at_crossings(range, crossings::Vector{Int})
-    subranges = UnitRange{Int64}[]
-    splits = sort(crossings)
-    i = first(range)
-    k = 1
-    while i <= last(range) && k <= length(crossings)
-        j = i
-        while j <= last(range) && j <= crossings[k]
-            j += 1
-        end
-        push!(subranges, i:j-1)
-        i = j + 1 # Jump over center contour to start next range
-        k += 1
-    end
-    push!(subranges, i:last(range))
-
-    return subranges
-end
-
 """
     find_boundary_extrema(p1, corner, p2, ε[; n_sample, iter])
 
