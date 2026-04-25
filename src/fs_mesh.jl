@@ -225,24 +225,14 @@ end
 ###
 
 """
-    foliated_energies(X, Y, E, ε, region, Δε, α, T)
+    foliate(x::AbstractVector) -> Vector{Float64}
 
-Compute the interleaved vector of boundary and center energy levels for meshing.
+Interleave midpoints between consecutive elements of `x`.
 
-Builds a symmetric grid of boundary contour energies centered at zero with spacing `Δε`,
-spanning `[-α*T, α*T]` (always an even number of levels so that `E = 0` falls on a patch
-center). Grid points outside the range of values in `E` restricted to `region` are discarded,
-except the first out-of-range point on each side is retained and pinned to the second-lowest
-or second-highest distinct energy value within `region`. Using the second extremum rather than
-the true extremum ensures the boundary contour level is straddled by at least a full ring of
-grid cells, avoiding the degenerate single-point isoline that arises when the extremum is
-attained at only one grid point. If the dispersion evaluated at a corner of `region` falls
-within the retained range, the levels are shifted so that one boundary contour passes exactly
-through that energy.
+Returns a vector of length `2*length(x) - 1` where odd-indexed entries (1-based) hold the
+original values of `x` and even-indexed entries hold midpoints between adjacent elements.
 
-Returns a vector of length `2*n - 1`, where `n` is the number of retained boundary
-contours. Odd-indexed entries are boundary contour energies; even-indexed entries are
-patch center energies (midpoints between adjacent boundaries).
+See also [`mesh_region`](@ref).
 """
 function foliate(x::AbstractVector)
     n = length(x)
@@ -356,7 +346,7 @@ function aligned_arclength_slice(iso::Isoline, ref_iso::Isoline, n::Int;
 end
 
 """
-    mesh_sheet(sheet_isolines, ε, band_index, n_arc_s, foliated_energies, corner_offset)
+    mesh_sheet(sheet_isolines, ε, band_index, n_arc_s, foliated_energies, corner_offset; angle_threshold)
 
 Generate a [`Mesh`](@ref) for a single Fermi surface sheet defined by `sheet_isolines`.
 
@@ -663,13 +653,13 @@ end
 match_contour_segments(b1::IsolineBundle, b2::IsolineBundle) = match_contour_segments(b1.isolines, b2.isolines)
 
 """
-    detect_corner_crossings(c, region, ε[; tol])
+    detect_skipped_corners(c, region, ε[; tol])
 
 Detect crossings of open isoline endpoints across corners of the IBZ polygon `region`
 as energy varies through the bundles in `c`.
 
 For each adjacent bundle pair `(c[i], c[i+2])` sharing a common sheet count, checks
-whether one endpoint of the open isoline slides from one IBZ edge to an adjacent edge.
+whether one endpoint of an open isoline slides from one IBZ edge to an adjacent edge.
 
 # Arguments
 - `c::Vector{IsolineBundle}`: isoline bundles ordered by energy.
@@ -678,11 +668,12 @@ whether one endpoint of the open isoline slides from one IBZ edge to an adjacent
 - `tol`: collinearity/range tolerance passed to `edge_index` (default `1e-8`).
 
 # Returns
-`Vector` of `(i, p1, corner, p2)` tuples, one per crossing event:
+`Vector` of `(i, s, path)` tuples, one per crossing event:
 - `i::Int`: bundle index into `c` where the crossing was detected.
-- `p1::SVector{2,Float64}`: isoline endpoint on the old edge (before the crossing).
-- `corner::SVector{2,Float64}`: IBZ vertex that the endpoint slid around.
-- `p2::SVector{2,Float64}`: isoline endpoint on the new edge (after the crossing).
+- `s::Int`: sheet index within the bundle.
+- `path::Vector{SVector{2,Float64}}`: three points `[p1, corner, p2]` where `p1` is the
+  isoline endpoint before the crossing, `corner` is the IBZ vertex, and `p2` is the
+  endpoint after the crossing.
 
 Multiple sheets at the same energy level each produce a separate entry with the same `i`.
 """
@@ -800,7 +791,7 @@ julia> isempty(find_boundary_extrema(p1, corner, p2, ε))
 true
 ```
 
-See also [`detect_ibz_corner_crossings`](@ref).
+See also [`detect_skipped_corners`](@ref).
 """
 function find_boundary_extrema(
     p1::SVector{2,Float64},
@@ -842,25 +833,31 @@ function find_boundary_extrema(
 end
 
 """
-    mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int[, N::Int, α::Real])
+    mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int[, N::Int]; kwargs...)
 
-Generate a mesh of `region` of momentum space for dispersion `ε` (band `band_index`) at
-temperature `T`.
+Generate a [`Mesh`](@ref) of momentum-space `region` for dispersion `ε` (band `band_index`)
+covering the energy window `[e_min, e_max]`.
 
-The mesh covers a tube around the Fermi surface between `-αT` and `+αT`. The energy-direction
-resolution is controlled by `Δε`: the number of patch rows is `2*ceil(α*T/Δε)`, always even
-so that a patch center falls exactly on the Fermi surface. The arc-length resolution along each
-energy contour is controlled by `n_arc`: each Fermi surface sheet is divided into `n_arc`
-uniform arc-length segments.
+Boundary contours are placed at intervals of `Δε` across `[e_min, e_max]`. The arc-length
+resolution along each contour is `n_arc` patches per sheet. Multiple disconnected Fermi surface
+sheets are handled automatically — one sub-mesh is generated per sheet and the results are
+concatenated.
 
-Multiple disconnected Fermi surface sheets (e.g. annular topology) are handled automatically —
-one sub-mesh is generated per sheet and the results are concatenated. For a closed isoline
-(sheet entirely within `region`), `n_arc` is scaled by the ratio of the closed contour's
-arc-length to that of the outermost open-arc sheet so that the full-BZ patch density is
-consistent across sheets.
+If corner crossings are detected (an isoline endpoint slides around an IBZ corner between
+consecutive energy levels), the crossing region is recursively re-meshed up to `maxdepth`
+recursions. `N` sets the number of sample points along the longer axis of the bounding rectangle
+for the underlying marching-squares contour extraction.
 
-The resolution used for marching squares over `region` is set by `N`, the number of sample
-points in each direction of the bounding rectangle.
+# Arguments
+- `bbox`: optional bounding-box polygon; when provided the marching-squares grid uses its
+  bounding rectangle instead of that of `region`.
+- `angle_threshold`: turning-angle threshold (radians) for cusp detection (default `π/8`).
+- `boundaries`: if non-empty, use these explicit boundary energies instead of the
+  automatically computed grid.
+- `depth`: current recursion depth (default `1`; do not set manually).
+- `maxdepth`: maximum recursion depth for corner re-meshing (default `2`).
+
+See also [`ibz_mesh`](@ref), [`bz_mesh`](@ref), [`mesh_sheet`](@ref).
 """
 function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int, N = 1001;
                      bbox = nothing, angle_threshold = π/8, boundaries::AbstractVector = [], depth = 1, maxdepth = 2)
@@ -1014,23 +1011,31 @@ function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int
     return Mesh(all_patches, all_corners, all_corner_ids)
 end
 
-mesh_region(region, ε, e_min, e_max, Δε, n_arc::Int, N = 1001; bbox = nothing, angle_threshold = π/8) =
-    mesh_region(region, ε, 1, e_min, e_max, Δε, n_arc, N; bbox, angle_threshold)
+mesh_region(region, ε, e_min, e_max, Δε, n_arc::Int, N = 1001;
+            bbox = nothing, angle_threshold = π/8, boundaries::AbstractVector = [], maxdepth::Int = 2) =
+    mesh_region(region, ε, 1, e_min, e_max, Δε, n_arc, N; bbox, angle_threshold, boundaries, maxdepth)
 
 """
-    ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int[, N::Int, α::Real]; mask)
+    ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int[, N::Int, α::Real]; mask, angle_threshold, boundaries, maxdepth)
 
 Generate a mesh of the irreducible Brillouin Zone (IBZ) for lattice `l` given dispersions
 in `bands` at temperature `T`. See [`mesh_region`](@ref) for a description of the resolution
 parameters `Δε` and `n_arc`.
 
 # Arguments
-- `mask`: optional vector of vertices defining a convex polygonal sub-region of the BZ. When
+- `mask`: optional vector of vertices defining a convex polygonal sub-region of the IBZ. When
   `length(mask) > 2` the mesh is restricted to `mask` instead of the full IBZ, which is
   useful for finer gridding around a small Fermi surface pocket.
+- `angle_threshold`: turning-angle threshold (radians) for cusp detection; passed through to
+  [`mesh_region`](@ref) (default `π/8`).
+- `boundaries`: explicit boundary energy vector passed through to [`mesh_region`](@ref);
+  when non-empty, overrides the automatically computed energy grid (default `[]`).
+- `maxdepth`: maximum recursion depth for corner re-meshing passed through to
+  [`mesh_region`](@ref) (default `2`).
 """
 function ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0;
-                  mask = SVector{2,Float64}[], angle_threshold = π/8)
+                  mask = SVector{2,Float64}[], angle_threshold = π/8,
+                  boundaries::AbstractVector = [], maxdepth::Int = 2)
     full_patches    = Patch[]
     full_corners    = SVector{2,Float64}[]
     full_corner_ids = SVector{4,Int}[]
@@ -1038,7 +1043,7 @@ function ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int
     bbox = length(mask) > 2 ? mask : nothing
 
     for i in eachindex(bands)
-        mesh = mesh_region(ibz, bands[i], i, -α * T, α * T, Δε, n_arc, N; bbox, angle_threshold)
+        mesh = mesh_region(ibz, bands[i], i, -α * T, α * T, Δε, n_arc, N; bbox, angle_threshold, boundaries, maxdepth)
         ℓ = length(full_corners)
         append!(full_patches, mesh.patches)
         append!(full_corner_ids, map(x -> SVector{4,Int}(x .+ ℓ), mesh.corner_inds))
@@ -1049,8 +1054,9 @@ function ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int
 end
 
 ibz_mesh(l::Lattice, ε::Function, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0;
-         mask = SVector{2,Float64}[], angle_threshold = π/8) =
-    ibz_mesh(l, [ε], T, Δε, n_arc, N, α; mask, angle_threshold)
+         mask = SVector{2,Float64}[], angle_threshold = π/8,
+         boundaries::AbstractVector = [], maxdepth::Int = 2) =
+    ibz_mesh(l, [ε], T, Δε, n_arc, N, α; mask, angle_threshold, boundaries, maxdepth)
 
 """
     group_angle_perm(G, ibz) -> Vector{Int}
@@ -1077,19 +1083,26 @@ function group_angle_perm(G, ibz)
 end
 
 """
-    bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int[, N::Int, α::Real]; mask)
+    bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int[, N::Int, α::Real]; mask, angle_threshold, boundaries, maxdepth)
 
 Generate a mesh of the Brillouin Zone (BZ) for lattice `l` given dispersions in `bands` at
 temperature `T` by computing the IBZ mesh and replicating it under all point-group operations.
 See [`mesh_region`](@ref) for a description of `Δε` and `n_arc`.
 
 # Arguments
-- `mask`: optional vector of vertices passed through to [`ibz_mesh`](@ref). When
+- `mask`: optional vector of vertices passed through to [`mesh_region`](@ref). When
   `length(mask) > 2` the IBZ mesh is restricted to `mask` instead of the full IBZ before
   being replicated across the BZ.
+- `angle_threshold`: turning-angle threshold (radians) for cusp detection; passed through to
+  [`mesh_region`](@ref) (default `π/8`).
+- `boundaries`: explicit boundary energy vector passed through to [`mesh_region`](@ref);
+  when non-empty, overrides the automatically computed energy grid (default `[]`).
+- `maxdepth`: maximum recursion depth for corner re-meshing passed through to
+  [`mesh_region`](@ref) (default `2`).
 """
 function bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0;
-                 mask = SVector{2,Float64}[], angle_threshold = π/8)
+                 mask = SVector{2,Float64}[], angle_threshold = π/8,
+                 boundaries::AbstractVector = [], maxdepth::Int = 2)
     G     = point_group(l)
     ibz   = get_ibz(l)
     θperm = group_angle_perm(G, ibz)
@@ -1101,7 +1114,7 @@ function bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int 
     bbox = length(mask) > 2 ? mask : nothing
 
     for j in eachindex(bands)
-        mesh = mesh_region(ibz, bands[j], j, -α * T, α * T, Δε, n_arc, N; bbox, angle_threshold)
+        mesh = mesh_region(ibz, bands[j], j, -α * T, α * T, Δε, n_arc, N; bbox, angle_threshold, boundaries, maxdepth)
 
         for i in θperm
             O = get_matrix_representation(G.elements[i])
@@ -1116,8 +1129,9 @@ function bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int 
 end
 
 bz_mesh(l::Lattice, ε, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0;
-        mask = SVector{2,Float64}[], angle_threshold = π/8) =
-    bz_mesh(l, [ε], T, Δε, n_arc, N, α; mask, angle_threshold)
+        mask = SVector{2,Float64}[], angle_threshold = π/8,
+        boundaries::AbstractVector = [], maxdepth::Int = 2) =
+    bz_mesh(l, [ε], T, Δε, n_arc, N, α; mask, angle_threshold, boundaries, maxdepth)
 
 function radial_extrema(ε, kf::AbstractVector{<:Real}, e_window; N_prelim = 100)
     # Use the known Fermi crossings to bracket extrema and bound r_max.
