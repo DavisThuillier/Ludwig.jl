@@ -225,21 +225,6 @@ end
 ###
 
 """
-    sort_isolines!(bundle::IsolineBundle)
-
-Sort the isolines in `bundle` by centroid distance from the origin (ascending), so that
-inner contours have smaller indices than outer contours. Returns `bundle`.
-"""
-function sort_isolines!(bundle::IsolineBundle)
-    sort!(bundle.isolines, by = iso -> norm(sum(iso.points) / length(iso.points)))
-    return bundle
-end
-
-###
-### foliated_energies
-###
-
-"""
     foliated_energies(X, Y, E, ε, region, Δε, α, T)
 
 Compute the interleaved vector of boundary and center energy levels for meshing.
@@ -259,9 +244,22 @@ Returns a vector of length `2*n - 1`, where `n` is the number of retained bounda
 contours. Odd-indexed entries are boundary contour energies; even-indexed entries are
 patch center energies (midpoints between adjacent boundaries).
 """
-function foliated_energies(X, Y, E, ε, region, Δε, α, T)
-    n_levels = 2 * max(1, ceil(Int, α * T / Δε)) # always even → E=0 on a patch center
-    energies = collect(LinRange(-α * T, α * T, n_levels))
+function foliate(x::AbstractVector)
+    n = length(x)
+    foliated = Vector{Float64}(undef, 2 * n - 1)
+    for i in eachindex(foliated)
+        if isodd(i)
+            foliated[i] = x[(i - 1) ÷ 2 + 1]
+        else
+            foliated[i] = (x[i ÷ 2 + 1] + x[i ÷ 2]) / 2
+        end
+    end
+    return foliated
+end
+
+function boundary_energies(X, Y, E, ε, region, e_min, e_max, Δε)
+    n_levels = max(1, ceil(Int, (e_max - e_min) / Δε)) # always even → E=0 on a patch center 
+    energies = collect(LinRange(e_min, e_max, n_levels))
 
     e_actual_min, e_actual_max = if length(region) > 2
         lo, hi = Inf, -Inf
@@ -297,42 +295,35 @@ function foliated_energies(X, Y, E, ε, region, Δε, α, T)
         energies = energies[1:i_high]
     end
 
-    # # Shift energy levels to include a corner energy if the dispersion crosses it
+    # Shift energy levels to include a corner energy if the dispersion crosses it
     for k ∈ region
         k == [0.0, 0.0] && continue
         corner_e =  ε(k)
         if energies[begin] < corner_e < energies[end]
             i = argmin(abs.(energies .- corner_e))
-            # i == 1 && continue # corner is below the first interior level; skip
-            n = length(energies)
-            energies[1:i] = LinRange(energies[begin], corner_e, i)
-            Δe = (energies[end] - corner_e) / (n - i)
-            energies[i+1:end] = LinRange(corner_e + Δe, energies[end], n - i)
+            if i == firstindex(energies) || i == lastindex(energies)
+                energies[i] = corner_e
+            else
+                n = length(energies)
+                energies[1:i] = LinRange(energies[begin], corner_e, i)
+                Δe = (energies[end] - corner_e) / (n - i)
+                energies[i+1:end] = LinRange(corner_e + Δe, energies[end], n - i)
+            end
         end
     end
 
-    n = length(energies)
-    foliated = Vector{Float64}(undef, 2 * n - 1)
-    for i in eachindex(foliated)
-        if isodd(i)
-            foliated[i] = energies[(i - 1) ÷ 2 + 1]
-        else
-            foliated[i] = (energies[i ÷ 2 + 1] + energies[i ÷ 2]) / 2
-        end
-    end
-    return foliated
+    return energies
 end
 
 """
-    aligned_arclength_slice(iso, ref_start, ref_tangent, n; cusp_fractions, angle_threshold)
+    aligned_arclength_slice(iso, ref_iso, n; cusp_fractions, angle_threshold)
 
-Resample `iso` at `n` arclength-uniform points, aligned to `ref_start`.
+Resample `iso` at `n` arclength-uniform points, oriented to match `ref_iso`.
 
-The endpoint of `iso.points` closest to `ref_start` is chosen as the starting
-point of the resampled arc. The traversal direction is then checked against
-`ref_tangent` (the tangent of the reference contour at its start): if the dot
-product of the adjacent arc's initial tangent with `ref_tangent` is negative, the
-arc is reversed so that all contours in a sheet are traversed in the same direction.
+The traversal direction of `iso` is chosen so that its starting tangent best agrees
+with the starting tangent of `ref_iso`. Both the forward tangent at `iso.points[begin]`
+and the reversed tangent at `iso.points[end]` are compared against the tangent at
+`ref_iso.points[begin]`; the orientation with the larger dot product is used.
 
 # Arguments
 - `cusp_fractions`: arclength fractions in [0, 1] (relative to the *original* traversal
@@ -341,16 +332,24 @@ arc is reversed so that all contours in a sheet are traversed in the same direct
   automatically.
 - `angle_threshold`: turning-angle threshold (radians) passed to [`find_cusp_fraction`](@ref).
 """
-function aligned_arclength_slice(iso::Isoline, ref_start, ref_tangent, n::Int;
+function aligned_arclength_slice(iso::Isoline, ref_iso::Isoline, n::Int;
                                   cusp_fractions = Float64[], angle_threshold = π/8)
     pts = iso.points
+    ref_pts = ref_iso.points
 
-    reverse_iso = norm(pts[end] - ref_start) < norm(pts[begin] - ref_start)
-    reverse_iso = reverse_iso || (length(pts) >= 2 && dot(pts[2] - pts[1], ref_tangent) < 0)
-    if reverse_iso
-        pts = reverse(pts)
+    fractions = copy(cusp_fractions)
+
+    if length(pts) > 1 
+        ref_tangent = ref_pts[2] - ref_pts[1]
+        t_fwd = pts[2] - pts[1]
+        t_rev = pts[end-1] - pts[end]
+        reverse_iso = dot(t_rev, ref_tangent) > dot(t_fwd, ref_tangent)
+
+        if reverse_iso
+            pts = reverse(pts)
+            fractions = 1.0 .- cusp_fractions
+        end
     end
-    fractions = reverse_iso ? (1.0 .- cusp_fractions) : copy(cusp_fractions)
     append!(fractions, find_cusp_fraction(pts; angle_threshold))
     L = get_arclengths(pts)[end]
     return arclength_slice(pts, n; pinned_arclengths = fractions .* L)[1]
@@ -397,14 +396,12 @@ function mesh_sheet(
             sheet_isolines[i].points, 2 * n_arc_s + 1;
             pinned_arclengths = cusp_fractions .* L_center,
         )
-        ref_tangent = k[2] - k[1]
-
         k_inner = aligned_arclength_slice(
-            sheet_isolines[i-1], k[1], ref_tangent, 2 * n_arc_s + 1;
+            sheet_isolines[i-1], sheet_isolines[i], 2 * n_arc_s + 1;
             cusp_fractions, angle_threshold,
         )
         k_outer = aligned_arclength_slice(
-            sheet_isolines[i+1], k[1], ref_tangent, 2 * n_arc_s + 1;
+            sheet_isolines[i+1], sheet_isolines[i], 2 * n_arc_s + 1;
             cusp_fractions, angle_threshold,
         )
 
@@ -617,7 +614,6 @@ function find_marginal_energy(X, Y, E_mat, region, e_target, e_outer, n_iso_targ
     for _ in 1:iter
         mid = (a + b) / 2
         bundle = contours(X, Y, E_mat, [mid]; mask=region)[1]
-        sort_isolines!(bundle)
         if length(bundle.isolines) == n_iso_target
             a = mid
         else
@@ -646,6 +642,131 @@ function edge_index(p, region; tol = 1e-8)
         -tol ≤ t ≤ 1 + tol && return k
     end
     return 0
+end
+
+centroid(iso::Isoline) = sum(iso.points) / length(iso.points)
+
+function match_contour_segments(b1::Vector{Isoline}, b2::Vector{Isoline})
+    length(b1) != length(b2) && return nothing
+    c1 = centroid.(b1)
+    c2 = centroid.(b2)
+
+    perm = [] # Permutation of b2 isolines that matches with b1 isolines
+    for i ∈ eachindex(c2)
+        order = sortperm(norm.(Ref(c2[i]) .- c1)) # Order centroid c2[i] by distance to all centroids, c1
+        push!(perm, order[findfirst(x -> !(x ∈ perm), order)])
+    end
+
+    return perm
+end
+
+match_contour_segments(b1::IsolineBundle, b2::IsolineBundle) = match_contour_segments(b1.isolines, b2.isolines)
+
+"""
+    detect_corner_crossings(c, region, ε[; tol])
+
+Detect crossings of open isoline endpoints across corners of the IBZ polygon `region`
+as energy varies through the bundles in `c`.
+
+For each adjacent bundle pair `(c[i], c[i+2])` sharing a common sheet count, checks
+whether one endpoint of the open isoline slides from one IBZ edge to an adjacent edge.
+
+# Arguments
+- `c::Vector{IsolineBundle}`: isoline bundles ordered by energy.
+- `region`: IBZ polygon vertices as a counterclockwise `Vector{SVector{2,Float64}}`.
+- `ε`: dispersion function accepting an `AbstractVector` of length 2.
+- `tol`: collinearity/range tolerance passed to `edge_index` (default `1e-8`).
+
+# Returns
+`Vector` of `(i, p1, corner, p2)` tuples, one per crossing event:
+- `i::Int`: bundle index into `c` where the crossing was detected.
+- `p1::SVector{2,Float64}`: isoline endpoint on the old edge (before the crossing).
+- `corner::SVector{2,Float64}`: IBZ vertex that the endpoint slid around.
+- `p2::SVector{2,Float64}`: isoline endpoint on the new edge (after the crossing).
+
+Multiple sheets at the same energy level each produce a separate entry with the same `i`.
+"""
+function detect_skipped_corners(
+    c::Vector{IsolineBundle},
+    region,
+    ε;
+    tol = 1e-8,
+)
+    events = Tuple{Int, Int, Vector{SVector{2, Float64}}}[]
+
+    n_reg = length(region)
+    length(c) == 0 && return events
+
+    for i in 1:2:(length(c) - 2)
+        b1 = c[i].isolines
+        b2 = c[i + 2].isolines
+
+        # Check that neither contour is at a corner energy
+        # minimum(abs.(ε.(region) .- c[i].level)) < tol && continue
+        # minimum(abs.(ε.(region) .- c[i+2].level)) < tol && continue
+
+        n_s = length(b1)
+        if n_s != length(b2)
+            continue # Different FS topology, handled separately
+        end
+        n_s == 0 && continue
+
+        permute!(b2, match_contour_segments(b1, b2))
+
+        for s in 1:n_s
+            iso_1 = b1[s]
+            iso_2 = b2[s]
+
+            p11 = iso_1.points[begin]
+            p12 = iso_1.points[end]
+            p21 = iso_2.points[begin]
+            p22 = iso_2.points[end]
+
+            # Gather sets of edges
+            e1 = [edge_index(p11, region), edge_index(p12, region)]
+            e2 = [edge_index(p21, region), edge_index(p22, region)]
+
+            Set(e1) == Set(e2) && continue
+
+            # Identify which endpoint jumped and which IBZ corner it crossed
+            e_old, e_new, p1, p2 = if e1[1] != e2[1]
+                e1[1], e2[1], p11, p21
+            else
+                e1[2], e2[2], p12, p22
+            end
+
+            corner = if mod1(e_old + 1, n_reg) == e_new
+                region[e_new]
+            elseif mod1(e_new + 1, n_reg) == e_old
+                region[e_old]
+            else
+                region[argmin(norm.(region .- Ref((p1 + p2) / 2)))]
+            end
+
+            push!(events, (i, s, [p1, corner, p2]))
+        end
+    end
+
+    return events
+end
+
+function split_range_at_crossings(range, crossings::Vector{Int})
+    subranges = UnitRange{Int64}[]
+    splits = sort(crossings)
+    i = first(range)
+    k = 1
+    while i <= last(range) && k <= length(crossings)
+        j = i
+        while j <= last(range) && j <= crossings[k]
+            j += 1
+        end
+        push!(subranges, i:j-1)
+        i = j + 1 # Jump over center contour to start next range
+        k += 1
+    end
+    push!(subranges, i:last(range))
+
+    return subranges
 end
 
 """
@@ -688,7 +809,7 @@ function find_boundary_extrema(
     ε;
     n_sample::Int = 200,
     iter::Int = 64,
-) :: Vector{SVector{2,Float64}}
+)::Vector{SVector{2,Float64}}
     L1 = norm(corner - p1)
     L2 = norm(p2 - corner)
     L  = L1 + L2
@@ -721,102 +842,6 @@ function find_boundary_extrema(
 end
 
 """
-    detect_ibz_corner_crossings(c, region, ε[; tol])
-
-Detect crossings of open isoline endpoints across corners of the IBZ polygon `region`
-as energy varies through the bundles in `c`, and return the boundary energy extrema at
-each crossing.
-
-For each adjacent bundle pair `(c[b], c[b+1])` sharing a common sheet count, checks
-whether one endpoint of the open isoline slides from one IBZ edge to an adjacent edge.
-For each such corner crossing, calls [`find_boundary_extrema`](@ref) on the IBZ boundary
-path through the corner. Returns all resulting extremal momentum points, flattened across
-all detected crossings.
-
-# Arguments
-- `c::Vector{IsolineBundle}`: isoline bundles ordered by energy.
-- `region`: IBZ polygon vertices as a counterclockwise `Vector{SVector{2,Float64}}`.
-- `ε`: dispersion function accepting an `AbstractVector` of length 2.
-- `tol`: collinearity/range tolerance passed to `edge_index` (default `1e-8`).
-
-# Returns
-`Vector{SVector{2,Float64}}` of extremal momentum points along IBZ boundary paths,
-collected across all detected corner crossings.
-
-# Examples
-```julia
-# After generating contours over an IBZ mesh:
-c = contours(X, Y, E, fe; mask = region)
-sort_isolines!.(c)
-for q in detect_ibz_corner_crossings(c, region, ε)
-    # ε(q) is an energy at which a new contour should be inserted
-end
-```
-
-See also [`find_boundary_extrema`](@ref).
-"""
-function detect_ibz_corner_crossings(
-    c::Vector{IsolineBundle},
-    region,
-    ε;
-    tol = 1e-8,
-) :: Vector{SVector{2,Float64}}
-    n_region     = length(region)
-    extrema_all  = SVector{2,Float64}[]
-
-    for b in 1:(length(c) - 1)
-        n_s = min(length(c[b].isolines), length(c[b + 1].isolines))
-        n_s == 0 && continue
-
-        for s in 1:n_s
-            iso_a = c[b].isolines[s]
-            iso_b = c[b + 1].isolines[s]
-            (iso_a.isclosed || iso_b.isclosed) && continue
-
-            pa1 = iso_a.points[begin]
-            pa2 = iso_a.points[end]
-            pb1 = iso_b.points[begin]
-            pb2 = iso_b.points[end]
-
-            # Match endpoints by minimum total distance.
-            if norm(pa1 - pb1) + norm(pa2 - pb2) ≤ norm(pa1 - pb2) + norm(pa2 - pb1)
-                ea1, ea2 = edge_index(pa1, region; tol), edge_index(pa2, region; tol)
-                eb1, eb2 = edge_index(pb1, region; tol), edge_index(pb2, region; tol)
-                pa_cands = (pa1, pa2)
-                pb_cands = (pb1, pb2)
-            else
-                ea1, ea2 = edge_index(pa1, region; tol), edge_index(pa2, region; tol)
-                eb1, eb2 = edge_index(pb2, region; tol), edge_index(pb1, region; tol)
-                pa_cands = (pa1, pa2)
-                pb_cands = (pb2, pb1)
-            end
-            ea_cands = (ea1, ea2)
-            eb_cands = (eb1, eb2)
-
-            jumped1 = ea_cands[1] != 0 && eb_cands[1] != 0 && ea_cands[1] != eb_cands[1]
-            jumped2 = ea_cands[2] != 0 && eb_cands[2] != 0 && ea_cands[2] != eb_cands[2]
-            jumped1 ⊻ jumped2 || continue
-
-            j = jumped1 ? 1 : 2
-            old_edge, new_edge = ea_cands[j], eb_cands[j]
-            pa_j, pb_j = pa_cands[j], pb_cands[j]
-
-            corner = if new_edge == mod1(old_edge + 1, n_region)
-                region[new_edge]
-            elseif new_edge == mod1(old_edge - 1, n_region)
-                region[old_edge]
-            else
-                continue
-            end
-
-            append!(extrema_all, find_boundary_extrema(pa_j, corner, pb_j, ε))
-        end
-    end
-
-    return extrema_all
-end
-
-"""
     mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int[, N::Int, α::Real])
 
 Generate a mesh of `region` of momentum space for dispersion `ε` (band `band_index`) at
@@ -837,15 +862,20 @@ consistent across sheets.
 The resolution used for marching squares over `region` is set by `N`, the number of sample
 points in each direction of the bounding rectangle.
 """
-function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001, α = 6.0;
-                     bbox = nothing, angle_threshold = π/8)
+function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int, N = 1001;
+                     bbox = nothing, angle_threshold = π/8, boundaries::AbstractVector = [], depth = 1, maxdepth = 2)
+    all_patches    = Patch[]
+    all_corners    = SVector{2,Float64}[]
+    all_corner_ids = SVector{4,Int}[]
     n_arc = max(3, n_arc)
 
     # Sample coordinates and energies for marching squares
     ((x_min, x_max), (y_min, y_max)) = get_bounding_box(isnothing(bbox) ? region : bbox)
-    X = LinRange(x_min, x_max, N)
     Δx = (x_max - x_min) / (N - 1)
     Ny = round(Int, (y_max - y_min) / Δx)
+    N  < 2 || Ny < 2 && return Mesh(all_patches, all_corners, all_corner_ids)
+
+    X = LinRange(x_min, x_max, N)
     Y = LinRange(y_min, y_max, Ny)
     E = Matrix{Float64}(undef, N, Ny)
     for (i, x) in enumerate(X)
@@ -854,38 +884,61 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
         end
     end
 
-    fe = foliated_energies(X, Y, E, ε, region, Δε, α, T)
-
+    be = length(boundaries) > 0 ? sort(unique(boundaries)) : boundary_energies(X, Y, E, ε, region, e_min, e_max, Δε)
+    @show be
+    fe = foliate(be)
     c = contours(X, Y, E, fe; mask = region)
-    sort_isolines!.(c)
+    # @show map(x -> map(y -> y.arclength, x.isolines), c)
 
-    for q in detect_ibz_corner_crossings(c, region, ε)
-        e_ext = ε(q)
-        any(abs(e_ext - e) < 1e-10 * abs(e_ext) + 1e-14 for e in fe) && continue
-        # Find the adjacent boundary energies (odd indices) that bracket e_ext.
-        # Replacing the center between them and inserting 2 new entries keeps
-        # length(fe) odd, preserving the boundary/center interleaving invariant.
-        idx  = searchsortedfirst(fe, e_ext)
-        b_hi = isodd(idx) ? idx : idx + 1
-        b_lo = b_hi - 2
-        (b_lo < 1 || b_hi > length(fe)) && continue
-        c_idx    = b_lo + 1
-        e_new_lo = (fe[b_lo] + e_ext) / 2
-        e_new_hi = (e_ext + fe[b_hi]) / 2
-        bndl_ext    = contours(X, Y, E, [e_ext];    mask = region)[1]
-        bndl_new_lo = contours(X, Y, E, [e_new_lo]; mask = region)[1]
-        bndl_new_hi = contours(X, Y, E, [e_new_hi]; mask = region)[1]
-        sort_isolines!(bndl_ext); sort_isolines!(bndl_new_lo); sort_isolines!(bndl_new_hi)
-        fe[c_idx] = e_new_lo;   c[c_idx] = bndl_new_lo
-        insert!(fe, c_idx + 1, e_ext);    insert!(c, c_idx + 1, bndl_ext)
-        insert!(fe, c_idx + 2, e_new_hi); insert!(c, c_idx + 2, bndl_new_hi)
+    if depth < maxdepth # Recursive step on skipped corner regions.
+        skips = detect_skipped_corners(c, region, ε)
+        for (i, s, corner) in skips
+            corner_e_min = c[i].level - Δε
+            corner_e_max = c[i+2].level + Δε
+            corner_Δε = 0.1 * Δε * (corner_e_max - corner_e_min) / (e_max - e_min)
+            boundary_energies = ε.(corner)
+            @show boundary_energies
+            # boundary_energies = [c[i].level, c[i+2].level] # Initially populate with vertex energies
+            
+            boundary_extrema = ε.(find_boundary_extrema(corner..., ε))
+            # for (i, extremum) ∈ enumerate(boundary_extrema)
+            #     n_iso = length(contours(X, Y, E, [extremum]; mask = region)[1].isolines)
+            #     @show n_iso
+            #     e1 = extremum + eps(Float64)
+            #     e2 = extremum - eps(Float64)
+            #     δn_iso = length.(map(x -> x.isolines, contours(X, Y, E, [e1, e2]; mask = region))) .- n_iso
+            #     @show δn_iso
+            #     boundary_extrema[i] = [e1, e2][argmin(δn_iso)]
+            # end
+
+            append!(boundary_energies, boundary_extrema)
+            sort!(boundary_energies)
+            if length(boundary_energies) > 1
+                boundary_energies[begin] += eps(Float64)
+                boundary_energies[end]   -= eps(Float64)
+            end
+
+            δL0 = c[i].isolines[s].arclength / n_arc
+            longest_leg = 0.0
+            for i ∈ eachindex(corner)
+                leg = norm(corner[mod1(i + 1, 3)] - corner[i])
+                if leg > longest_leg
+                    longest_leg = leg
+                end
+            end
+
+            corner_n_arc = round(Int, 0.5 * longest_leg / δL0)
+            corner_mesh = mesh_region(corner, ε, band_index, corner_e_min, corner_e_max, corner_Δε, corner_n_arc, N; boundaries = boundary_energies, depth = depth + 1, maxdepth)
+            @show unique(energy.(corner_mesh.patches))
+            append!(all_patches,    corner_mesh.patches)
+            append!(all_corners,    corner_mesh.corners)
+            append!(all_corner_ids, corner_mesh.corner_inds)
+        end
     end
 
-    n_isolines = [length(bundle.isolines) for bundle in c]
+    # split_range_at_crossings(eachindex(c), crossings)
 
-    all_patches    = Patch[]
-    all_corners    = SVector{2,Float64}[]
-    all_corner_ids = SVector{4,Int}[]
+    n_isolines = [length(bundle.isolines) for bundle in c]    
 
     # Partition energy levels into contiguous runs with the same isoline count,
     # then process each sheet within each run independently.
@@ -904,7 +957,8 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
         n_iso = n_isolines[i]
         i     = j
 
-        (n_iso == 0 || run.stop == run.start) && continue
+        # n_iso == 0 && continue
+        (n_iso == 0 || (run.stop == run.start && isodd(run.start))) && continue
 
         need_lo = iseven(run.start)
         need_hi = iseven(run.stop)
@@ -915,13 +969,11 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
             e_lo_m    = find_marginal_energy(X, Y, E, region,
                             fe[run.start], fe[run.start - 1], n_iso)
             bundle_lo = contours(X, Y, E, [e_lo_m]; mask=region)[1]
-            sort_isolines!(bundle_lo)
         end
         if need_hi || shift_hi
             e_hi_m    = find_marginal_energy(X, Y, E, region,
                             fe[run.stop], fe[run.stop + 1], n_iso)
             bundle_hi = contours(X, Y, E, [e_hi_m]; mask=region)[1]
-            sort_isolines!(bundle_hi)
         end
 
         for s in 1:n_iso
@@ -962,8 +1014,8 @@ function mesh_region(region, ε, band_index::Int, T, Δε, n_arc::Int, N = 1001,
     return Mesh(all_patches, all_corners, all_corner_ids)
 end
 
-mesh_region(region, ε, T, Δε, n_arc::Int, N = 1001, α = 6.0; bbox = nothing, angle_threshold = π/8) =
-    mesh_region(region, ε, 1, T, Δε, n_arc, N, α; bbox, angle_threshold)
+mesh_region(region, ε, e_min, e_max, Δε, n_arc::Int, N = 1001; bbox = nothing, angle_threshold = π/8) =
+    mesh_region(region, ε, 1, e_min, e_max, Δε, n_arc, N; bbox, angle_threshold)
 
 """
     ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int[, N::Int, α::Real]; mask)
@@ -986,7 +1038,7 @@ function ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int
     bbox = length(mask) > 2 ? mask : nothing
 
     for i in eachindex(bands)
-        mesh = mesh_region(ibz, bands[i], i, T, Δε, n_arc, N, α; bbox, angle_threshold)
+        mesh = mesh_region(ibz, bands[i], i, -α * T, α * T, Δε, n_arc, N; bbox, angle_threshold)
         ℓ = length(full_corners)
         append!(full_patches, mesh.patches)
         append!(full_corner_ids, map(x -> SVector{4,Int}(x .+ ℓ), mesh.corner_inds))
@@ -1049,7 +1101,7 @@ function bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int 
     bbox = length(mask) > 2 ? mask : nothing
 
     for j in eachindex(bands)
-        mesh = mesh_region(ibz, bands[j], j, T, Δε, n_arc, N, α; bbox, angle_threshold)
+        mesh = mesh_region(ibz, bands[j], j, -α * T, α * T, Δε, n_arc, N; bbox, angle_threshold)
 
         for i in θperm
             O = get_matrix_representation(G.elements[i])
