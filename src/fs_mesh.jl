@@ -1,12 +1,16 @@
+###
+### Patch
+###
+
 abstract type AbstractPatch end
 
 """
     Patch(e::Float64, k::SVector{2,Float64}, v::SVector{2,Float64}, de::Float64, dV::Float64, jinv::Matrix{Float64}, djinv::Float64, band_index::Int)
 
-Construct a `Patch` object defining regions of momentum space over which to integrate. 
+Construct a `Patch` object defining regions of momentum space over which to integrate.
 # Fields
 - `e`: energy
-- `k`: momentum 
+- `k`: momentum
 - `v`: group velocity
 - `de`: width of patch in energy
 - `dV`: area of patch in momentum space
@@ -28,16 +32,16 @@ end
 """
     VirtualPatch(e::Float64, k::SVector{2,Float64}, v::SVector{2,Float64}, band_index::Int)
 
-Construct a `VirtualPatch` object that can be operated on as if it were a `Patch` for the purposes of sampling momentum, energy, and group velocity but which cannot be integrated over. 
+Construct a `VirtualPatch` object that can be operated on as if it were a `Patch` for the purposes of sampling momentum, energy, and group velocity but which cannot be integrated over.
 # Fields
 - `e`: energy
-- `k`: momentum 
+- `k`: momentum
 - `v`: group velocity
 - `band_index`: index of band from which `e` was sampled at `k`
 """
 struct VirtualPatch <: AbstractPatch
     e::Float64
-    k::SVector{2,Float64} 
+    k::SVector{2,Float64}
     v::SVector{2,Float64}
     band_index::Int
 end
@@ -48,8 +52,58 @@ velocity(p::AbstractPatch) = p.v
 band(p::AbstractPatch)     = p.band_index
 area(p::Patch)             = p.dV
 
+"""
+    patch_op(p::Patch, M::Matrix)
+
+Apply the active transformation defined by matrix `M` on the relevant fields of patch `p`.
+"""
+function patch_op(p::Patch, M::Matrix)
+    return Patch(
+        p.e,
+        SVector{2}(M * p.k),
+        SVector{2}(M * p.v),
+        p.de,
+        p.dV,
+        M * p.jinv,
+        p.djinv,
+        p.band_index
+    )
+end
+
+function patch_op(p::VirtualPatch, M::Matrix)
+    return VirtualPatch(
+        p.e,
+        SVector{2}(M * p.k),
+        SVector{2}(M * p.v),
+        p.band_index
+    )
+end
+
 ###
-### HamiltonianBand
+### Mesh
+###
+
+"""
+    Mesh(patches::Vector{Patch}, corners::Vector{SVector{2,Float64}}, corner_inds::Vector{SVector{4,Int}})
+
+Construct a container struct of patches which contains information for plotting functions defined on patch centers.
+# Fields
+- `patches`: Vector of patches
+- `corners`: Vector of points on patch corners for plotting mesh
+- `corner_inds`: Vector of vector of indices in the `corners` vector corresponding to the corners of each patch in `patches`
+"""
+struct Mesh
+    patches::Vector{Patch}
+    corners::Vector{SVector{2, Float64}}
+    corner_inds::Vector{SVector{4, Int}}
+end
+
+patches(m::Mesh) = m.patches
+corners(m::Mesh) = m.corners
+corner_indices(m::Mesh) = m.corner_inds
+
+###
+### Band structure
 ###
 
 """
@@ -103,51 +157,9 @@ function band_velocity(b::HamiltonianBand, k)
     return SVector{2,Float64}(real(ψ'*dHx*ψ), real(ψ'*dHy*ψ))
 end
 
-"""
-    patch_op(p::Patch, M::Matrix)
-
-Apply the active transformation defined by matrix `M` on the relevant fields of patch `p`.
-"""
-function patch_op(p::Patch, M::Matrix)
-    return Patch(
-        p.e,
-        SVector{2}(M * p.k), 
-        SVector{2}(M * p.v),
-        p.de,
-        p.dV,
-        M * p.jinv, 
-        p.djinv,
-        p.band_index
-    )
-end
-
-function patch_op(p::VirtualPatch, M::Matrix)
-    return VirtualPatch(
-        p.e,
-        SVector{2}(M * p.k), 
-        SVector{2}(M * p.v),
-        p.band_index
-    )
-end
-
-"""
-    Mesh(patches::Vector{Patch}, corners::Vector{SVector{2,Float64}}, corner_inds::Vector{SVector{4,Int}})
-
-Construct a container struct of patches which contains information for plotting functions defined on patch centers.
-# Fields
-- `patches`: Vector of patches
-- `corners`: Vector of points on patch corners for plotting mesh
-- `corner_inds`: Vector of vector of indices in the `corners` vector corresponding to the corners of each patch in `patches`
-"""
-struct Mesh
-    patches::Vector{Patch}
-    corners::Vector{SVector{2, Float64}} 
-    corner_inds::Vector{SVector{4, Int}}
-end
-
-patches(m::Mesh) = m.patches
-corners(m::Mesh) = m.corners
-corner_indices(m::Mesh) = m.corner_inds
+###
+### BZ symmetry
+###
 
 """
     BZSymmetryMap
@@ -168,6 +180,30 @@ struct BZSymmetryMap
     g_perms::Vector{Vector{Int}}
     g_inv_perms::Vector{Vector{Int}}
     ibz_g_idx::Dict{Int,Int}
+end
+
+"""
+    group_angle_perm(G, ibz) -> Vector{Int}
+
+Return the permutation that sorts the elements of point group `G` by the polar angle of
+the image of the IBZ centroid under each element's matrix representation.
+
+Concretely, for each group element `g` with 2×2 matrix `O`, the angle
+`θ_g = atan(k[2], k[1]) mod 2π` is computed where `k = O * centroid(ibz)`.
+The returned index vector `p` satisfies `θ_{p[1]} ≤ θ_{p[2]} ≤ … ≤ θ_{p[|G|]}`.
+
+This ordering assigns each group element to a unique angular sector of the BZ and is the
+canonical sector ordering shared by [`bz_mesh`](@ref) and [`bz_symmetry_map`](@ref).
+"""
+function group_angle_perm(G, ibz)
+    centroid = sum(ibz)
+    θs = Vector{Float64}(undef, length(G.elements))
+    for i in eachindex(G.elements)
+        O = get_matrix_representation(G.elements[i])
+        k = O * centroid
+        θs[i] = mod(atan(k[2], k[1]), 2π)
+    end
+    return sortperm(θs)
 end
 
 """
@@ -221,7 +257,7 @@ function bz_symmetry_map(grid::Vector{Patch}, l::Lattice)
 end
 
 ###
-### General IBZ Meshes
+### Energy-level grid
 ###
 
 """
@@ -248,7 +284,7 @@ function foliate(x::AbstractVector)
 end
 
 function boundary_energies(X, Y, E, ε, region, e_min, e_max, Δε)
-    n_levels = max(1, ceil(Int, (e_max - e_min) / Δε)) # always even → E=0 on a patch center 
+    n_levels = max(1, ceil(Int, (e_max - e_min) / Δε)) # always even → E=0 on a patch center
     energies = collect(LinRange(e_min, e_max, n_levels))
 
     e_actual_min, e_actual_max = if length(region) > 2
@@ -288,7 +324,7 @@ function boundary_energies(X, Y, E, ε, region, e_min, e_max, Δε)
     # Shift energy levels to include a corner energy if the dispersion crosses it
     for k ∈ region
         k == [0.0, 0.0] && continue
-        corner_e =  ε(k)
+        corner_e = ε(k)
         if energies[begin] < corner_e < energies[end]
             i = argmin(abs.(energies .- corner_e))
             if i == firstindex(energies) || i == lastindex(energies)
@@ -304,6 +340,10 @@ function boundary_energies(X, Y, E, ε, region, e_min, e_max, Δε)
 
     return energies
 end
+
+###
+### IBZ meshing
+###
 
 """
     mesh_sheet(sheet_isolines, ε, band_index, n_arc_s, foliated_energies, corner_offset; angle_threshold)
@@ -459,12 +499,8 @@ function find_marginal_energy(X, Y, E_mat, region, e_target, e_outer, n_iso_targ
     return a
 end
 
-###
-### IBZ corner crossing detection
-###
-
 """
-    detect_skipped_corners(c, region, ε[; tol])
+    detect_skipped_corners(c, region[; tol])
 
 Detect crossings of open isoline endpoints across corners of the IBZ polygon `region`
 as energy varies through the bundles in `c`.
@@ -475,8 +511,7 @@ whether one endpoint of an open isoline slides from one IBZ edge to an adjacent 
 # Arguments
 - `c::Vector{IsolineBundle}`: isoline bundles ordered by energy.
 - `region`: IBZ polygon vertices as a counterclockwise `Vector{SVector{2,Float64}}`.
-- `ε`: dispersion function accepting an `AbstractVector` of length 2.
-- `tol`: collinearity/range tolerance passed to `edge_index` (default `1e-8`).
+- `tol`: collinearity/range tolerance passed to [`edge_index`](@ref) (default `1e-8`).
 
 # Returns
 `Vector` of `(i, s, path)` tuples, one per crossing event:
@@ -490,8 +525,7 @@ Multiple sheets at the same energy level each produce a separate entry with the 
 """
 function detect_skipped_corners(
     c::Vector{IsolineBundle},
-    region,
-    ε;
+    region;
     tol = 1e-8,
 )
     events = Tuple{Int, Int, Vector{SVector{2, Float64}}}[]
@@ -525,8 +559,8 @@ function detect_skipped_corners(
             p22 = iso_2.points[end]
 
             # Gather sets of edges
-            e1 = [edge_index(p11, region), edge_index(p12, region)]
-            e2 = [edge_index(p21, region), edge_index(p22, region)]
+            e1 = [edge_index(p11, region; tol), edge_index(p12, region; tol)]
+            e2 = [edge_index(p21, region; tol), edge_index(p22, region; tol)]
 
             Set(e1) == Set(e2) && continue
 
@@ -680,7 +714,7 @@ function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int
     # @show map(x -> map(y -> y.arclength, x.isolines), c)
 
     if depth < maxdepth # Recursive step on skipped corner regions.
-        skips = detect_skipped_corners(c, region, ε)
+        skips = detect_skipped_corners(c, region)
         for (i, s, corner) in skips
             corner_e_min = c[i].level - Δε
             corner_e_max = c[i+2].level + Δε
@@ -688,7 +722,7 @@ function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int
             boundary_energies = ε.(corner)
             @show boundary_energies
             # boundary_energies = [c[i].level, c[i+2].level] # Initially populate with vertex energies
-            
+
             boundary_extrema = ε.(find_boundary_extrema(corner..., ε))
             # for (i, extremum) ∈ enumerate(boundary_extrema)
             #     n_iso = length(contours(X, Y, E, [extremum]; mask = region)[1].isolines)
@@ -727,7 +761,7 @@ function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int
 
     # split_range_at_crossings(eachindex(c), crossings)
 
-    n_isolines = [length(bundle.isolines) for bundle in c]    
+    n_isolines = [length(bundle.isolines) for bundle in c]
 
     # Partition energy levels into contiguous runs with the same isoline count,
     # then process each sheet within each run independently.
@@ -807,6 +841,10 @@ mesh_region(region, ε, e_min, e_max, Δε, n_arc::Int, N = 1001;
             bbox = nothing, angle_threshold = π/8, boundaries::AbstractVector = [], maxdepth::Int = 2) =
     mesh_region(region, ε, 1, e_min, e_max, Δε, n_arc, N; bbox, angle_threshold, boundaries, maxdepth)
 
+###
+### Public mesh API
+###
+
 """
     ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int[, N::Int, α::Real]; mask, angle_threshold, boundaries, maxdepth)
 
@@ -849,30 +887,6 @@ ibz_mesh(l::Lattice, ε::Function, T, Δε, n_arc::Int, N::Int = 1001, α::Real 
          mask = SVector{2,Float64}[], angle_threshold = π/8,
          boundaries::AbstractVector = [], maxdepth::Int = 2) =
     ibz_mesh(l, [ε], T, Δε, n_arc, N, α; mask, angle_threshold, boundaries, maxdepth)
-
-"""
-    group_angle_perm(G, ibz) -> Vector{Int}
-
-Return the permutation that sorts the elements of point group `G` by the polar angle of
-the image of the IBZ centroid under each element's matrix representation.
-
-Concretely, for each group element `g` with 2×2 matrix `O`, the angle
-`θ_g = atan(k[2], k[1]) mod 2π` is computed where `k = O * centroid(ibz)`.
-The returned index vector `p` satisfies `θ_{p[1]} ≤ θ_{p[2]} ≤ … ≤ θ_{p[|G|]}`.
-
-This ordering assigns each group element to a unique angular sector of the BZ and is the
-canonical sector ordering shared by [`bz_mesh`](@ref) and [`bz_symmetry_map`](@ref).
-"""
-function group_angle_perm(G, ibz)
-    centroid = sum(ibz)
-    θs = Vector{Float64}(undef, length(G.elements))
-    for i in eachindex(G.elements)
-        O = get_matrix_representation(G.elements[i])
-        k = O * centroid
-        θs[i] = mod(atan(k[2], k[1]), 2π)
-    end
-    return sortperm(θs)
-end
 
 """
     bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int[, N::Int, α::Real]; mask, angle_threshold, boundaries, maxdepth)
@@ -924,6 +938,10 @@ bz_mesh(l::Lattice, ε, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0;
         mask = SVector{2,Float64}[], angle_threshold = π/8,
         boundaries::AbstractVector = [], maxdepth::Int = 2) =
     bz_mesh(l, [ε], T, Δε, n_arc, N, α; mask, angle_threshold, boundaries, maxdepth)
+
+###
+### Isotropic mesh
+###
 
 function radial_extrema(ε, kf::AbstractVector{<:Real}, e_window; N_prelim = 100)
     # Use the known Fermi crossings to bracket extrema and bound r_max.
