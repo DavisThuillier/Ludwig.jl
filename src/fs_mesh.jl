@@ -708,10 +708,8 @@ function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int
     end
 
     be = length(boundaries) > 0 ? sort(unique(boundaries)) : boundary_energies(X, Y, E, ε, region, e_min, e_max, Δε)
-    @show be
     fe = foliate(be)
     c = contours(X, Y, E, fe; mask = region)
-    # @show map(x -> map(y -> y.arclength, x.isolines), c)
 
     if depth < maxdepth # Recursive step on skipped corner regions.
         skips = detect_skipped_corners(c, region)
@@ -720,20 +718,8 @@ function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int
             corner_e_max = c[i+2].level + Δε
             corner_Δε = 0.1 * Δε * (corner_e_max - corner_e_min) / (e_max - e_min)
             boundary_energies = ε.(corner)
-            @show boundary_energies
-            # boundary_energies = [c[i].level, c[i+2].level] # Initially populate with vertex energies
-
             boundary_extrema = ε.(find_boundary_extrema(corner..., ε))
-            # for (i, extremum) ∈ enumerate(boundary_extrema)
-            #     n_iso = length(contours(X, Y, E, [extremum]; mask = region)[1].isolines)
-            #     @show n_iso
-            #     e1 = extremum + eps(Float64)
-            #     e2 = extremum - eps(Float64)
-            #     δn_iso = length.(map(x -> x.isolines, contours(X, Y, E, [e1, e2]; mask = region))) .- n_iso
-            #     @show δn_iso
-            #     boundary_extrema[i] = [e1, e2][argmin(δn_iso)]
-            # end
-
+            
             append!(boundary_energies, boundary_extrema)
             sort!(boundary_energies)
             if length(boundary_energies) > 1
@@ -752,14 +738,11 @@ function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int
 
             corner_n_arc = round(Int, 0.5 * longest_leg / δL0)
             corner_mesh = mesh_region(corner, ε, band_index, corner_e_min, corner_e_max, corner_Δε, corner_n_arc, N; boundaries = boundary_energies, depth = depth + 1, maxdepth)
-            @show unique(energy.(corner_mesh.patches))
             append!(all_patches,    corner_mesh.patches)
             append!(all_corners,    corner_mesh.corners)
             append!(all_corner_ids, corner_mesh.corner_inds)
         end
     end
-
-    # split_range_at_crossings(eachindex(c), crossings)
 
     n_isolines = [length(bundle.isolines) for bundle in c]
 
