@@ -123,10 +123,10 @@ end
 
 function patch_op(p::VirtualPatch, M::Matrix)
     return VirtualPatch(
-        p.energy,
-        SVector{2}(M * p.momentum), 
+        p.e,
+        SVector{2}(M * p.k), 
         SVector{2}(M * p.v),
-        band_index
+        p.band_index
     )
 end
 
