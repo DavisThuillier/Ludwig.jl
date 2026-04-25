@@ -22,10 +22,10 @@ T = 0.025  # eV
 The collision matrix requires sampling the full Brillouin zone:
 
 ```julia
-n_levels = 4
-n_cuts   = 10
+Δε    = 0.1   # energy spacing between boundary contours (eV)
+n_arc = 10    # patches per arc segment
 
-bz   = bz_mesh(l, [ε], T, n_levels, n_cuts)
+bz   = bz_mesh(l, [ε], T, Δε, n_arc)
 grid = bz.patches
 N    = length(grid)
 

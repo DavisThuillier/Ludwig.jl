@@ -47,3 +47,12 @@ Modules = [Ludwig]
 Private = false
 Pages = ["utilities.jl", "constants.jl"]
 ```
+
+## Visualization
+
+These functions are provided by the `LudwigMakieExt` extension and are only available when a Makie backend (e.g. `CairoMakie`) is loaded.
+
+```@docs
+plot_mesh!
+plot_mesh
+```

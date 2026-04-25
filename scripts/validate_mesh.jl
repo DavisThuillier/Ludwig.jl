@@ -3,7 +3,7 @@ using LinearAlgebra
 
 # Run validate_mesh.jl --plot to visualize the mesh with CairoMakie
 if "--plot" in ARGS
-    using CairoMakie, GeometryBasics, LaTeXStrings
+    using CairoMakie, LaTeXStrings
 end
 
 function (@main)(args)
@@ -22,10 +22,10 @@ function (@main)(args)
 
     ## Mesh generation ####################################################
 
-    n_levels = 7   # number of energy contour boundaries (n_levels - 1 patches in energy)
-    n_cuts   = 12  # number of angular cuts along the Fermi surface (n_cuts - 1 patches per sector)
+    Δε    = 0.05  # energy spacing between boundary contours (eV)
+    n_arc = 12    # patches per arc segment along each contour
 
-    mesh = ibz_mesh(l, [ε], T, n_levels, n_cuts)
+    mesh = ibz_mesh(l, [ε], T, Δε, n_arc)
     grid = mesh.patches
     N    = length(grid)
 
@@ -73,26 +73,21 @@ function (@main)(args)
 
     ## Full BZ mesh #######################################################
 
-    bz = bz_mesh(l, [ε], T, n_levels, n_cuts)
+    bz = bz_mesh(l, [ε], T, Δε, n_arc)
     println("\nIBZ patches: ", length(mesh.patches))
     println("BZ patches:  ", length(bz.patches), "  (should be 8×)")
     @assert length(bz.patches) == 8 * length(mesh.patches) "BZ patch count is not 8× the IBZ patch count!"
 
-    ## Visualization (requires CairoMakie and GeometryBasics) #############
+    ## Visualization (requires CairoMakie) ################################
 
     if "--plot" in args
-        polys = [Polygon([Point2f(mesh.corners[j]) for j in mesh.corner_inds[i]]) for i in 1:N]
-
-        fig = Figure()
-        ax  = Axis(fig[1, 1]; 
-            aspect = DataAspect(), 
-            xlabel = L"k_x (2π / a_x)", 
-            ylabel = L"k_y (2π / a_y)",
-            xgridvisible = false,
-            ygridvisible = false,
-            title = "IBZ Fermi surface mesh (NNTB, μ = $μ eV, T = $T eV)"
+        fig, ax, pl = plot_mesh(mesh;
+            axis = (
+                xlabel = L"k_x (2π / a_x)",
+                ylabel = L"k_y (2π / a_y)",
+                title  = "IBZ Fermi surface mesh (NNTB, μ = $μ eV, T = $T eV)",
+            ),
         )
-        pl  = poly!(ax, polys; color = E, colormap = :viridis)
         ibz_verts = get_ibz(l)
         lines!(ax, Point2f.(vcat(ibz_verts, [ibz_verts[1]])); color = :black, linewidth = 1.5)
         Colorbar(fig[1, 2], pl; label = "Energy (eV)")

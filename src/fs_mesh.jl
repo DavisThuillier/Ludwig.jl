@@ -683,7 +683,7 @@ for the underlying marching-squares contour extraction.
 - `depth`: current recursion depth (default `1`; do not set manually).
 - `maxdepth`: maximum recursion depth for corner re-meshing (default `2`).
 
-See also [`ibz_mesh`](@ref), [`bz_mesh`](@ref), [`mesh_sheet`](@ref).
+See also [`ibz_mesh`](@ref), [`bz_mesh`](@ref).
 """
 function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int, N = 1001;
                      bbox = nothing, angle_threshold = π/8, boundaries::AbstractVector = [], depth = 1, maxdepth = 2)
