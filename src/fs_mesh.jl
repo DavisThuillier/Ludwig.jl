@@ -229,7 +229,10 @@ function foliate(x::AbstractVector)
 end
 
 function boundary_energies(X, Y, E, ε, region, e_min, e_max, Δε)
-    n_levels = max(1, ceil(Int, (e_max - e_min) / Δε)) # always even → E=0 on a patch center
+    n_levels = max(1, ceil(Int, (e_max - e_min) / Δε))
+    if isapprox(e_min, -e_max) && isodd(n_levels)
+        n_levels += 1 # force even so E=0 lands on a patch center, not a boundary
+    end
     energies = collect(LinRange(e_min, e_max, n_levels))
 
     e_actual_min, e_actual_max = if length(region) > 2
@@ -268,7 +271,6 @@ function boundary_energies(X, Y, E, ε, region, e_min, e_max, Δε)
 
     # Shift energy levels to include a corner energy if the dispersion crosses it
     for k ∈ region
-        k == [0.0, 0.0] && continue
         corner_e = ε(k)
         if energies[begin] < corner_e < energies[end]
             i = argmin(abs.(energies .- corner_e))
@@ -318,8 +320,6 @@ function mesh_sheet(
     cind = 1
 
     for i in 2:2:2*n_levels-1 # Loop over center energy indices
-        arclength_fractions = LinRange(0, 1, 2 * n_arc_s + 1)
-
         cusp_fractions = mapreduce(
             iso -> find_cusp_fraction(iso.points; angle_threshold),
             vcat,
@@ -340,16 +340,14 @@ function mesh_sheet(
             cusp_fractions, angle_threshold,
         )
 
-        # Identify endpoints of contours as corners of first patch
-        endpoints = [sheet_isolines[i-1].points[begin], sheet_isolines[i-1].points[end]]
-        i3 = argmin(map(x -> norm(x .- k[1]), endpoints))
-        ij3 = (i3, i3)
-        corners[cind] = endpoints[i3]
-
-        endpoints = [sheet_isolines[i+1].points[begin], sheet_isolines[i+1].points[end]]
-        i4 = argmin(map(x -> norm(x .- k[1]), endpoints))
-        ij4 = (i4, i4)
-        corners[cind+1] = endpoints[i4]
+        # Index of the original contour point nearest each corner along
+        # sheet_isolines[i±1]. `aligned_arclength_slice` may reverse the
+        # contour and pin cusps, so the corners are NOT at the raw arclength
+        # fraction of the contour — locate them geometrically instead.
+        inner_pts = sheet_isolines[i-1].points
+        outer_pts = sheet_isolines[i+1].points
+        inner_corner_idx = [argmin(norm(p - kc) for p in inner_pts) for kc in k_inner]
+        outer_corner_idx = [argmin(norm(p - kc) for p in outer_pts) for kc in k_outer]
 
         corners[cind]   = k_inner[1]
         corners[cind+1] = k_outer[1]
@@ -361,29 +359,18 @@ function mesh_sheet(
             corner_ids[i÷2, j÷2] = SVector{4, Int}(cind-2, cind-1, cind+1, cind) .+ corner_offset
             cind += 2
 
-            # Identify contour points bordering corners
-            sp1 = sortperm(get_arclengths(sheet_isolines[i-1].points) / sheet_isolines[i-1].arclength; by = x -> abs(x - arclength_fractions[j-1]))
-            ij1 = length(sp1) >= 2 ? sp1[1:2] : [sp1[1], sp1[1]]
-            sp2 = sortperm(get_arclengths(sheet_isolines[i+1].points) / sheet_isolines[i+1].arclength; by = x -> abs(x - arclength_fractions[j+1]))
-            ij2 = length(sp2) >= 2 ? sp2[1:2] : [sp2[1], sp2[1]]
-
-            # Identify which if the points which border the corner on the contour are closer to patch center
-            i3, i1 = map(x -> x[argmin(
-                [norm(k[j] - sheet_isolines[i-1].points[x[1]]),
-                norm(k[j] - sheet_isolines[i-1].points[x[2]])])],
-                (ij3, ij1)
-            )
-            i4, i2 = map(x -> x[argmin(
-                [norm(k[j] - sheet_isolines[i+1].points[x[1]]),
-                norm(k[j] - sheet_isolines[i+1].points[x[2]])])],
-                (ij4, ij2)
-            )
+            # Original-contour indices nearest each corner of this patch.
+            # The patch spans arclength [j-1, j+1] on the center contour, so the
+            # inner/outer edges run between the corresponding aligned-slice
+            # corners on sheet_isolines[i±1].
+            i3 = inner_corner_idx[j-1]
+            i1 = inner_corner_idx[j+1]
+            i4 = outer_corner_idx[j-1]
+            i2 = outer_corner_idx[j+1]
 
             poly = vcat(corners[cind-4:cind-1], sheet_isolines[i-1].points[min(i1,i3):max(i1,i3)], sheet_isolines[i+1].points[min(i2,i4):max(i2,i4)])
 
             dV = poly_area(poly, k[j])
-
-            ij3 = ij1; ij4 = ij2
 
             Δε = foliated_energies[i+1] - foliated_energies[i-1]
             Δs = arclengths[j+1] - arclengths[j-1]
@@ -445,7 +432,7 @@ function find_marginal_energy(X, Y, E_mat, region, e_target, e_outer, n_iso_targ
 end
 
 """
-    detect_skipped_corners(c, region[; tol])
+    detect_skipped_corners(c, region[; corner_levels, tol])
 
 Detect crossings of open isoline endpoints across corners of the IBZ polygon `region`
 as energy varies through the bundles in `c`.
@@ -456,7 +443,11 @@ whether one endpoint of an open isoline slides from one IBZ edge to an adjacent 
 # Arguments
 - `c::Vector{IsolineBundle}`: isoline bundles ordered by energy.
 - `region`: IBZ polygon vertices as a counterclockwise `Vector{SVector{2,Float64}}`.
-- `tol`: collinearity/range tolerance passed to [`edge_index`](@ref) (default `1e-8`).
+- `corner_levels`: energies at which a contour is pinned exactly to an IBZ corner; bundle
+  pairs containing such a level are skipped because their endpoints terminate at the
+  corner by construction rather than crossing past it (default `Float64[]`).
+- `tol`: collinearity/range tolerance passed to [`edge_index`](@ref) and used as the
+  matching tolerance against `corner_levels` (default `1e-8`).
 
 # Returns
 `Vector` of `(i, s, path)` tuples, one per crossing event:
@@ -471,6 +462,7 @@ Multiple sheets at the same energy level each produce a separate entry with the 
 function detect_skipped_corners(
     c::Vector{IsolineBundle},
     region;
+    corner_levels::AbstractVector{<:Real} = Float64[],
     tol = 1e-8,
 )
     events = Tuple{Int, Int, Vector{SVector{2, Float64}}}[]
@@ -478,13 +470,16 @@ function detect_skipped_corners(
     n_reg = length(region)
     length(c) == 0 && return events
 
+    at_corner_level(level) = any(abs(level - cl) < tol for cl in corner_levels)
+
     for i in 1:2:(length(c) - 2)
         b1 = c[i].isolines
         b2 = c[i + 2].isolines
 
-        # Check that neither contour is at a corner energy
-        # minimum(abs.(ε.(region) .- c[i].level)) < tol && continue
-        # minimum(abs.(ε.(region) .- c[i+2].level)) < tol && continue
+        # A contour pinned to a corner energy terminates at the corner; the
+        # neighbouring contour necessarily sits on the two adjacent edges,
+        # which would otherwise look like a corner crossing here.
+        (at_corner_level(c[i].level) || at_corner_level(c[i + 2].level)) && continue
 
         n_s = length(b1)
         if n_s != length(b2)
@@ -639,6 +634,7 @@ function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int
 
     # Sample coordinates and energies for marching squares
     ((x_min, x_max), (y_min, y_max)) = get_bounding_box(isnothing(bbox) ? region : bbox)
+    @show x_min, x_max
     Δx = (x_max - x_min) / (N - 1)
     Ny = round(Int, (y_max - y_min) / Δx)
     N  < 2 || Ny < 2 && return Mesh(all_patches, all_corners, all_corner_ids)
@@ -657,7 +653,10 @@ function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int
     c = contours(X, Y, E, fe; mask = region)
 
     if depth < maxdepth # Recursive step on skipped corner regions.
-        skips = detect_skipped_corners(c, region)
+        # Corner energies that may be pinned by `boundary_energies`; matches the
+        # set of levels excluded there so the two stay in sync.
+        corner_levels = [ε(k) for k in region if k != [0.0, 0.0]]
+        skips = detect_skipped_corners(c, region; corner_levels)
         for (i, s, corner) in skips
             corner_e_min = c[i].level - Δε
             corner_e_max = c[i+2].level + Δε
