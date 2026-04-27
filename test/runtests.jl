@@ -14,6 +14,6 @@ end
     include("ibz_fill_test.jl")
 end
 
-@testset "FS Mesh Tests" begin
-    include("fs_mesh_test.jl")
+@testset "Band Tests" begin
+    include("band_test.jl")
 end
