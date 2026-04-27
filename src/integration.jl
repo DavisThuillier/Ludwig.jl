@@ -183,28 +183,8 @@ function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc, T, exact::Boo
     end
 end
 
-function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, ε::Function, T::Real)
-    v::SVector{2,Float64} = ForwardDiff.gradient(ε, k)
-    return ee_kernel!(ζ, u, a, b, c, v, εabc, T)
-end
-
-function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, band::HamiltonianBand, T::Real)
-    v::SVector{2,Float64} = band_velocity(band, k)
-    return ee_kernel!(ζ, u, a, b, c, v, εabc, T)
-end
-
-function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, itp::ScaledInterpolation, T::Real)
-    v::SVector{2,Float64} = Interpolations.gradient(itp, k[1], k[2])
-    return ee_kernel!(ζ, u, a, b, c, v, εabc, T)
-end
-
 ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, d::VirtualPatch, T::Real) = ee_kernel!(ζ, u, a, b, c, d.v, d.e, T)
 ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, d::VirtualPatch, T::Real, exact::Bool) = ee_kernel!(ζ, u, a, b, c, d.v, d.e, T, exact)
-
-function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, k, εabc, itp::ScaledInterpolation, invrlv, T::Real)
-    v::SVector{2,Float64} = invrlv * Interpolations.gradient(itp, k[1], k[2])
-    return ee_kernel!(ζ, u, a, b, c, v, εabc, T)
-end
 
 #################################
 ### Generic Scattering Vertex ###
