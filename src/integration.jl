@@ -229,34 +229,20 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
     qij = grid[i].k - grid[j].k
 
     kijm = Vector{Float64}(undef, 2)
-    kijm_rlb = Vector{Float64}(undef, 2)
-
     qimj = Vector{Float64}(undef, 2)
-    qimj_rlb = Vector{Float64}(undef, 2)
 
     invrlv = inv(rlv)
-    is_function = map(x -> isa(x, Function) || isa(x, HamiltonianBand), bands) # For determining how to evaluate bands
 
     for m in eachindex(grid)
         kijm .= kij .- grid[m].k
-        kijm_rlb .= mod.(invrlv * kijm, 1.0) # In reciprocal lattice basis, mapped to interpolation region
 
         for μ in eachindex(bands)
-            if is_function[μ]
-                p = VirtualPatch(
-                    bands[μ](kijm),
-                    umklapp ? map_to_bz(kijm, bz, rlv, invrlv) : kijm,
-                    band_velocity(bands[μ], kijm),
-                    μ
-                )
-            else # Otherwise assume this is an interpolation
-                p = VirtualPatch(
-                    bands[μ](kijm_rlb[1], kijm_rlb[2]),
-                    umklapp ? map_to_bz(kijm, bz, rlv, invrlv) : kijm,
-                    invrlv * Interpolations.gradient(bands[μ], kijm_rlb[1], kijm_rlb[2]),
-                    μ
-                )
-            end
+            p = VirtualPatch(
+                bands[μ](kijm),
+                umklapp ? map_to_bz(kijm, bz, rlv, invrlv) : kijm,
+                band_velocity(bands[μ], kijm),
+                μ
+            )
             w123 = Weff_squared(grid[i], grid[j], grid[m], p; kwargs)
 
             if w123 != 0
@@ -265,24 +251,14 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         end
 
         qimj .= qij .+ grid[m].k
-        qimj_rlb .= mod.(invrlv * qimj, 1.0) # In reciprocal lattice basis
 
         for μ in eachindex(bands)
-            if is_function[μ]
-                p = VirtualPatch(
-                    bands[μ](qimj),
-                    umklapp ? map_to_bz(qimj, bz, rlv, invrlv) : qimj,
-                    band_velocity(bands[μ], qimj),
-                    μ
-                )
-            else
-                p = VirtualPatch(
-                    bands[μ](qimj_rlb[1], qimj_rlb[2]),
-                    umklapp ? map_to_bz(qimj, bz, rlv, invrlv) : qimj,
-                    Interpolations.gradient(bands[μ], qimj_rlb[1], qimj_rlb[2]),
-                    μ
-                )
-            end
+            p = VirtualPatch(
+                bands[μ](qimj),
+                umklapp ? map_to_bz(qimj, bz, rlv, invrlv) : qimj,
+                band_velocity(bands[μ], qimj),
+                μ
+            )
 
             w123 = Weff_squared(grid[i], grid[m], grid[j], p; kwargs)
             w124 = Weff_squared(grid[i], grid[m], p, grid[j]; kwargs)
