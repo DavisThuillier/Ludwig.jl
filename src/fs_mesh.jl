@@ -103,61 +103,6 @@ corners(m::Mesh) = m.corners
 corner_indices(m::Mesh) = m.corner_inds
 
 ###
-### Band structure
-###
-
-"""
-    HamiltonianBand(H, n)
-
-Wrap a matrix-valued Hamiltonian function `H(k)` for the `n`-th band.
-
-`H` must return a square Hermitian (or real symmetric) matrix for each momentum
-`k::AbstractVector`. The band energy is the `n`-th eigenvalue (in ascending order);
-the group velocity is computed by the Hellmann-Feynman theorem using central finite
-differences to differentiate `H`.
-
-# Examples
-```julia
-function H(k)
-    t = 1.0
-    [0.0+0im  t*(exp(im*k[1]) + exp(im*k[2]));
-     t*(exp(-im*k[1]) + exp(-im*k[2]))  0.0+0im]
-end
-band = HamiltonianBand(H, 1)  # lower band
-```
-
-See also [`bz_mesh`](@ref), [`ibz_mesh`](@ref).
-"""
-struct HamiltonianBand{F}
-    H::F
-    n::Int
-end
-
-(b::HamiltonianBand)(k) = real(eigvals(Hermitian(b.H(k)))[b.n])
-
-"""
-    band_velocity(band, k)
-
-Return the group velocity of `band` at momentum `k`.
-
-Dispatches on band type: plain functions use `ForwardDiff.gradient`; a
-[`HamiltonianBand`](@ref) uses the Hellmann-Feynman theorem with central finite
-differences applied to the Hamiltonian matrix.
-"""
-band_velocity(ε::Function, k) = gradient(ε, k)
-
-function band_velocity(b::HamiltonianBand, k)
-    F   = eigen(Hermitian(b.H(k)))
-    ψ   = F.vectors[:, b.n]
-    δ   = sqrt(eps(Float64))
-    e1  = SVector{2,Float64}(1, 0)
-    e2  = SVector{2,Float64}(0, 1)
-    dHx = (b.H(k + δ*e1) - b.H(k - δ*e1)) / (2δ)
-    dHy = (b.H(k + δ*e2) - b.H(k - δ*e2)) / (2δ)
-    return SVector{2,Float64}(real(ψ'*dHx*ψ), real(ψ'*dHy*ψ))
-end
-
-###
 ### BZ symmetry
 ###
 
