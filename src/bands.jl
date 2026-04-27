@@ -48,7 +48,9 @@ given a Cartesian momentum `k`, the band evaluates `itp` at
 
 The group velocity is obtained from `Interpolations.gradient` on the spline
 basis (analytic derivatives, not autodiff) and transformed back to Cartesian
-momentum coordinates by `invrlv`.
+momentum coordinates by ``\\nabla_k \\varepsilon = \\mathrm{invrlv}^\\top
+\\nabla_f \\mathrm{itp}``, where ``f = \\mathrm{invrlv}\\,k`` are the
+fractional reciprocal coordinates.
 
 See also [`HamiltonianBand`](@ref), [`band_velocity`](@ref).
 """
@@ -92,5 +94,5 @@ end
 
 function band_velocity(b::InterpolatedBand, k)
     rlb = mod.(b.invrlv * k, 1.0)
-    return b.invrlv * Interpolations.gradient(b.itp, rlb[1], rlb[2])
+    return b.invrlv' * Interpolations.gradient(b.itp, rlb[1], rlb[2])
 end
