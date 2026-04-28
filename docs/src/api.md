@@ -21,7 +21,7 @@ Pages = ["groups.jl"]
 ```@autodocs
 Modules = [Ludwig]
 Private = false
-Pages = ["fs_mesh.jl", "marching_squares.jl"]
+Pages = ["fs_mesh.jl", "bands.jl", "marching_squares.jl"]
 ```
 
 ## Collision Operator

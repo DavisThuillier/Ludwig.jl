@@ -10,9 +10,10 @@ using LinearAlgebra
 
 l = Lattice([1.0 0.0; 0.0 1.0])
 
+# Momenta are in units of the inverse lattice constant a^{-1}
 t = 1.0   # eV
 μ = -1.0  # eV
-ε(k) = -2t * (cos(2π * k[1]) + cos(2π * k[2])) - μ
+ε(k) = -2t * (cos(k[1]) + cos(k[2])) - μ
 
 T = 0.025  # eV
 ```
@@ -24,8 +25,10 @@ The collision matrix requires sampling the full Brillouin zone:
 ```julia
 Δε    = 0.1   # energy spacing between boundary contours (eV)
 n_arc = 10    # patches per arc segment
+N_marching_squares = 1001
+α     = 6.0
 
-bz   = bz_mesh(l, [ε], T, Δε, n_arc)
+bz   = bz_mesh(l, ε, T, Δε, n_arc, N_marching_squares, α)
 grid = bz.patches
 N    = length(grid)
 

@@ -7,10 +7,10 @@ function (@main)(_)
     # Square lattice with unit lattice constant
     l = Lattice([1.0 0.0; 0.0 1.0])
 
-    # NNTB dispersion (energies in eV, momenta in units of 2π/a)
+    # NNTB dispersion (energies in eV, momenta in units of a^{-1})
     t = 1.0   # eV
     μ = -1.0  # eV
-    ε(k) = -2t * (cos(2π * k[1]) + cos(2π * k[2])) - μ
+    ε(k) = -2t * (cos(k[1]) + cos(k[2])) - μ
 
     # Temperature (in eV, same units as the Hamiltonian)
     T = 0.025  # ≈ 290 K
@@ -19,8 +19,10 @@ function (@main)(_)
 
     Δε    = 0.1   # energy spacing between boundary contours (eV)
     n_arc = 10    # patches per arc segment
+    N_marching_squares = 1001
+    α     = 6.0
 
-    bz   = bz_mesh(l, [ε], T, Δε, n_arc)
+    bz   = bz_mesh(l, ε, T, Δε, n_arc, N_marching_squares, α)
     grid = bz.patches
     N    = length(grid)
 

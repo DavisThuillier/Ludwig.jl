@@ -23,6 +23,23 @@ b = HamiltonianBand(H, 1)   # first eigenvalue of H(k)
 
 `HamiltonianBand` computes the group velocity via the Hellmann–Feynman theorem using central finite differences applied to the matrix. Both types can be mixed freely in the `bands` vector passed to `ibz_mesh` or `bz_mesh`.
 
+## Interpolated bands
+
+When the dispersion is only known on a discrete grid — for example tabulated DFT output, or a tight-binding fit too expensive to evaluate per integration sample — wrap a 2D interpolation in an [`InterpolatedBand`](@ref). The interpolation is defined on the unit cell ``[0,1)^2`` of fractional reciprocal-lattice coordinates, and the band evaluator pulls Cartesian momenta back into this cell automatically.
+
+```julia
+using Interpolations
+
+# εgrid[i, j] = ε at fractional reciprocal coordinate ((i-1)/N, (j-1)/N)
+itp = scale(interpolate(εgrid, BSpline(Cubic(Line(OnGrid())))),
+            range(0, 1; length=size(εgrid, 1)),
+            range(0, 1; length=size(εgrid, 2)))
+
+b = InterpolatedBand(itp, lattice)   # uses inv(reciprocal_lattice_vectors(lattice))
+```
+
+The group velocity is obtained from `Interpolations.gradient` on the spline basis (analytic derivatives, not autodiff) and transformed back to Cartesian momentum coordinates. Like `HamiltonianBand`, an `InterpolatedBand` may be mixed with plain functions and matrix Hamiltonians in the `bands` vector passed to `ibz_mesh` or `bz_mesh`.
+
 ## Advanced meshing options
 
 [`ibz_mesh`](@ref), [`bz_mesh`](@ref), and [`mesh_region`](@ref) accept several keyword arguments for finer control:
