@@ -415,7 +415,7 @@ Bisect in the interval `[e_target, e_outer]` to find the energy threshold at whi
 number of isolines transitions through `n_iso_target`. `e_target` must satisfy
 `n_iso >= n_iso_target`; `e_outer` must not.
 
-Returns the last energy (closest to `e_outer`) where `n_iso >= target_n_iso` still holds.
+Returns the last energy (closest to `e_outer`) where `n_iso == target_n_iso` still holds.
 """
 function find_marginal_energy(X, Y, E_mat, region, e_target, e_outer, n_iso_target; iter = 32)
     a, b = e_target, e_outer
@@ -476,11 +476,6 @@ function detect_skipped_corners(
         b1 = c[i].isolines
         b2 = c[i + 2].isolines
 
-        # A contour pinned to a corner energy terminates at the corner; the
-        # neighbouring contour necessarily sits on the two adjacent edges,
-        # which would otherwise look like a corner crossing here.
-        (at_corner_level(c[i].level) || at_corner_level(c[i + 2].level)) && continue
-
         n_s = length(b1)
         if n_s != length(b2)
             continue # Different FS topology, handled separately
@@ -517,6 +512,17 @@ function detect_skipped_corners(
                 region[e_old]
             else
                 region[argmin(norm.(region .- Ref((p1 + p2) / 2)))]
+            end
+
+            # A contour at a corner energy whose relevant endpoint is pinned
+            # to that corner terminates there by construction — not a missed
+            # crossing event. The level alone is insufficient: when the
+            # boundary dispersion is non-monotone, a corner energy may be
+            # included in the energy grid without the contour at that level
+            # actually touching the corner.
+            if (at_corner_level(c[i].level)     && norm(p1 - corner) < tol) ||
+               (at_corner_level(c[i + 2].level) && norm(p2 - corner) < tol)
+                continue
             end
 
             push!(events, (i, s, [p1, corner, p2]))
@@ -634,7 +640,6 @@ function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int
 
     # Sample coordinates and energies for marching squares
     ((x_min, x_max), (y_min, y_max)) = get_bounding_box(isnothing(bbox) ? region : bbox)
-    @show x_min, x_max
     Δx = (x_max - x_min) / (N - 1)
     Ny = round(Int, (y_max - y_min) / Δx)
     N  < 2 || Ny < 2 && return Mesh(all_patches, all_corners, all_corner_ids)
@@ -657,6 +662,7 @@ function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int
         # set of levels excluded there so the two stay in sync.
         corner_levels = [ε(k) for k in region if k != [0.0, 0.0]]
         skips = detect_skipped_corners(c, region; corner_levels)
+        @show skips
         for (i, s, corner) in skips
             corner_e_min = c[i].level - Δε
             corner_e_max = c[i+2].level + Δε
@@ -781,8 +787,9 @@ parameters `Δε` and `n_arc`.
 
 # Arguments
 - `mask`: optional vector of vertices defining a convex polygonal sub-region of the IBZ. When
-  `length(mask) > 2` the mesh is restricted to `mask` instead of the full IBZ, which is
-  useful for finer gridding around a small Fermi surface pocket.
+  `length(mask) > 2` the marching-squares grid is sampled over the axis-aligned bounding
+  rectangle of `mask` instead of that of the full IBZ, which is useful for finer gridding
+  around a small Fermi surface pocket. Contour extraction is still masked by the full IBZ.
 - `angle_threshold`: turning-angle threshold (radians) for cusp detection; passed through to
   [`mesh_region`](@ref) (default `π/8`).
 - `boundaries`: explicit boundary energy vector passed through to [`mesh_region`](@ref);
@@ -823,9 +830,10 @@ temperature `T` by computing the IBZ mesh and replicating it under all point-gro
 See [`mesh_region`](@ref) for a description of `Δε` and `n_arc`.
 
 # Arguments
-- `mask`: optional vector of vertices passed through to [`mesh_region`](@ref). When
-  `length(mask) > 2` the IBZ mesh is restricted to `mask` instead of the full IBZ before
-  being replicated across the BZ.
+- `mask`: optional vector of vertices defining a convex polygonal sub-region of the IBZ. When
+  `length(mask) > 2` the marching-squares grid is sampled over the axis-aligned bounding
+  rectangle of `mask` instead of that of the full IBZ before the IBZ mesh is replicated
+  across the BZ. Contour extraction is still masked by the full IBZ.
 - `angle_threshold`: turning-angle threshold (radians) for cusp detection; passed through to
   [`mesh_region`](@ref) (default `π/8`).
 - `boundaries`: explicit boundary energy vector passed through to [`mesh_region`](@ref);
