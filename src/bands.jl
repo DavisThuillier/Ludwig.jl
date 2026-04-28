@@ -77,7 +77,10 @@ Dispatches on band type:
 - a [`HamiltonianBand`](@ref) uses the Hellmann-Feynman theorem with central
   finite differences applied to the Hamiltonian matrix;
 - an [`InterpolatedBand`](@ref) uses `Interpolations.gradient` on the spline
-  basis and transforms the result back to Cartesian coordinates.
+  basis and transforms the result back to Cartesian coordinates;
+- an [`IBZInterpolatedBand`](@ref) folds `k` into the IBZ via the lattice
+  point group and returns ``O^\\top \\mathrm{invrlv}^\\top \\nabla_f
+  \\mathrm{itp}`` inside the support box (zero outside).
 """
 band_velocity(ε::Function, k) = gradient(ε, k)
 
@@ -95,4 +98,143 @@ end
 function band_velocity(b::InterpolatedBand, k)
     rlb = mod.(b.invrlv * k, 1.0)
     return b.invrlv' * Interpolations.gradient(b.itp, rlb[1], rlb[2])
+end
+
+"""
+    IBZInterpolatedBand(itp, l::AbstractLattice; sentinel=1e3)
+
+Wrap a 2D dispersion interpolation that is sampled over (a sub-region of) the
+irreducible Brillouin zone of `l`, and represents the band over the *full*
+Brillouin zone via the lattice point-group symmetry.
+
+`itp` is a callable `(rlb1, rlb2) -> ε` (e.g. from `Interpolations.scale(...)`)
+defined on a rectangle in fractional reciprocal coordinates that contains
+the IBZ. At evaluation a Cartesian momentum `k` is folded to the first BZ
+via [`map_to_bz`](@ref), then the point-group operation
+``O \\in G(l)`` whose image ``O \\cdot k_{bz}`` lies in the IBZ polygon
+is selected. The IBZ image is converted to fractional coordinates and
+looked up in the interpolation: if it lies in the interpolation support box
+the spline value is returned, otherwise `sentinel`.
+
+The default sentinel is far above any realistic chemical potential, so the
+energy-conservation cutoff inside the electron-electron kernel naturally
+suppresses out-of-support scattering momenta without any caller-side change.
+
+The group velocity transforms as
+``\\nabla_k \\varepsilon = O^\\top \\,\\mathrm{invrlv}^\\top\\, \\nabla_f
+\\mathrm{itp}`` inside the support and is the zero vector outside.
+
+See also [`InterpolatedBand`](@ref), [`band_velocity`](@ref).
+"""
+struct IBZInterpolatedBand{I}
+    itp::I
+    rlv::Matrix{Float64}
+    invrlv::Matrix{Float64}
+    bz::Vector{SVector{2,Float64}}
+    ibz::Vector{SVector{2,Float64}}
+    group_ops::Vector{SMatrix{2,2,Float64,4}}
+    sentinel::Float64
+end
+
+function IBZInterpolatedBand(itp, l::AbstractLattice; sentinel::Real=1e3)
+    rlv = reciprocal_lattice_vectors(l)
+    G   = point_group(l)
+    ops = [SMatrix{2,2,Float64}(get_matrix_representation(g)) for g in G.elements]
+    return IBZInterpolatedBand(itp, rlv, inv(rlv), get_bz(l), get_ibz(l),
+                               ops, Float64(sentinel))
+end
+
+# Fold Cartesian k into the IBZ. Returns (kibz, O) such that kibz = O * kbz
+# lies in the IBZ polygon, where kbz is the first-BZ image of k.
+function fold_to_ibz(b::IBZInterpolatedBand, k)
+    kbz = map_to_bz(k, b.bz, b.rlv, b.invrlv)
+    for O in b.group_ops
+        kibz = O * kbz
+        in_polygon(kibz, b.ibz) && return SVector{2,Float64}(kibz), O
+    end
+    # Numerical edge of IBZ: any image is symmetry-equivalent, fall back to identity.
+    return SVector{2,Float64}(kbz), SMatrix{2,2,Float64}(1.0, 0.0, 0.0, 1.0)
+end
+
+function (b::IBZInterpolatedBand)(k)
+    kibz, _ = fold_to_ibz(b, k)
+    f = b.invrlv * kibz
+    (xlo, xhi), (ylo, yhi) = Interpolations.bounds(b.itp)
+    return (xlo ≤ f[1] ≤ xhi && ylo ≤ f[2] ≤ yhi) ? b.itp(f[1], f[2]) : b.sentinel
+end
+
+function band_velocity(b::IBZInterpolatedBand, k)
+    kibz, O = fold_to_ibz(b, k)
+    f = b.invrlv * kibz
+    (xlo, xhi), (ylo, yhi) = Interpolations.bounds(b.itp)
+    if xlo ≤ f[1] ≤ xhi && ylo ≤ f[2] ≤ yhi
+        return O' * (b.invrlv' * Interpolations.gradient(b.itp, f[1], f[2]))
+    else
+        return SVector{2,Float64}(0.0, 0.0)
+    end
+end
+
+"""
+    InterpolatedBand(band, l::AbstractLattice, xs::AbstractRange, ys::AbstractRange=xs)
+    InterpolatedBand(band, l::AbstractLattice, n::Integer)
+
+Build a periodic cubic-spline `InterpolatedBand` from a callable `band`.
+
+`band` is any callable mapping a Cartesian momentum to an energy
+(e.g. a [`HamiltonianBand`](@ref) or a closure). Samples are taken at
+`band(rlv * [fx, fy])` for each `(fx, fy)` in the outer product `xs × ys`,
+where `rlv = reciprocal_lattice_vectors(l)`. The spline uses a periodic
+cubic B-spline, so `band` must be 1-periodic in each fractional axis (i.e.
+BZ-periodic) and `xs`, `ys` should span exactly one period of `band`. The
+integer-resolution form is shorthand for `xs = ys = range(0, 1, length=n+1)`.
+"""
+function InterpolatedBand(band, l::AbstractLattice, xs::AbstractRange,
+                          ys::AbstractRange=xs)
+    rlv = reciprocal_lattice_vectors(l)
+    samples = [band(rlv * [fx, fy]) for fx in xs, fy in ys]
+    itp = Interpolations.scale(
+        Interpolations.interpolate(samples, BSpline(Cubic(Periodic(OnGrid())))),
+        xs, ys,
+    )
+    return InterpolatedBand(itp, l)
+end
+
+InterpolatedBand(band, l::AbstractLattice, n::Integer) =
+    InterpolatedBand(band, l, range(0.0, stop=1.0, length=n + 1))
+
+"""
+    IBZInterpolatedBand(band, l::AbstractLattice, xs::AbstractRange, ys::AbstractRange=xs;
+                        sentinel=1e3)
+    IBZInterpolatedBand(band, l::AbstractLattice, n::Integer; sentinel=1e3)
+
+Build an `IBZInterpolatedBand` from a callable `band`.
+
+Samples are taken at `band(rlv * [fx, fy])` for each `(fx, fy)` in `xs × ys`,
+where `xs`, `ys` are ranges in fractional reciprocal coordinates that should
+contain (a region of interest within) the IBZ. The spline uses a non-periodic
+cubic B-spline with Line boundary conditions. Since `band` is assumed to
+respect the lattice point-group symmetry, grid points outside the IBZ but
+inside the sampled rectangle automatically agree with their IBZ images.
+
+The integer-resolution form picks `xs`, `ys` to be the IBZ bounding rectangle
+(read from [`get_ibz`](@ref)) with `n+1` samples per axis.
+"""
+function IBZInterpolatedBand(band, l::AbstractLattice, xs::AbstractRange,
+                             ys::AbstractRange=xs; sentinel::Real=1e3)
+    rlv = reciprocal_lattice_vectors(l)
+    samples = [band(rlv * [fx, fy]) for fx in xs, fy in ys]
+    itp = Interpolations.scale(
+        Interpolations.interpolate(samples, BSpline(Cubic(Line(OnGrid())))),
+        xs, ys,
+    )
+    return IBZInterpolatedBand(itp, l; sentinel=sentinel)
+end
+
+function IBZInterpolatedBand(band, l::AbstractLattice, n::Integer; sentinel::Real=1e3)
+    ibz_frac = [inv(reciprocal_lattice_vectors(l)) * v for v in get_ibz(l)]
+    xlo, xhi = extrema(v[1] for v in ibz_frac)
+    ylo, yhi = extrema(v[2] for v in ibz_frac)
+    xs = range(xlo, stop=xhi, length=n + 1)
+    ys = range(ylo, stop=yhi, length=n + 1)
+    return IBZInterpolatedBand(band, l, xs, ys; sentinel=sentinel)
 end
