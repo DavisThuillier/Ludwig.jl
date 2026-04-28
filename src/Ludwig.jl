@@ -7,7 +7,6 @@ using StaticArrays
 using DataStructures
 using ForwardDiff
 using Interpolations
-using IterativeSolvers
 
 # Both ForwardDiff and Interpolations export `gradient`; bind unqualified usage to ForwardDiff.
 # Interpolations.gradient is used explicitly by qualified name in Integration.jl.
