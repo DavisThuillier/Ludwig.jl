@@ -1,12 +1,12 @@
 """
-    MarchingSquares.Isoline
+    Isoline(points::Vector{SVector{2,Float64}}, isclosed::Bool, arclength::Real)
 
 Representation of a contour as an ordered set of discrete points.
 
 # Fields
-- `points`: Vector of points in contour
-- `isclosed`: Boolean which is `true` if the contour returned to the starting point when being generated
-- `arclength`: Length of the contour
+- `points::Vector{SVector{2,Float64}}`: vector of points in the contour.
+- `isclosed::Bool`: `true` if the contour returned to its starting point when generated.
+- `arclength::Real`: total length of the contour.
 """
 struct Isoline
     points::Vector{SVector{2,Float64}}
@@ -15,13 +15,13 @@ struct Isoline
 end
 
 """
-    MarchingSquares.IsolineBundle
+    IsolineBundle(isolines::Vector{Isoline}, level::Float64)
 
 Container of contours corresponding to the same level set.
 
 # Fields
-- `isolines`: Vector of Isolines
-- `level`: Constant value along contours in `isolines`
+- `isolines::Vector{Isoline}`: contours sharing a common level.
+- `level::Float64`: constant value along the contours in `isolines`.
 """
 struct IsolineBundle
     isolines::Vector{Isoline}
@@ -29,10 +29,13 @@ struct IsolineBundle
 end
 
 # Top, Bottom, Left, Right binary identification
-T, B, R, L = 0x01, 0x02, 0x04, 0x08
+const T, B, R, L = 0x01, 0x02, 0x04, 0x08
 
-# Lookup table for the possible crossings
-crossing_lookup = [L|B, B|R, L|R, T|R, 0x0, T|B, L|T, L|T, T|B, 0x0, T|R, L|R, B|R, L|B] # Ignore the ambiguous cases of two crossings in one cell, with the assumption that chosen gridding is small enough
+# Lookup table mapping a 4-bit corner-occupancy code (1..14) to the pair of edges crossed
+# by the contour. The two saddle cases (intersect codes 5 and 10), in which two contours
+# pass through a single cell, are mapped to 0x0 and ignored under the assumption that the
+# grid is fine enough that genuine saddles are rare and locally insignificant.
+const crossing_lookup = [L|B, B|R, L|R, T|R, 0x0, T|B, L|T, L|T, T|B, 0x0, T|R, L|R, B|R, L|B]
 
 """
     get_cells(x, y, A::AbstractMatrix [, level = 0.0, mask = []])
@@ -83,8 +86,8 @@ function get_cells(x, y, A::AbstractMatrix, level::Real = 0.0, mask = [])
     return cells, border_cells
 end
 
-shift = [(0,1), (0,-1), (1,0), (-1,0)] # Relative position of next cell to check given crossing
-new_edge = (B,T,L,R)
+const shift = [(0,1), (0,-1), (1,0), (-1,0)] # Relative position of next cell to check given crossing
+const new_edge = (B,T,L,R)
 
 """
     get_next_cell(edge, index)
@@ -151,6 +154,12 @@ function find_contour(x, y, A::AbstractMatrix, level::Real = 0.0; mask = [])
     return bundle
 end
 
+"""
+    remove_duplicates!(segment)
+
+Remove consecutive points of `segment` that coincide within `rtol = 1e-10` and return the
+mutated `segment`.
+"""
 function remove_duplicates!(segment)
     to_delete = []
     for i ∈ eachindex(segment)
@@ -164,12 +173,15 @@ function remove_duplicates!(segment)
 end
 
 """
-    follow_contour!(cells, border_cells, x, y, A, is, js, start_index, start_edge, level[; mask = []])
+    follow_contour!(cells, border_cells, contour, x, y, A, is, js,
+                    start_index, start_edge, level[; mask = []])
 
-March through `cells` and `border_cells` containing crossings at `level`, removing traversed cells and returning the intersection of the contour.
+March through `cells` and `border_cells` containing crossings at `level`, appending each
+crossing to `contour` (mutated in place) and removing traversed cells.
 
-`start_edge` and `start_index` specifiy the cell in `cells` and `border_cells` at which to start the march.
-If `mask` is specified, constrain the contour to the convex polygon defined by the points in `mask`.
+`start_edge` and `start_index` specify the cell in `cells` and `border_cells` at which to
+start the march. If `mask` is specified, constrain the contour to the convex polygon
+defined by the points in `mask`. Returns the index of the last cell visited.
 """
 function follow_contour!(cells, border_cells, contour, x, y, A, is, js, start_index, start_edge, level; mask = [])
     index = start_index
@@ -263,6 +275,16 @@ end
     get_bounding_box(points)
 
 Find bounding values for each coordinate of 2D `points`.
+
+Returns `((x_min, x_max), (y_min, y_max))` over the supplied points.
+
+# Examples
+```jldoctest
+julia> using StaticArrays
+
+julia> get_bounding_box([SVector(-1.0, 0.0), SVector(2.0, 3.0), SVector(0.0, -2.0)])
+((-1.0, 2.0), (-2.0, 3.0))
+```
 """
 function get_bounding_box(points)
     min_x = minimum(first.(points))
@@ -356,6 +378,18 @@ end
     centroid(iso::Isoline)
 
 Return the centroid of the points of `iso`.
+
+# Examples
+```jldoctest
+julia> using StaticArrays
+
+julia> iso = Isoline([SVector(0.0, 0.0), SVector(2.0, 0.0), SVector(1.0, 3.0)], false, 0.0);
+
+julia> Ludwig.centroid(iso)
+2-element SVector{2, Float64} with indices SOneTo(2):
+ 1.0
+ 1.0
+```
 """
 centroid(iso::Isoline) = sum(iso.points) / length(iso.points)
 
@@ -365,6 +399,17 @@ centroid(iso::Isoline) = sum(iso.points) / length(iso.points)
 Get the distance to each point along `curve`.
 
 Treats `curve` as an ordered list of points defining a piecewise linear path.
+
+# Examples
+```jldoctest
+julia> using StaticArrays
+
+julia> Ludwig.get_arclengths([SVector(0.0, 0.0), SVector(3.0, 0.0), SVector(3.0, 4.0)])
+3-element Vector{Float64}:
+ 0.0
+ 3.0
+ 7.0
+```
 """
 function get_arclengths(curve)
     s = 0.0

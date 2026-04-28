@@ -1,9 +1,26 @@
+# 2D crystallographic point groups exposed as module-level constants.
+# C₂ is the cyclic group of order 2 (oblique); D₂, D₄, D₆ are the dihedral groups of order
+# 2n that fix a regular n-gon (rectangular, square, hexagonal lattices respectively). They
+# are the point groups assigned to each Bravais-lattice type by `point_groups`.
 const C₂ = get_cyclic_group(2)
 const D₂ = get_dihedral_group(2)
 const D₄ = get_dihedral_group(4)
 const D₆ = get_dihedral_group(6)
 
+"""
+    point_groups
+
+Mapping from Bravais-lattice type string to its 2D point group: Oblique → C₂,
+Rectangular → D₂, Square → D₄, Hexagonal → D₆.
+"""
 const point_groups = Dict("Oblique" => C₂, "Rectangular" => D₂, "Square" => D₄, "Hexagonal" => D₆)
+
+"""
+    num_bz_points
+
+Mapping from Bravais-lattice type string to the number of vertices of its first Brillouin
+zone.
+"""
 const num_bz_points = Dict("Oblique" => 6, "Rectangular" => 4, "Square" => 4, "Hexagonal" => 6)
 
 """
@@ -36,6 +53,10 @@ Construct a 2D Bravais lattice from primitive vectors.
 `A` must be a 2×2 matrix with linearly independent columns. The two-argument form
 assembles the matrix as `hcat(a1, a2)`.
 
+# Fields
+- `primitives::Matrix`: 2×2 matrix whose columns are the primitive lattice vectors
+  ``\\mathbf{a}_1`` and ``\\mathbf{a}_2``.
+
 # Examples
 ```julia
 julia> Lattice([1.0 0.0; 0.0 1.0])   # square lattice
@@ -46,16 +67,14 @@ See also [`NoLattice`](@ref), [`primitives`](@ref), [`lattice_type`](@ref).
 """
 struct Lattice <: AbstractLattice
     primitives::Matrix
-    Lattice(A::AbstractArray) = begin
-        if size(A) == (2,2)
-            if det(A) == 0
-                error("Specified primitive vectors are not linearly independent.")
-            else
-                new(A)
-            end
-        else
-            error("Invalid dimension.")
-        end
+    function Lattice(A::AbstractArray)
+        size(A) == (2, 2) || throw(DimensionMismatch(
+            "Lattice primitive matrix must be 2×2; got size $(size(A))."
+        ))
+        iszero(det(A)) && throw(ArgumentError(
+            "Specified primitive vectors are not linearly independent."
+        ))
+        return new(A)
     end
 end
 
@@ -77,6 +96,14 @@ Return the 2×2 matrix of primitive lattice vectors for `l`.
 Columns of the returned matrix are the primitive vectors ``\\mathbf{a}_1`` and
 ``\\mathbf{a}_2``.
 
+# Examples
+```jldoctest
+julia> primitives(Lattice([1.0 0.0; 0.0 1.0]))
+2×2 Matrix{Float64}:
+ 1.0  0.0
+ 0.0  1.0
+```
+
 See also [`reciprocal_lattice_vectors`](@ref).
 """
 primitives(l::Lattice) = l.primitives
@@ -88,6 +115,12 @@ Return the 2×2 matrix of reciprocal lattice vectors for `l`.
 
 Uses the convention ``B = 2π (A^{-1})^\\top``, where `A` is the primitive vector matrix,
 so that ``A^\\top B = 2π I``.
+
+# Examples
+```jldoctest
+julia> reciprocal_lattice_vectors(Lattice([1.0 0.0; 0.0 1.0])) ≈ [2π 0.0; 0.0 2π]
+true
+```
 
 See also [`primitives`](@ref), [`get_bz`](@ref).
 """
@@ -105,7 +138,15 @@ See also [`lattice_type`](@ref), [`get_ibz`](@ref).
 """
 point_group(l::Lattice) = point_groups[lattice_type(l)]
 
-# https://en.wikipedia.org/wiki/Lattice_reduction
+"""
+    gauss_reduce(A, max_iter=1e4)
+
+Apply Gauss lattice reduction to the 2D basis stored as columns of `A`.
+
+Returns a 2×2 matrix whose columns span the same lattice as those of `A` but are shorter
+and more nearly orthogonal. Used to obtain a reduced basis before classifying lattice
+type. See [Lattice reduction](https://en.wikipedia.org/wiki/Lattice_reduction).
+"""
 function gauss_reduce(A, max_iter = 1e4)
     i = 1
     u = A[:, 1]
@@ -193,7 +234,6 @@ function get_bz(l::Lattice)
     end
 
     deleteat!(vertices, vertices .== [[0.0, 0.0]])
-    deleteat!(vertices, vertices .== [[]])
 
     sort!(vertices, by = x -> atan(x[2], x[1])) # Sort by angle
 

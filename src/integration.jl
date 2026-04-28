@@ -1,5 +1,8 @@
 
+"Squared cutoff radius for the hyperspherical approximation to the 5D phase-space volume in [`ee_kernel!`](@ref)."
 const ρ::Float64 = 4*6^(1/3)/pi
+
+"Squared cutoff radius for the hyperspherical approximation to the 3D phase-space volume in `electron_phonon`."
 const ρ3::Float64 = 4*sqrt(2)/pi
 
 "Volume of the 5-dimensional unit sphere"
@@ -191,11 +194,33 @@ ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, d::VirtualPatch, T::Real, exact:
 ###
 
 """
-    electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, rlv, bz; umklapp = true, exact = true, kwargs...)
+    electron_electron(grid, f0s, i, j, bands, T, Weff_squared, rlv, bz;
+                      umklapp=true, exact=true, kwargs...)
 
-Compute the element (`i`,`j`) of the linearized Boltzmann collision operator for electron electron scattering.
+Compute the element (`i`, `j`) of the linearized Boltzmann collision operator for
+electron-electron scattering.
 
-`bands` is the collection of dispersions used to construct `grid`; each entry is callable on a 2-component momentum. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center and can be computed independently of `i` and `j`. `Weff_squared(p1, p2, p3, p4; kwargs...)` is a user-defined function of four `Patch`/`VirtualPatch` arguments returning the effective spinless quasiparticle scattering vertex; additional parameters needed to evaluate it can be passed through as keyword arguments. `rlv` is the reciprocal lattice vector matrix and `bz` is the first Brillouin zone polygon; when `umklapp = true` (default) intermediate momenta are folded back into `bz` via the reciprocal lattice. When `exact = true` (default) the 5D phase-space volume is computed exactly via [`pournin_volume`](@ref); otherwise the hyperspherical approximation in [`ee_kernel!`](@ref) is used.
+# Arguments
+- `grid::Vector{Patch}`: patches over which the collision operator is defined.
+- `f0s::Vector{Float64}`: Fermi-Dirac distribution evaluated at each patch center
+  (independent of `i` and `j`, so it is precomputed by the caller).
+- `i::Int`, `j::Int`: row and column indices of the matrix element to compute.
+- `bands`: collection of dispersions used to construct `grid`; each entry is callable on
+  a 2-component momentum.
+- `T::Real`: temperature.
+- `Weff_squared`: user-defined function `Weff_squared(p1, p2, p3, p4; kwargs...)` of four
+  `Patch`/`VirtualPatch` arguments returning the effective spinless quasiparticle
+  scattering vertex.
+- `rlv::AbstractMatrix`: reciprocal lattice vector matrix.
+- `bz`: first Brillouin zone polygon.
+
+# Keyword Arguments
+- `umklapp::Bool=true`: when `true`, intermediate momenta are folded back into `bz` via
+  the reciprocal lattice.
+- `exact::Bool=true`: when `true`, the 5D phase-space volume is computed exactly via
+  [`pournin_volume`](@ref); otherwise the hyperspherical approximation in
+  [`ee_kernel!`](@ref) is used.
+- additional keyword arguments are forwarded verbatim to `Weff_squared`.
 """
 function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, rlv, bz; umklapp = true, exact::Bool = true, kwargs...)
     Lij::Float64 = 0.0
@@ -223,7 +248,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
                 band_velocity(bands[μ], kijm),
                 μ
             )
-            w123 = Weff_squared(grid[i], grid[j], grid[m], p; kwargs)
+            w123 = Weff_squared(grid[i], grid[j], grid[m], p; kwargs...)
 
             if w123 != 0
                 Lij += w123 * ee_kernel!(ζ, u, grid[i], grid[j], grid[m], p, T, exact) * f0s[j] * (1 - f0s[m])
@@ -240,8 +265,8 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
                 μ
             )
 
-            w123 = Weff_squared(grid[i], grid[m], grid[j], p; kwargs)
-            w124 = Weff_squared(grid[i], grid[m], p, grid[j]; kwargs)
+            w123 = Weff_squared(grid[i], grid[m], grid[j], p; kwargs...)
+            w124 = Weff_squared(grid[i], grid[m], p, grid[j]; kwargs...)
 
             if w123 + w124 != 0
                 Lij -= (w123 + w124) * ee_kernel!(ζ, u, grid[i], grid[m], grid[j], p, T, exact) * f0s[m] * (1 - f0s[j])
@@ -255,11 +280,30 @@ end
 electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, l::Lattice; umklapp = true, kwargs...) = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, reciprocal_lattice_vectors(l), get_bz(l); umklapp, kwargs...)
 
 """
-    electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, ε::Function, T::Real, Weff_squared, l::NoLattice; exact = true, kwargs...)
+    electron_electron(grid, f0s, i, j, ε, T, Weff_squared, l::NoLattice;
+                      exact=true, kwargs...)
 
-Compute the element (`i`,`j`) of the linearized Boltzmann collision operator for electron electron scattering, assuming an isotropic Fermi surface.
+Compute the element (`i`, `j`) of the linearized Boltzmann collision operator for
+electron-electron scattering on an isotropic Fermi surface.
 
-Passing the singleton `NoLattice` object identifies that the FS is isotropic and that umklapp is ignored. The dispersion `ε` is thus taken to be a function of the norm of momentum only. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center and can be calculated independent of `i` and `j`. `Weff_squared` is a user defined function of four Patch variables that computes the effective spinless quasiparticle scattering vertex. Additional parameters needed to evaluate `Weff_squared` can be passed through as keyword arguments.
+The singleton [`NoLattice`](@ref) identifies that the FS is isotropic and umklapp is
+ignored; `ε` is taken to be a function of the norm of momentum only.
+
+# Arguments
+- `grid::Vector{Patch}`: patches over which the collision operator is defined.
+- `f0s::Vector{Float64}`: Fermi-Dirac distribution evaluated at each patch center.
+- `i::Int`, `j::Int`: row and column indices of the matrix element to compute.
+- `ε::Function`: radial dispersion; called as `ε(norm(k))`.
+- `T::Real`: temperature.
+- `Weff_squared`: user-defined function of four `Patch`/`VirtualPatch` arguments
+  returning the effective spinless quasiparticle scattering vertex.
+- `l::NoLattice`: marker selecting the isotropic dispatch.
+
+# Keyword Arguments
+- `exact::Bool=true`: when `true`, the 5D phase-space volume is computed exactly via
+  [`pournin_volume`](@ref); otherwise the hyperspherical approximation in
+  [`ee_kernel!`](@ref) is used.
+- additional keyword arguments are forwarded verbatim to `Weff_squared`.
 """
 function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, ε::Function, T::Real, Weff_squared, l::NoLattice; exact::Bool = true, kwargs...)
     Lij::Float64 = 0.0
