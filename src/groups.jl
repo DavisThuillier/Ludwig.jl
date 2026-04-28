@@ -302,7 +302,7 @@ function get_symmetric_group(n::Int)
     end
 end
 
-function _unity_root_vector(p::Int, n::Int)
+function unity_root_vector(p::Int, n::Int)
     return [cos(2pi * p / n), sin(2pi * p / n)]
 end
 
@@ -332,12 +332,12 @@ function get_matrix_representation(g::PermutationGroupElement)
     n = length(g)
     n < 2 && error(DimensionMismatch("Permutation must have length at least 2 to be represented by a 2x2 matrix."))
 
-    v₁ = _unity_root_vector(0, n)
-    v₂ = _unity_root_vector(1, n)
+    v₁ = unity_root_vector(0, n)
+    v₂ = unity_root_vector(1, n)
     T = hcat(v₁, v₂) # Root of unity basis
 
-    w₁ = _unity_root_vector(g.permutation[1] - 1, n)
-    w₂ = _unity_root_vector(g.permutation[2] - 1, n)
+    w₁ = unity_root_vector(g.permutation[1] - 1, n)
+    w₂ = unity_root_vector(g.permutation[2] - 1, n)
 
     M = hcat(w₁, w₂) * inv(T) # Change of basis composed with permutation map of roots of polygon vertices
 
