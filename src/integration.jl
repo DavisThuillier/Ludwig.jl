@@ -10,7 +10,7 @@ const vol::Float64 = (8 * pi^2 / 15)
 ###
 
 """
-    _fill_kernel_vectors!(ζ, u, a, b, c, v, εabc)
+    fill_kernel_vectors!(ζ, u, a, b, c, v, εabc)
 
 Fill the 6-element kernel vectors `ζ` and `u` in-place and return `δ`.
 
@@ -28,7 +28,7 @@ u = \\begin{pmatrix} \\Delta\\varepsilon_a/2 \\\\ 0 \\\\ \\Delta\\varepsilon_b/2
 
 `δ = a.e + b.e - c.e - εabc` is the energy mismatch at the patch centers.
 """
-function _fill_kernel_vectors!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc)
+function fill_kernel_vectors!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc)
     δ = a.e + b.e - c.e - εabc
     ζ[1] = v[1] * a.jinv[1,1] + v[2] * a.jinv[2,1]
     ζ[2] = v[1] * a.jinv[1,2] + v[2] * a.jinv[2,2]
@@ -46,7 +46,7 @@ function _fill_kernel_vectors!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc)
 end
 
 """
-    _pournin_inner(u_compact, b, ::Val{D})
+    pournin_inner(u_compact, b, ::Val{D})
 
 Evaluate the Gray-code alternating sum over the 2^D vertices of `[0,1]^D`.
 
@@ -59,7 +59,7 @@ literals, leaving only float arithmetic and array reads in the emitted machine c
 
 See also [`pournin_volume`](@ref).
 """
-@generated function _pournin_inner(u_compact, b, ::Val{D}) where D
+@generated function pournin_inner(u_compact, b, ::Val{D}) where D
     dm1   = D - 1
     exprs = Expr[]
     push!(exprs, :(uv     = 0.0))
@@ -120,12 +120,12 @@ function pournin_volume(u::StaticVector{6}, b)
     inv_scale = norm_u^d / (Float64(factorial(d - 1)) * prod_u)
 
     # Dispatch to Val{d}-specialised @generated inner loop.
-    raw = if d == 1;     _pournin_inner(u_compact, b_norm, Val(1))
-          elseif d == 2; _pournin_inner(u_compact, b_norm, Val(2))
-          elseif d == 3; _pournin_inner(u_compact, b_norm, Val(3))
-          elseif d == 4; _pournin_inner(u_compact, b_norm, Val(4))
-          elseif d == 5; _pournin_inner(u_compact, b_norm, Val(5))
-          else           _pournin_inner(u_compact, b_norm, Val(6))
+    raw = if d == 1;     pournin_inner(u_compact, b_norm, Val(1))
+          elseif d == 2; pournin_inner(u_compact, b_norm, Val(2))
+          elseif d == 3; pournin_inner(u_compact, b_norm, Val(3))
+          elseif d == 4; pournin_inner(u_compact, b_norm, Val(4))
+          elseif d == 5; pournin_inner(u_compact, b_norm, Val(5))
+          else           pournin_inner(u_compact, b_norm, Val(6))
           end
 
     return max(0.0, raw * inv_scale)
@@ -163,7 +163,7 @@ When `exact = false`, the volume is replaced by a hyperspherical approximation
 the energy constraint.
 """
 function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc, T, exact::Bool = true)
-    δ = _fill_kernel_vectors!(ζ, u, a, b, c, v, εabc)
+    δ = fill_kernel_vectors!(ζ, u, a, b, c, v, εabc)
     uu = dot(u, u)
     uu == 0.0 && return 0.0
 
@@ -186,16 +186,16 @@ end
 ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, d::VirtualPatch, T::Real) = ee_kernel!(ζ, u, a, b, c, d.v, d.e, T)
 ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, d::VirtualPatch, T::Real, exact::Bool) = ee_kernel!(ζ, u, a, b, c, d.v, d.e, T, exact)
 
-#################################
-### Generic Scattering Vertex ###
-#################################
+###
+### Generic Scattering Vertex
+###
 
 """
-    electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, rlv, bz; umklapp = true, kwargs...)
+    electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, rlv, bz; umklapp = true, exact = true, kwargs...)
 
 Compute the element (`i`,`j`) of the linearized Boltzmann collision operator for electron electron scattering.
 
-The bands used to construct `grid` are callable using the interpolated dispersions in `itps`. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center and can be calculated independent of `i` and `j`. The functions `Fpp` and `Fpk` are vertex factors defined for two Patch variables and for one Patch and one momentum vector respectively, using the orbital weight vectors defined `weights` evaluated at the patch centers of `grid`. 
+`bands` is the collection of dispersions used to construct `grid`; each entry is callable on a 2-component momentum. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center and can be computed independently of `i` and `j`. `Weff_squared(p1, p2, p3, p4; kwargs...)` is a user-defined function of four `Patch`/`VirtualPatch` arguments returning the effective spinless quasiparticle scattering vertex; additional parameters needed to evaluate it can be passed through as keyword arguments. `rlv` is the reciprocal lattice vector matrix and `bz` is the first Brillouin zone polygon; when `umklapp = true` (default) intermediate momenta are folded back into `bz` via the reciprocal lattice. When `exact = true` (default) the 5D phase-space volume is computed exactly via [`pournin_volume`](@ref); otherwise the hyperspherical approximation in [`ee_kernel!`](@ref) is used.
 """
 function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, rlv, bz; umklapp = true, exact::Bool = true, kwargs...)
     Lij::Float64 = 0.0
@@ -249,17 +249,17 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         end
     end
 
-    return π * Lij / (grid[i].dV * (1 - f0s[i]))
+    return π * Lij / (grid[i].dV * (1 - f0s[i]) * (2π)^6)
 end
 
 electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, l::Lattice; umklapp = true, kwargs...) = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, reciprocal_lattice_vectors(l), get_bz(l); umklapp, kwargs...)
 
 """
-    electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, ε::Function, T::Real, Weff_squared, l::NoLattice; kwargs...)
+    electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, ε::Function, T::Real, Weff_squared, l::NoLattice; exact = true, kwargs...)
 
 Compute the element (`i`,`j`) of the linearized Boltzmann collision operator for electron electron scattering, assuming an isotropic Fermi surface.
 
-Passing the singleton `NoLattice` object identifies that the FS is isotropic and that umklapp is ignored. For the output, an explicit factor of (2π)^-6 is included since the momenta sampled are not rescaled as in the lattice case. The dispersion `ε` is thus taken to be a function of the norm of momentum only. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center and can be calculated independent of `i` and `j`. `Weff_squared` is a user defined function of four Patch variables that computes the effective spinless quasiparticle scattering vertex. Additional parameters needed to evaluate `Weff_squared` can be passed through as keyword arguments. 
+Passing the singleton `NoLattice` object identifies that the FS is isotropic and that umklapp is ignored. The dispersion `ε` is thus taken to be a function of the norm of momentum only. The vector `f0s` stores the value of the Fermi-Dirac distribution at each patch center and can be calculated independent of `i` and `j`. `Weff_squared` is a user defined function of four Patch variables that computes the effective spinless quasiparticle scattering vertex. Additional parameters needed to evaluate `Weff_squared` can be passed through as keyword arguments.
 """
 function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, ε::Function, T::Real, Weff_squared, l::NoLattice; exact::Bool = true, kwargs...)
     Lij::Float64 = 0.0
@@ -366,7 +366,7 @@ function electron_phonon(grid::Vector{Patch}, i::Int, j::Int, T::Real, g, ω, rl
 
     f0i = f0(a.e, T)
     f0j = f0(b.e, T)
-    return 4π * ep_kernel!(ζ, u, a, b, v, ω0, T) * gij2 * (f0j - f0i) * a.djinv * b.djinv / (a.dV * f0i * (1 - f0i))
+    return 4π * ep_kernel!(ζ, u, a, b, v, ω0, T) * gij2 * (f0j - f0i) * a.djinv * b.djinv / (a.dV * f0i * (1 - f0i) * (2π)^4)
 end
 
 electron_phonon(grid::Vector{Patch}, i::Int, j::Int, T::Real, g, ω, l::Lattice; kwargs...) = electron_phonon(grid, i, j, T, g, ω, reciprocal_lattice_vectors(l), get_bz(l); kwargs...)
@@ -396,7 +396,7 @@ Return the `(i, j)` element of the collision matrix for electron-impurity scatte
 """
 function electron_impurity(grid::Vector{Patch}, i::Int, j::Int, V_squared)
     i == j && return 0.0
-    return -Iab(grid[i], grid[j], V_squared) * 2π / grid[i].dV
+    return -Iab(grid[i], grid[j], V_squared) * 2π / (grid[i].dV * (2π)^4)
 end
 
 """
@@ -410,5 +410,5 @@ The ordering of `V_squared` must match the band ordering.
 function electron_impurity(grid::Vector{Patch}, i::Int, j::Int, V_squared::Matrix)
     i == j && return 0.0
     ℓ = length(grid) ÷ size(V_squared, 1)
-    return -Iab(grid[i], grid[j], (x,y) -> V_squared[(i-1)÷ℓ + 1, (j-1)÷ℓ + 1]) * 2π / grid[i].dV
+    return -Iab(grid[i], grid[j], (x,y) -> V_squared[(i-1)÷ℓ + 1, (j-1)÷ℓ + 1]) * 2π / (grid[i].dV * (2π)^4)
 end

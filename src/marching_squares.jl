@@ -328,7 +328,7 @@ function contour_intersection(a, v, iso::Isoline, i = 1)
 end
 
 """
-    _arc_points(iso::Isoline, ia::Int, ib::Int)
+    arc_points(iso::Isoline, ia::Int, ib::Int)
 
 Return the points of `iso` between indices `ia` and `ib`, taking the shorter arc.
 
@@ -337,7 +337,7 @@ For open isolines this is a plain slice. For closed isolines, if the direct slic
 the larger index to the end and from the beginning to the smaller index) is returned
 instead.
 """
-function _arc_points(iso::Isoline, ia::Int, ib::Int)
+function arc_points(iso::Isoline, ia::Int, ib::Int)
     a, b = min(ia, ib), max(ia, ib)
     pts  = iso.points
     imax = lastindex(pts)
