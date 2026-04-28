@@ -17,7 +17,7 @@ end
 
 Compute the conductivity tensor using ``\\sigma_{ij}(ω, \\mathbf{q}) = 2 e^2 \\langle v_i | (L - i\\omega + i\\mathbf{q}\\cdot\\mathbf{v})^{-1} | v_j \\rangle``.
 
-For correct conversion to SI units, `E` and `T` must be expressed in units of eV, dV must be in units of ``(2pi / a)^2,`` where ``a`` is the lattice constant, and `v` must be in units of ``(a / h) eV``.
+For correct conversion to SI units, `E` and `T` must be expressed in units of eV, `dV` must be in units of ``(1/a)^2``, where ``a`` is the lattice constant, and `v` must be in units of ``(a/\\hbar) \\,\\mathrm{eV}``.
 """
 function electrical_conductivity(L, v, E, dV, T, ω = 0.0, q = [0.0, 0.0])
     fd = f0.(E, T) # Fermi dirac on grid points
@@ -210,7 +210,7 @@ end
 
 Compute the B1g viscosity from the deformation potentials `Dxx` and `Dyy`.
 
-For correct conversion to SI units, `E`, `Dxx`, `Dyy`, and `T` must be expressed in units of eV and dV must be in units of ``(2pi / a)^2,`` where ``a`` is the lattice constant.
+For correct conversion to SI units, `E`, `Dxx`, `Dyy`, and `T` must be expressed in units of eV and `dV` must be in units of ``(1/a)^2``, where ``a`` is the lattice constant.
 """
 function ηB1g(L, E, dV, Dxx, Dyy, T)
     fd = f0.(E, T) # Fermi dirac on grid points
@@ -227,7 +227,7 @@ end
 
 Compute the B2g viscosity from the deformation potentials `Dxx` and `Dyy`.
 
-For correct conversion to SI units, `E`, `Dxy`, and `T` must be expressed in units of eV and dV must be in units of ``(2pi / a)^2,`` where ``a`` is the lattice constant.
+For correct conversion to SI units, `E`, `Dxy`, and `T` must be expressed in units of eV and `dV` must be in units of ``(1/a)^2``, where ``a`` is the lattice constant.
 """
 function ηB2g(L, E, dV, Dxy, T)
     fd = f0.(E, T) # Fermi dirac on grid points
@@ -280,14 +280,14 @@ function η_lifetime(L, D, E, dV, T)
     return τ_eff * hbar
 end
 
-#########################
-### FIXME: Incomplete ###
-### Hall Resistivity  ###
+###
+### Hall Resistivity (FIXME: incomplete)
+###
 
 delta(i,j) = i == j ? 1.0 : 0.0
 delta(v::Vector, i::Int, j::Int) = v[i] == v[j] ? 1.0 : 0.0
 
-function _momentum_derivative(n_ε, n_θ, n_bands, k, v, E)
+function momentum_derivative(n_ε, n_θ, n_bands, k, v, E)
     D = Matrix{Float64}(undef, length(k), length(k))
     for _j in eachindex(k)
         εi, θi 
@@ -295,5 +295,5 @@ function _momentum_derivative(n_ε, n_θ, n_bands, k, v, E)
 end
 
 function hall_coefficient(L, k, v, E, dV, T; kwargs)
-    _momentum_derivative(kwargs[:n_ε], kwargs[:n_θ], kwargs[:n_bands], k, v, E)
+    momentum_derivative(kwargs[:n_ε], kwargs[:n_θ], kwargs[:n_bands], k, v, E)
 end
