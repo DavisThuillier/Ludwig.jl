@@ -2,21 +2,34 @@
 ### Patch
 ###
 
+"""
+    AbstractPatch
+
+Supertype for momentum-space patches that carry an energy, momentum, group velocity, and
+band index.
+
+See [`Patch`](@ref) for an integrable patch and [`VirtualPatch`](@ref) for a sample-only
+patch.
+"""
 abstract type AbstractPatch end
 
 """
-    Patch(e::Float64, k::SVector{2,Float64}, v::SVector{2,Float64}, de::Float64, dV::Float64, jinv::Matrix{Float64}, djinv::Float64, band_index::Int)
+    Patch(e::Float64, k::SVector{2,Float64}, v::SVector{2,Float64},
+          de::Float64, dV::Float64, jinv::Matrix{Float64}, djinv::Float64,
+          band_index::Int)
 
-Construct a `Patch` object defining regions of momentum space over which to integrate.
+Construct a `Patch` defining a region of momentum space over which to integrate.
+
 # Fields
-- `e`: energy
-- `k`: momentum
-- `v`: group velocity
-- `de`: width of patch in energy
-- `dV`: area of patch in momentum space
-- `jinv`: Jacobian of transformation from (kx, ky) --> (E, s)
-- `djinv`: determinant of above Jacobian
-- `band_index`: index of band from which `e` was sampled at `k`
+- `e::Float64`: energy at the patch center.
+- `k::SVector{2,Float64}`: momentum at the patch center.
+- `v::SVector{2,Float64}`: group velocity at the patch center.
+- `de::Float64`: width of the patch in energy.
+- `dV::Float64`: area of the patch in momentum space.
+- `jinv::Matrix{Float64}`: Jacobian of the transformation
+  ``(k_x, k_y) \\to (\\varepsilon, s)``.
+- `djinv::Float64`: determinant of `jinv`.
+- `band_index::Int`: index of the band from which `e` was sampled at `k`.
 """
 struct Patch <: AbstractPatch
     e::Float64
@@ -30,14 +43,20 @@ struct Patch <: AbstractPatch
 end
 
 """
-    VirtualPatch(e::Float64, k::SVector{2,Float64}, v::SVector{2,Float64}, band_index::Int)
+    VirtualPatch(e::Float64, k::SVector{2,Float64}, v::SVector{2,Float64},
+                 band_index::Int)
 
-Construct a `VirtualPatch` object that can be operated on as if it were a `Patch` for the purposes of sampling momentum, energy, and group velocity but which cannot be integrated over.
+Construct a `VirtualPatch` for sampling momentum, energy, and group velocity at a point.
+
+A `VirtualPatch` exposes the same accessors as a [`Patch`](@ref) but carries no integration
+weights and so cannot be integrated over. Used to represent symmetry-mapped or off-grid
+samples inside the collision kernel.
+
 # Fields
-- `e`: energy
-- `k`: momentum
-- `v`: group velocity
-- `band_index`: index of band from which `e` was sampled at `k`
+- `e::Float64`: energy.
+- `k::SVector{2,Float64}`: momentum.
+- `v::SVector{2,Float64}`: group velocity.
+- `band_index::Int`: index of the band from which `e` was sampled at `k`.
 """
 struct VirtualPatch <: AbstractPatch
     e::Float64
@@ -46,10 +65,83 @@ struct VirtualPatch <: AbstractPatch
     band_index::Int
 end
 
+"""
+    energy(p::AbstractPatch)
+
+Return the energy at the centre of patch `p`.
+
+# Examples
+```jldoctest
+julia> using StaticArrays
+
+julia> p = VirtualPatch(0.5, SVector(0.0, 0.0), SVector(1.0, 0.0), 1);
+
+julia> energy(p)
+0.5
+```
+"""
 energy(p::AbstractPatch)   = p.e
+
+"""
+    momentum(p::AbstractPatch)
+
+Return the momentum at the centre of patch `p`.
+
+# Examples
+```jldoctest
+julia> using StaticArrays
+
+julia> p = VirtualPatch(0.0, SVector(0.1, 0.2), SVector(1.0, 0.0), 1);
+
+julia> momentum(p)
+2-element SVector{2, Float64} with indices SOneTo(2):
+ 0.1
+ 0.2
+```
+"""
 momentum(p::AbstractPatch) = p.k
+
+"""
+    velocity(p::AbstractPatch)
+
+Return the group velocity at the centre of patch `p`.
+
+# Examples
+```jldoctest
+julia> using StaticArrays
+
+julia> p = VirtualPatch(0.0, SVector(0.0, 0.0), SVector(1.0, -0.5), 1);
+
+julia> velocity(p)
+2-element SVector{2, Float64} with indices SOneTo(2):
+  1.0
+ -0.5
+```
+"""
 velocity(p::AbstractPatch) = p.v
+
+"""
+    band(p::AbstractPatch)
+
+Return the band index of `p`.
+
+# Examples
+```jldoctest
+julia> using StaticArrays
+
+julia> p = VirtualPatch(0.0, SVector(0.0, 0.0), SVector(0.0, 0.0), 3);
+
+julia> Ludwig.band(p)
+3
+```
+"""
 band(p::AbstractPatch)     = p.band_index
+
+"""
+    area(p::Patch)
+
+Return the momentum-space area of patch `p`.
+"""
 area(p::Patch)             = p.dV
 
 """
@@ -84,13 +176,17 @@ end
 ###
 
 """
-    Mesh(patches::Vector{Patch}, corners::Vector{SVector{2,Float64}}, corner_inds::Vector{SVector{4,Int}})
+    Mesh(patches::Vector{Patch}, corners::Vector{SVector{2,Float64}},
+         corner_inds::Vector{SVector{4,Int}})
 
-Construct a container struct of patches which contains information for plotting functions defined on patch centers.
+Construct a container of [`Patch`](@ref) objects with the corner geometry needed to plot
+functions defined on patch centers.
+
 # Fields
-- `patches`: Vector of patches
-- `corners`: Vector of points on patch corners for plotting mesh
-- `corner_inds`: Vector of vector of indices in the `corners` vector corresponding to the corners of each patch in `patches`
+- `patches::Vector{Patch}`: the patches making up the mesh.
+- `corners::Vector{SVector{2,Float64}}`: points on the patch corners, used for rendering.
+- `corner_inds::Vector{SVector{4,Int}}`: for each patch, the four indices into `corners`
+  giving its quadrilateral boundary.
 """
 struct Mesh
     patches::Vector{Patch}
@@ -98,8 +194,25 @@ struct Mesh
     corner_inds::Vector{SVector{4, Int}}
 end
 
+"""
+    patches(m::Mesh)
+
+Return the vector of [`Patch`](@ref) objects that make up `m`.
+"""
 patches(m::Mesh) = m.patches
+
+"""
+    corners(m::Mesh)
+
+Return the vector of corner points used to render the patches of `m`.
+"""
 corners(m::Mesh) = m.corners
+
+"""
+    corner_indices(m::Mesh)
+
+Return the vector mapping each patch of `m` to four indices into [`corners(m)`](@ref).
+"""
 corner_indices(m::Mesh) = m.corner_inds
 
 ###
@@ -107,17 +220,23 @@ corner_indices(m::Mesh) = m.corner_inds
 ###
 
 """
-    BZSymmetryMap
+    BZSymmetryMap(ibz_inds::Vector{Int}, ibz_preimage::Dict{Int,Int},
+                  g_perms::Vector{Vector{Int}}, g_inv_perms::Vector{Vector{Int}},
+                  ibz_g_idx::Dict{Int,Int})
 
 Store precomputed symmetry information for a BZ mesh, relating each non-IBZ patch to its IBZ
 representative via a point-group operation. Built via [`bz_symmetry_map`](@ref).
 
 # Fields
-- `ibz_inds`: BZ grid indices of the IBZ patches
-- `ibz_preimage`: maps each non-IBZ patch index to its IBZ representative index
-- `g_perms`: `g_perms[s][j]` = BZ index of `O_s * grid[j]`, for each group element sector `s`
-- `g_inv_perms`: inverse permutations; `g_inv_perms[s][j]` = BZ index of `O_s^{-1} * grid[j]`
-- `ibz_g_idx`: maps each non-IBZ patch index to the sector index `s` of its group element
+- `ibz_inds::Vector{Int}`: BZ grid indices of the IBZ patches.
+- `ibz_preimage::Dict{Int,Int}`: maps each non-IBZ patch index to its IBZ representative
+  index.
+- `g_perms::Vector{Vector{Int}}`: `g_perms[s][j]` is the BZ index of `O_s * grid[j]`, for
+  each group element sector `s`.
+- `g_inv_perms::Vector{Vector{Int}}`: inverse permutations; `g_inv_perms[s][j]` is the BZ
+  index of `O_s^{-1} * grid[j]`.
+- `ibz_g_idx::Dict{Int,Int}`: maps each non-IBZ patch index to the sector index `s` of its
+  group element.
 """
 struct BZSymmetryMap
     ibz_inds::Vector{Int}
@@ -228,6 +347,18 @@ function foliate(x::AbstractVector)
     return foliated
 end
 
+"""
+    boundary_energies(X, Y, E, ε, region, e_min, e_max, Δε)
+
+Return the vector of energy levels at which to extract Fermi-surface contours inside
+`region`.
+
+Levels are placed at spacing `Δε` over the requested window `[e_min, e_max]`, then trimmed
+to the actual range of `E` sampled on the `(X, Y)` grid inside `region`. Any corner of
+`region` whose energy `ε(k)` falls within the resulting window is pinned exactly onto the
+energy grid, so the corner becomes a contour boundary rather than being straddled by
+adjacent levels.
+"""
 function boundary_energies(X, Y, E, ε, region, e_min, e_max, Δε)
     n_levels = max(1, ceil(Int, (e_max - e_min) / Δε))
     if isapprox(e_min, -e_max) && isodd(n_levels)
@@ -557,8 +688,15 @@ finite-difference derivative are refined by bisection.
 # Examples
 ```jldoctest
 julia> using StaticArrays
+
 julia> ε(k) = k[1] + k[2];  # linear dispersion, no interior extrema
-julia> p1 = SVector(0.0, 0.0); corner = SVector(1.0, 0.0); p2 = SVector(1.0, 1.0);
+
+julia> p1 = SVector(0.0, 0.0);
+
+julia> corner = SVector(1.0, 0.0);
+
+julia> p2 = SVector(1.0, 1.0);
+
 julia> isempty(find_boundary_extrema(p1, corner, p2, ε))
 true
 ```
@@ -662,19 +800,19 @@ function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int
         # set of levels excluded there so the two stay in sync.
         corner_levels = [ε(k) for k in region if k != [0.0, 0.0]]
         skips = detect_skipped_corners(c, region; corner_levels)
-        @show skips
+
         for (i, s, corner) in skips
             corner_e_min = c[i].level - Δε
             corner_e_max = c[i+2].level + Δε
             corner_Δε = 0.1 * Δε * (corner_e_max - corner_e_min) / (e_max - e_min)
-            boundary_energies = ε.(corner)
+            corner_be = ε.(corner)
             boundary_extrema = ε.(find_boundary_extrema(corner..., ε))
-            
-            append!(boundary_energies, boundary_extrema)
-            sort!(boundary_energies)
-            if length(boundary_energies) > 1
-                boundary_energies[begin] += eps(Float64)
-                boundary_energies[end]   -= eps(Float64)
+
+            append!(corner_be, boundary_extrema)
+            sort!(corner_be)
+            if length(corner_be) > 1
+                corner_be[begin] += eps(Float64)
+                corner_be[end]   -= eps(Float64)
             end
 
             δL0 = c[i].isolines[s].arclength / n_arc
@@ -687,7 +825,7 @@ function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int
             end
 
             corner_n_arc = round(Int, 0.5 * longest_leg / δL0)
-            corner_mesh = mesh_region(corner, ε, band_index, corner_e_min, corner_e_max, corner_Δε, corner_n_arc, N; boundaries = boundary_energies, depth = depth + 1, maxdepth)
+            corner_mesh = mesh_region(corner, ε, band_index, corner_e_min, corner_e_max, corner_Δε, corner_n_arc, N; boundaries = corner_be, depth = depth + 1, maxdepth)
             append!(all_patches,    corner_mesh.patches)
             append!(all_corners,    corner_mesh.corners)
             append!(all_corner_ids, corner_mesh.corner_inds)
@@ -713,7 +851,6 @@ function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int
         n_iso = n_isolines[i]
         i     = j
 
-        # n_iso == 0 && continue
         (n_iso == 0 || (run.stop == run.start && isodd(run.start))) && continue
 
         need_lo = iseven(run.start)
@@ -878,8 +1015,19 @@ bz_mesh(l::Lattice, ε, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0;
 ### Isotropic mesh
 ###
 
+"""
+    radial_extrema(ε, kf, e_window; N_prelim=100)
+
+Locate radii at which the radial dispersion `ε(r)` has critical points, plus an outer
+radius `r_max` enclosing the energy window of width `e_window` beyond the outermost Fermi
+crossing.
+
+`kf` is the sorted vector of Fermi crossings of `ε`. Returns `(critical_radii, r_max)`,
+where `critical_radii` is the sorted vector of stationary points of `ε` either between
+consecutive Fermi crossings or inside `[0, kf[1]]`. Used to bracket monotone radial
+sections for [`isotropic_mesh`](@ref).
+"""
 function radial_extrema(ε, kf::AbstractVector{<:Real}, e_window; N_prelim = 100)
-    # Use the known Fermi crossings to bracket extrema and bound r_max.
     isempty(kf) && return Float64[], 0.0
 
     kf_sorted = sort(kf)
@@ -913,8 +1061,19 @@ function radial_extrema(ε, kf::AbstractVector{<:Real}, e_window; N_prelim = 100
     return sort!(critical_radii), r_max
 end
 
+"""
+    isotropic_sheet_mesh(ε, energies_s, n_arc, corner_offset, r_lo, r_hi)
+
+Mesh a single annular section of an isotropic Fermi surface for the boundary energy
+levels in `energies_s` between radii `r_lo` and `r_hi`.
+
+`ε` is the radial dispersion (a function of radius), assumed monotone on the section. The
+section is divided into `n_arc` angular cells; `corner_offset` is the index of the first
+corner in the parent mesh's corner vector, used to compute global corner indices.
+
+Returns `(corners, k, corner_inds, patches)` for the section.
+"""
 function isotropic_sheet_mesh(ε, energies_s, n_arc, corner_offset, r_lo, r_hi)
-    # Mesh a single monotone radial section at the given boundary energy levels.
     n_levels = length(energies_s)
     n_angles = n_arc + 1
     Δθ       = 2π / n_arc

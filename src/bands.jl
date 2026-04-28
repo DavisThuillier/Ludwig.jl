@@ -3,7 +3,7 @@
 ###
 
 """
-    HamiltonianBand(H, n)
+    HamiltonianBand(H::F, n::Int) where {F}
 
 Wrap a matrix-valued Hamiltonian function `H(k)` for the `n`-th band.
 
@@ -11,6 +11,11 @@ Wrap a matrix-valued Hamiltonian function `H(k)` for the `n`-th band.
 `k::AbstractVector`. The band energy is the `n`-th eigenvalue (in ascending order);
 the group velocity is computed by the Hellmann-Feynman theorem using central finite
 differences to differentiate `H`.
+
+# Fields
+- `H::F`: callable returning a Hermitian (or real symmetric) matrix as a function of
+  momentum.
+- `n::Int`: index of the band to extract (1-based, in ascending eigenvalue order).
 
 # Examples
 ```julia
@@ -33,8 +38,8 @@ end
 (b::HamiltonianBand)(k) = real(eigvals(Hermitian(b.H(k)))[b.n])
 
 """
-    InterpolatedBand(itp, invrlv)
-    InterpolatedBand(itp, l::AbstractLattice)
+    InterpolatedBand(itp::I, invrlv::M) where {I, M}
+    InterpolatedBand(itp::I, l::AbstractLattice) where {I}
 
 Wrap a 2D dispersion interpolation defined on the unit cell ``[0,1)^2`` of
 reciprocal-lattice coordinates.
@@ -51,6 +56,10 @@ basis (analytic derivatives, not autodiff) and transformed back to Cartesian
 momentum coordinates by ``\\nabla_k \\varepsilon = \\mathrm{invrlv}^\\top
 \\nabla_f \\mathrm{itp}``, where ``f = \\mathrm{invrlv}\\,k`` are the
 fractional reciprocal coordinates.
+
+# Fields
+- `itp::I`: callable spline interpolation in fractional reciprocal coordinates.
+- `invrlv::M`: inverse of the reciprocal-lattice-vector matrix.
 
 See also [`HamiltonianBand`](@ref), [`band_velocity`](@ref).
 """
@@ -101,7 +110,12 @@ function band_velocity(b::InterpolatedBand, k)
 end
 
 """
-    IBZInterpolatedBand(itp, l::AbstractLattice; sentinel=1e3)
+    IBZInterpolatedBand(itp::I, rlv::Matrix{Float64}, invrlv::Matrix{Float64},
+                        bz::Vector{SVector{2,Float64}},
+                        ibz::Vector{SVector{2,Float64}},
+                        group_ops::Vector{SMatrix{2,2,Float64,4}},
+                        sentinel::Float64) where {I}
+    IBZInterpolatedBand(itp::I, l::AbstractLattice; sentinel::Real=1e3) where {I}
 
 Wrap a 2D dispersion interpolation that is sampled over (a sub-region of) the
 irreducible Brillouin zone of `l`, and represents the band over the *full*
@@ -124,6 +138,17 @@ The group velocity transforms as
 ``\\nabla_k \\varepsilon = O^\\top \\,\\mathrm{invrlv}^\\top\\, \\nabla_f
 \\mathrm{itp}`` inside the support and is the zero vector outside.
 
+# Fields
+- `itp::I`: callable spline interpolation in fractional reciprocal coordinates.
+- `rlv::Matrix{Float64}`: reciprocal-lattice-vector matrix.
+- `invrlv::Matrix{Float64}`: inverse of `rlv`.
+- `bz::Vector{SVector{2,Float64}}`: vertices of the first Brillouin zone.
+- `ibz::Vector{SVector{2,Float64}}`: vertices of the irreducible Brillouin zone.
+- `group_ops::Vector{SMatrix{2,2,Float64,4}}`: 2×2 matrix representations of every
+  point-group element.
+- `sentinel::Float64`: value returned when a folded momentum lies outside the
+  interpolation support box.
+
 See also [`InterpolatedBand`](@ref), [`band_velocity`](@ref).
 """
 struct IBZInterpolatedBand{I}
@@ -144,8 +169,15 @@ function IBZInterpolatedBand(itp, l::AbstractLattice; sentinel::Real=1e3)
                                ops, Float64(sentinel))
 end
 
-# Fold Cartesian k into the IBZ. Returns (kibz, O) such that kibz = O * kbz
-# lies in the IBZ polygon, where kbz is the first-BZ image of k.
+"""
+    fold_to_ibz(b::IBZInterpolatedBand, k)
+
+Fold Cartesian momentum `k` into the irreducible Brillouin zone of `b`.
+
+Returns `(kibz, O)` where `kibz = O * kbz` lies in the IBZ polygon and `kbz` is the first-BZ
+image of `k`. Falls back to the identity operation when no exact image of `kbz` lies inside
+the IBZ polygon (numerical edge case at the IBZ boundary).
+"""
 function fold_to_ibz(b::IBZInterpolatedBand, k)
     kbz = map_to_bz(k, b.bz, b.rlv, b.invrlv)
     for O in b.group_ops

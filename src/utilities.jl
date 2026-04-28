@@ -1,18 +1,36 @@
 """
-        f0(E, T)
+    f0(E, T)
 
 Return the value of the Fermi-Dirac distribution for energy `E` and temperature `T`.
+
+`E` and `T` must share units (the package convention is eV for both, with ``k_B = 1``).
 
 ```math
     f^{(0)}(\\varepsilon) = \\frac{1}{1 + e^{\\varepsilon/k_B T}}
 ```
+
+# Examples
+```jldoctest
+julia> f0(0.0, 1.0)
+0.5
+
+julia> f0(-Inf, 1.0)
+1.0
+
+julia> f0(Inf, 1.0)
+0.0
+```
 """
-f0(E::Float64, T::Float64) = 1 / (exp(E/T) + 1)
+f0(E, T) = 1 / (exp(E/T) + 1)
 
 """
-        symmetrize(L, dV, E, T)
+    symmetrize(L, dV, E, T)
 
-Enforce that L is symmetric under the inner product ``\\langle a | b \\rangle = \\int d^2\\mathbf{k} \\left ( - \\frac{\\partial f^{(0)}(\\varepsilon_\\mathbf{k})}{\\partial \\varepsilon_\\mathbf{k}}\\right ) a*(\\mathbf{k}) b(\\mathbf{k})``.
+Return the symmetrization of `L` under the Fermi-window inner product
+``\\langle a | b \\rangle = \\int d^2\\mathbf{k}\\, (-\\partial f^{(0)}/\\partial \\varepsilon)\\, a^*(\\mathbf{k})\\, b(\\mathbf{k})``.
+
+Concretely, ``L_\\text{sym} = (L + D^{-1} L^\\top D)/2`` where ``D = \\mathrm{diag}(\\Delta V \\cdot f^{(0)}(1 - f^{(0)}))``.
+Use this to enforce detailed balance on a numerically constructed collision operator.
 """
 function symmetrize(L, dV, E, T)
     fd = f0.(E, T) # Fermi dirac on grid points
