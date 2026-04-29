@@ -15,7 +15,7 @@ abstract type AbstractPatch end
 
 """
     Patch(e::Float64, k::SVector{2,Float64}, v::SVector{2,Float64},
-          de::Float64, dV::Float64, jinv::Matrix{Float64}, djinv::Float64,
+          de::Float64, dV::Float64, jinv::SMatrix{2,2,Float64,4}, djinv::Float64,
           band_index::Int)
 
 Construct a `Patch` defining a region of momentum space over which to integrate.
@@ -26,7 +26,7 @@ Construct a `Patch` defining a region of momentum space over which to integrate.
 - `v::SVector{2,Float64}`: group velocity at the patch center.
 - `de::Float64`: width of the patch in energy.
 - `dV::Float64`: area of the patch in momentum space.
-- `jinv::Matrix{Float64}`: Jacobian of the transformation
+- `jinv::SMatrix{2,2,Float64,4}`: Jacobian of the transformation
   ``(k_x, k_y) \\to (\\varepsilon, s)``.
 - `djinv::Float64`: determinant of `jinv`.
 - `band_index::Int`: index of the band from which `e` was sampled at `k`.
@@ -37,7 +37,7 @@ struct Patch <: AbstractPatch
     v::SVector{2,Float64}
     de::Float64
     dV::Float64
-    jinv::Matrix{Float64}
+    jinv::SMatrix{2,2,Float64,4}
     djinv::Float64
     band_index::Int
 end
@@ -145,28 +145,30 @@ Return the momentum-space area of patch `p`.
 area(p::Patch)             = p.dV
 
 """
-    patch_op(p::Patch, M::Matrix)
+    patch_op(p::Patch, M::AbstractMatrix)
 
 Apply the active transformation defined by matrix `M` on the relevant fields of patch `p`.
 """
-function patch_op(p::Patch, M::Matrix)
+function patch_op(p::Patch, M::AbstractMatrix)
+    Mₛ = SMatrix{2,2,Float64,4}(M)
     return Patch(
         p.e,
-        SVector{2}(M * p.k),
-        SVector{2}(M * p.v),
+        Mₛ * p.k,
+        Mₛ * p.v,
         p.de,
         p.dV,
-        M * p.jinv,
+        Mₛ * p.jinv,
         p.djinv,
         p.band_index
     )
 end
 
-function patch_op(p::VirtualPatch, M::Matrix)
+function patch_op(p::VirtualPatch, M::AbstractMatrix)
+    Mₛ = SMatrix{2,2,Float64,4}(M)
     return VirtualPatch(
         p.e,
-        SVector{2}(M * p.k),
-        SVector{2}(M * p.v),
+        Mₛ * p.k,
+        Mₛ * p.v,
         p.band_index
     )
 end
@@ -318,6 +320,74 @@ function bz_symmetry_map(grid::Vector{Patch}, l::Lattice)
     end
 
     return BZSymmetryMap(ibz_inds, ibz_preimage, g_perms, g_inv_perms, ibz_g_idx)
+end
+
+"""
+    fill_from_ibz!(L::AbstractMatrix, symmetry_map::BZSymmetryMap)
+
+Given that the rows `symmetry_map.ibz_inds` of `L` have already been populated (e.g. via
+[`electron_electron`](@ref) for each `i ∈ symmetry_map.ibz_inds`), fill all remaining rows
+using the point-group invariance `L[O*i, O*j] = L[i, j]`.
+"""
+function fill_from_ibz!(L::AbstractMatrix, symmetry_map::BZSymmetryMap)
+    for (i_bz, i_ibz) in symmetry_map.ibz_preimage
+        g = symmetry_map.ibz_g_idx[i_bz]
+        L[i_bz, :] = L[i_ibz, symmetry_map.g_inv_perms[g]]
+    end
+    return nothing
+end
+
+"""
+    ibz_matvec!(y, x, L::AbstractMatrix, sym::BZSymmetryMap) -> y
+
+Compute `y = L * x` in-place using only the IBZ rows of `L` (those indexed by
+`sym.ibz_inds`). Non-IBZ rows are reconstructed on the fly via the point-group
+invariance `L[O*i, O*j] = L[i, j]`, without calling [`fill_from_ibz!`](@ref).
+"""
+function ibz_matvec!(y::AbstractVector, x::AbstractVector, L::AbstractMatrix, sym::BZSymmetryMap)
+    for i_ibz in sym.ibz_inds
+        y[i_ibz] = dot(view(L, i_ibz, :), x)
+    end
+    for (i_bz, i_ibz) in sym.ibz_preimage
+        g = sym.ibz_g_idx[i_bz]
+        y[i_bz] = dot(view(L, i_ibz, :), view(x, sym.g_perms[g]))
+    end
+    return y
+end
+
+"""
+    diagonalize_ibz(L::AbstractMatrix, sym::BZSymmetryMap) -> LinearAlgebra.Eigen
+
+Diagonalize the full N×N collision operator `L` without calling [`fill_from_ibz!`](@ref).
+Only the IBZ rows of `L` (those indexed by `sym.ibz_inds`) need to be populated.
+
+Internally reconstructs the full matrix column-by-column via [`ibz_matvec!`](@ref) applied
+to each standard basis vector, then returns `eigen(L_full)`. `L` is not mutated.
+
+# Example
+```julia
+L_sym = zeros(N, N)
+for i in sym.ibz_inds, j in 1:N
+    L_sym[i, j] = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, l)
+end
+result = diagonalize_ibz(L_sym, sym)
+vals, vecs = result.values, result.vectors
+```
+"""
+function diagonalize_ibz(L::AbstractMatrix, sym::BZSymmetryMap)
+    N      = size(L, 1)
+    L_full = similar(L)
+    e_j    = zeros(eltype(L), N)
+    col    = Vector{eltype(L)}(undef, N)
+
+    for j in 1:N
+        e_j[j] = one(eltype(L))
+        ibz_matvec!(col, e_j, L, sym)
+        L_full[:, j] .= col
+        e_j[j] = zero(eltype(L))
+    end
+
+    return eigen(L_full)
 end
 
 ###
@@ -510,18 +580,20 @@ function mesh_sheet(
             p1 = k_inner[j]
             p2 = k_outer[j]
 
-            A = Matrix{Float64}(undef, 2, 2)
-            J = Matrix{Float64}(undef, 2, 2)
+            A = SMatrix{2,2,Float64,4}(
+                (p2[1] - p1[1]) / Δε,
+                (k[j+1][1] - k[j-1][1]) / Δs,
+                (p2[2] - p1[2]) / Δε,
+                (k[j+1][2] - k[j-1][2]) / Δs,
+            )
 
-            A[1,1] = (p2[1] - p1[1]) / Δε
-            A[1,2] = (p2[2] - p1[2]) / Δε
-            A[2,1] = (k[j+1][1] - k[j-1][1]) / Δs
-            A[2,2] = (k[j+1][2] - k[j-1][2]) / Δs
-
-            J[1,1] =  2 * v[1] / Δε
-            J[1,2] =  2 * v[2] / Δε
-            J[2,1] = -2 * A[1,2] / det(A) / Δs
-            J[2,2] =  2 * A[1,1] / det(A) / Δs
+            detA = det(A)
+            J = SMatrix{2,2,Float64,4}(
+                 2 * v[1] / Δε,
+                -2 * A[1,2] / detA / Δs,
+                 2 * v[2] / Δε,
+                 2 * A[1,1] / detA / Δs,
+            )
 
             patches[i÷2, j÷2] = Patch(
                 foliated_energies[i],
@@ -1125,11 +1197,12 @@ function isotropic_sheet_mesh(ε, energies_s, n_arc, corner_offset, r_lo, r_hi)
         for j in 1:n_arc
             θ = atan(k[i, j][2], k[i, j][1])
 
-            Jinv = zeros(Float64, 2, 2)
-            Jinv[1,1] =  (Δε_i / 2) * cos(θ) / norm(v[i, j])
-            Jinv[2,1] =  (Δε_i / 2) * sin(θ) / norm(v[i, j])
-            Jinv[1,2] = -(Δθ / 2) * norm(k[i, j]) * sin(θ)
-            Jinv[2,2] =  (Δθ / 2) * norm(k[i, j]) * cos(θ)
+            Jinv = SMatrix{2,2,Float64,4}(
+                 (Δε_i / 2) * cos(θ) / norm(v[i, j]),
+                 (Δε_i / 2) * sin(θ) / norm(v[i, j]),
+                -(Δθ / 2) * norm(k[i, j]) * sin(θ),
+                 (Δθ / 2) * norm(k[i, j]) * cos(θ),
+            )
 
             patches[i, j] = Patch(E, k[i, j], v[i, j], Δε_i, dV, Jinv, abs(det(Jinv)), 1)
         end
