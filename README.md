@@ -83,7 +83,7 @@ The full version — including residual-conservation checks, the IBZ-only `diago
 - **Fermi-surface meshing.** `ibz_mesh`, `bz_mesh`, and `mesh_region` build patch-wise meshes via marching-squares contouring with arclength-uniform resampling, multi-sheet handling, and recursive corner re-meshing. `isotropic_mesh` is a specialised path for the free electron gas.
 - **Symmetry-aware integration.** `BZSymmetryMap` records the point-group action on the BZ mesh; `fill_from_ibz!`, `ibz_matvec!`, and `diagonalize_ibz` let you compute only the IBZ rows of the collision operator and recover the full matrix — or its action — on demand.
 - **Scattering kernels.** `electron_electron` integrates the 5D phase-space kernel exactly via the Pournin polytope-volume formula (or via a hyperspherical approximation). `electron_phonon` and `electron_impurity` cover the standard quasi-elastic and elastic channels.
-- **Transport properties.** `electrical_conductivity`, `thermal_conductivity`, `thermoelectric_conductivity`, `peltier_tensor`, `ηB1g`, `ηB2g`, `σ_lifetime`, and `η_lifetime` evaluate weighted inner products of the form $\langle a | L^{-1} | b \rangle$ — with the linear solver pluggable (dense LU by default, but any iterative or matrix-free back end works).
+- **Transport properties.** `electrical_conductivity`, `ηB1g`, `ηB2g`, `σ_lifetime`, and `η_lifetime` evaluate weighted inner products of the form $\langle a | L^{-1} | b \rangle$ — with the linear solver pluggable (dense LU by default, but any iterative or matrix-free back end works).
 
 ## Citing Ludwig.jl
 

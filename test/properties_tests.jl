@@ -82,59 +82,59 @@ end
     @test isfinite(σxx_ω)
 end
 
-@testset "thermal_conductivity" begin
-    κ = thermal_conductivity(L_prop, v_prop, E_prop, dV_prop, T_prop)
+@testset "Ludwig.thermal_conductivity" begin
+    κ = Ludwig.thermal_conductivity(L_prop, v_prop, E_prop, dV_prop, T_prop)
     @test isa(κ, Matrix{ComplexF64})
     @test size(κ) == (2, 2)
     @test all(isfinite, κ)
 
-    κ11 = thermal_conductivity(L_prop, v_prop, E_prop, dV_prop, T_prop, 1, 1)
+    κ11 = Ludwig.thermal_conductivity(L_prop, v_prop, E_prop, dV_prop, T_prop, 1, 1)
     @test isa(κ11, Number)
     @test isfinite(κ11)
     @test isapprox(κ11, κ[1, 1]; atol = 1e-8)
 
-    @test_throws ArgumentError thermal_conductivity(
+    @test_throws ArgumentError Ludwig.thermal_conductivity(
         L_prop, v_prop, E_prop, dV_prop, T_prop, 0, 1
     )
-    @test_throws ArgumentError thermal_conductivity(
+    @test_throws ArgumentError Ludwig.thermal_conductivity(
         L_prop, v_prop, E_prop, dV_prop, T_prop, 1, 3
     )
 end
 
-@testset "thermoelectric_conductivity" begin
-    ϵ = thermoelectric_conductivity(L_prop, v_prop, E_prop, dV_prop, T_prop)
+@testset "Ludwig.thermoelectric_conductivity" begin
+    ϵ = Ludwig.thermoelectric_conductivity(L_prop, v_prop, E_prop, dV_prop, T_prop)
     @test isa(ϵ, Matrix{ComplexF64})
     @test size(ϵ) == (2, 2)
     @test all(isfinite, ϵ)
 
-    ϵ11 = thermoelectric_conductivity(L_prop, v_prop, E_prop, dV_prop, T_prop, 1, 1)
+    ϵ11 = Ludwig.thermoelectric_conductivity(L_prop, v_prop, E_prop, dV_prop, T_prop, 1, 1)
     @test isa(ϵ11, Number)
     @test isfinite(ϵ11)
     @test isapprox(ϵ11, ϵ[1, 1]; atol = 1e-8)
 
-    @test_throws ArgumentError thermoelectric_conductivity(
+    @test_throws ArgumentError Ludwig.thermoelectric_conductivity(
         L_prop, v_prop, E_prop, dV_prop, T_prop, 0, 1
     )
-    @test_throws ArgumentError thermoelectric_conductivity(
+    @test_throws ArgumentError Ludwig.thermoelectric_conductivity(
         L_prop, v_prop, E_prop, dV_prop, T_prop, 1, 3
     )
 end
 
-@testset "peltier_tensor" begin
-    τ = peltier_tensor(L_prop, v_prop, E_prop, dV_prop, T_prop)
+@testset "Ludwig.peltier_tensor" begin
+    τ = Ludwig.peltier_tensor(L_prop, v_prop, E_prop, dV_prop, T_prop)
     @test isa(τ, Matrix{ComplexF64})
     @test size(τ) == (2, 2)
     @test all(isfinite, τ)
 
-    τ11 = peltier_tensor(L_prop, v_prop, E_prop, dV_prop, T_prop, 1, 1)
+    τ11 = Ludwig.peltier_tensor(L_prop, v_prop, E_prop, dV_prop, T_prop, 1, 1)
     @test isa(τ11, Number)
     @test isfinite(τ11)
     @test isapprox(τ11, τ[1, 1]; atol = 1e-8)
 
-    @test_throws ArgumentError peltier_tensor(
+    @test_throws ArgumentError Ludwig.peltier_tensor(
         L_prop, v_prop, E_prop, dV_prop, T_prop, 0, 1
     )
-    @test_throws ArgumentError peltier_tensor(
+    @test_throws ArgumentError Ludwig.peltier_tensor(
         L_prop, v_prop, E_prop, dV_prop, T_prop, 1, 3
     )
 end

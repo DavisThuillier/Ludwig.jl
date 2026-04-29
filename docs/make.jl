@@ -18,7 +18,10 @@ makedocs(
             "Overview" => "collision_operator.md",
             "Pournin Volume" => "collision_operator/pournin_volume.md",
         ],
-        "Transport Properties" => "properties/transport.md",
+        "Transport Properties" => [
+            "Overview" => "properties/transport.md",
+            "Units and SI Conversion" => "properties/units.md",
+        ],
         "API Reference" => "api.md",
     ],
 )
