@@ -30,6 +30,6 @@ deploydocs(
     repo = "github.com/DavisThuillier/Ludwig.jl.git",
     devbranch = "develop",
     devurl = "dev",
-    versions = ["stable" => "v^", "dev" => "dev", "v0.2.2", "v0.2.1"],
+    versions = ["stable" => "v^", "dev" => "dev", "v0.3.0", "v0.2.2", "v0.2.1"],
     push_preview = false
 )
