@@ -3,26 +3,29 @@
 The linearized Boltzmann collision operator computed by `electron_electron` is not Hermitian with respect to the standard inner product. However, one can define the symmetrized auxiliary matrix
 
 ```math
-L^{\text{(s)}}_{ij} = f^{(0)}_i (1 - f^{(0)}_i) \, \Delta V_i \, L_{ij}
+L^{\text{(s)}}_{ij} = \frac{f^{(0)}_i (1 - f^{(0)}_i)}{T} \, \Delta V_i \, L_{ij}
 ```
 
 which is symmetric. This is equivalent to saying that ``L`` is Hermitian with respect to the weighted inner product
 
 ```math
-\langle a | b \rangle \equiv \sum_{\mathbf{k}} f^{(0)}(\epsilon_{\mathbf{k}}) \bigl(1 - f^{(0)}(\epsilon_{\mathbf{k}})\bigr) \, a_{\mathbf{k}}^* \, b_{\mathbf{k}} \, \Delta V_{\mathbf{k}}.
+\langle a | b \rangle \equiv \sum_{\mathbf{k}} \frac{f^{(0)}(\epsilon_{\mathbf{k}}) \bigl(1 - f^{(0)}(\epsilon_{\mathbf{k}})\bigr)}{T} \, a_{\mathbf{k}}^* \, b_{\mathbf{k}} \, \Delta V_{\mathbf{k}}
+= \sum_{\mathbf{k}} \left( -\frac{\partial f^{(0)}}{\partial \varepsilon} \right)_{\mathbf{k}} a_{\mathbf{k}}^* \, b_{\mathbf{k}} \, \Delta V_{\mathbf{k}},
 ```
+
+i.e. the canonical Fermi-window weight of the linearized Boltzmann formalism. The factor of ``1/T`` is folded into the internal `Ludwig.boltzmann_weight` helper so that every transport function in this section can write its prefactor with no further temperature dependence beyond what is intrinsic to the channel.
 
 Transport coefficients are expressed as matrix elements of ``L^{-1}`` under this inner product:
 
 ```math
-X_{ij} = \langle \phi_i | L^{-1} | \phi_j \rangle \equiv \sum_{\mathbf{k}} f^{(0)}_{\mathbf{k}} (1 - f^{(0)}_{\mathbf{k}}) \, \Delta V_{\mathbf{k}} \, \phi^{(i)}_{\mathbf{k}} \, [L^{-1} \phi^{(j)}]_{\mathbf{k}}.
+X_{ij} = \langle \phi_i | L^{-1} | \phi_j \rangle \equiv \sum_{\mathbf{k}} \frac{f^{(0)}_{\mathbf{k}} (1 - f^{(0)}_{\mathbf{k}})}{T} \, \Delta V_{\mathbf{k}} \, \phi^{(i)}_{\mathbf{k}} \, [L^{-1} \phi^{(j)}]_{\mathbf{k}}.
 ```
 
 The driving vectors ``\phi`` differ by transport channel: ``\phi = v_i`` for charge transport, ``\phi = \varepsilon v_i`` for heat transport. Numerically, ``L^{-1} \phi`` is computed by solving the linear system ``L \psi = \phi`` and then summing ``\sum_\mathbf{k} w_\mathbf{k} \, \phi^{(i)}_\mathbf{k} \, \psi_\mathbf{k}``. See [`inner_product`](@ref).
 
 ## Choosing a solver
 
-[`inner_product`](@ref) and every transport-property function ([`electrical_conductivity`](@ref), [`thermal_conductivity`](@ref), [`thermoelectric_conductivity`](@ref), [`peltier_tensor`](@ref), [`ηB1g`](@ref), [`ηB2g`](@ref), [`σ_lifetime`](@ref), [`η_lifetime`](@ref)) accept a `solve` keyword that controls how ``L \phi = b`` is solved. Any 2-argument callable `(L, b) -> ϕ` is acceptable — direct factorizations, sparse solvers, iterative methods, and matrix-free schemes all use the same hook.
+[`inner_product`](@ref) and every transport-property function ([`electrical_conductivity`](@ref), [`longitudinal_electrical_conductivity`](@ref), [`ηB1g`](@ref), [`ηB2g`](@ref), [`σ_lifetime`](@ref), [`η_lifetime`](@ref)) accept a `solve` keyword that controls how ``L \phi = b`` is solved. Any 2-argument callable `(L, b) -> ϕ` is acceptable — direct factorizations, sparse solvers, iterative methods, and matrix-free schemes all use the same hook.
 
 The default is `\`. For tensor-valued properties this triggers a single dense LU factorization of the (possibly modified) collision matrix that is then reused across all four component solves, so the ``O(n^3)`` cost is paid only once per call. Passing a precomputed `LinearAlgebra.Factorization` such as `lu(L)`, `qr(L)`, or `cholesky(L)` lets that work be amortized further across multiple property evaluations sharing the same `L`.
 
@@ -44,18 +47,6 @@ Iterative solvers also let `L` be supplied as a sparse matrix or a `LinearMap`, 
 ### Electrical conductivity
 
 See [`electrical_conductivity`](@ref) and [`longitudinal_electrical_conductivity`](@ref).
-
-### Thermal conductivity
-
-See [`thermal_conductivity`](@ref).
-
-### Thermoelectric conductivity
-
-See [`thermoelectric_conductivity`](@ref).
-
-### Peltier tensor
-
-See [`peltier_tensor`](@ref).
 
 ### Viscosity
 
