@@ -442,15 +442,17 @@ function electron_impurity(grid::Vector{Patch}, i::Int, j::Int, V_squared)
 end
 
 """
-    electron_impurity(grid::Vector{Patch}, i::Int, j::Int, V_squared::Matrix)
+    electron_impurity(grid::Vector{Patch}, i::Int, j::Int, V_squared::AbstractMatrix)
 
 Return the `(i, j)` element of the collision matrix for electron-impurity scattering,
-assuming a constant scattering strength for each band pair given in `V_squared`. It is
-assumed that `grid` is band-ordered and that the length of each band sector is the same.
-The ordering of `V_squared` must match the band ordering.
+assuming a constant scattering strength for each band pair given in `V_squared`. The band
+indices are read from each patch's `band_index` field, so `grid` need not be band-ordered
+and the bands need not contribute equal numbers of patches. `V_squared[μ, ν]` is the
+constant ``|V|^2`` for an electron scattering from band `ν` to band `μ`.
 """
-function electron_impurity(grid::Vector{Patch}, i::Int, j::Int, V_squared::Matrix)
+function electron_impurity(grid::Vector{Patch}, i::Int, j::Int, V_squared::AbstractMatrix)
     i == j && return 0.0
-    ℓ = length(grid) ÷ size(V_squared, 1)
-    return -Iab(grid[i], grid[j], (x,y) -> V_squared[(i-1)÷ℓ + 1, (j-1)÷ℓ + 1]) * 2π / (grid[i].dV * (2π)^4)
+    bi, bj = band(grid[i]), band(grid[j])
+    Vij² = V_squared[bi, bj]
+    return -Iab(grid[i], grid[j], (x, y) -> Vij²) * 2π / (grid[i].dV * (2π)^4)
 end
