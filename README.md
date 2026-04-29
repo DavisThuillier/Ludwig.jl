@@ -87,7 +87,7 @@ The full version — including residual-conservation checks, the IBZ-only `diago
 
 ## Citing Ludwig.jl
 
-If you use Ludwig.jl in research, please cite it. A `CITATION.bib` entry will be added with the v0.3.0 release; in the interim the package can be cited via the GitHub repository:
+If you use Ludwig.jl in research, please cite it.
 
 ```bibtex
 @software{LudwigJl,
