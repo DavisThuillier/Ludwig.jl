@@ -1,4 +1,3 @@
-
 "Squared cutoff radius for the hyperspherical approximation to the 5D phase-space volume in [`ee_kernel!`](@ref)."
 const r5_cutoff_sq::Float64 = 4*6^(1/3)/pi
 

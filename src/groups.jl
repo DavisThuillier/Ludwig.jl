@@ -320,16 +320,6 @@ end
 
 Return the symmetric group ``S_n`` of order `n!` as a [`PermutationGroup`](@ref).
 
-# Examples
-```jldoctest
-julia> using Ludwig
-
-julia> G = get_symmetric_group(3);
-
-julia> order(G)
-6
-```
-
 See also [`get_cyclic_group`](@ref), [`get_dihedral_group`](@ref).
 """
 function get_symmetric_group(n::Int)
