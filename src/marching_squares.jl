@@ -1,17 +1,17 @@
 """
-    Isoline(points::Vector{SVector{2,Float64}}, isclosed::Bool, arclength::Real)
+    Isoline(points::Vector{SVector{2,Float64}}, isclosed::Bool, arclength::Float64)
 
 Representation of a contour as an ordered set of discrete points.
 
 # Fields
 - `points::Vector{SVector{2,Float64}}`: vector of points in the contour.
 - `isclosed::Bool`: `true` if the contour returned to its starting point when generated.
-- `arclength::Real`: total length of the contour.
+- `arclength::Float64`: total length of the contour.
 """
 struct Isoline
     points::Vector{SVector{2,Float64}}
     isclosed::Bool
-    arclength::Real
+    arclength::Float64
 end
 
 """
