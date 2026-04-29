@@ -309,7 +309,7 @@ function bz_symmetry_map(grid::Vector{Patch}, l::Lattice)
     tol = 1e-8 * diameter(bz)
 
     # Sort patches by k[1] so we can find candidates via binary search.
-    sort_perm = sortperm(1:N; by = i -> grid[i].k[1])
+    sort_perm = sortperm(grid; by = p -> p.k[1])
     sorted_kx = Float64[grid[sort_perm[s]].k[1] for s in 1:N]
 
     # Locate the grid index whose momentum is within `tol` of `query`.

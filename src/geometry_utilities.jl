@@ -1,15 +1,17 @@
 """
     in_polygon(k, p, atol=1e-12)
 
-Test whether the 2D point `k` lies inside the polygon `p`, including its vertices.
+Test whether the 2D point `k` lies inside the polygon `p`, including its vertices and edges.
 
 `p` is a sequence of vertices (e.g. a `Vector{<:AbstractVector}`); the polygon is implicitly
-closed by joining the last vertex to the first. Behavior for points lying on the edges
-between adjacent vertices is not guaranteed to be stable.
+closed by joining the last vertex to the first. Points coincident with a vertex (within
+`atol`) or lying on an edge between adjacent vertices are reported as inside.
 
 # Implementation
-A point coincident with a vertex (within `atol`) returns `true` directly; otherwise the
-result is determined by the winding number of `p` about `k`.
+A point coincident with a vertex returns `true` directly. Otherwise the result is
+determined by the winding number of `p` about `k`: the winding number is ±1 for generic
+interior points and ±0.5 (a half-integer signature) for points on an edge, so both cases
+return `true` and only zero-winding exterior points return `false`.
 
 # Examples
 ```jldoctest
