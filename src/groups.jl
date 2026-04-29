@@ -5,7 +5,7 @@ Abstract supertype for finite groups.
 
 All concrete subtypes must provide an `elements` field whose length equals the group order.
 
-See also [`PermutationGroup`](@ref), [`order`](@ref), [`get_table`](@ref).
+See also [`PermutationGroup`](@ref), [`order`](@ref).
 """
 abstract type Group end
 
@@ -14,7 +14,7 @@ abstract type Group end
 
 Abstract supertype for elements of a [`Group`](@ref).
 
-See also [`PermutationGroupElement`](@ref), [`inverse`](@ref), [`is_identity`](@ref).
+See also [`PermutationGroupElement`](@ref), [`is_identity`](@ref).
 """
 abstract type GroupElement end
 
@@ -32,15 +32,13 @@ julia> G = get_cyclic_group(4);
 julia> order(G)
 4
 ```
-
-See also [`get_table`](@ref).
 """
 order(G::Group) = length(G.elements)
 
 """
     PermutationGroupElement(permutation::Vector{Int})
 
-A [`GroupElement`](@ref) represented by a permutation of `1:n`.
+A `GroupElement` represented by a permutation of `1:n`.
 
 The permutation is stored as a `Vector{Int}` where entry `i` gives the image of `i` under
 the permutation.
@@ -62,7 +60,7 @@ julia> g.permutation
  1
 ```
 
-See also [`PermutationGroup`](@ref), [`inverse`](@ref), [`is_identity`](@ref),
+See also [`PermutationGroup`](@ref), [`is_identity`](@ref),
 [`get_matrix_representation`](@ref).
 """
 struct PermutationGroupElement <: GroupElement
@@ -149,8 +147,6 @@ true
 julia> is_identity(PermutationGroupElement([2, 1, 3]))
 false
 ```
-
-See also [`inverse`](@ref).
 """
 is_identity(g::PermutationGroupElement) = g.permutation == collect(eachindex(g.permutation))
 
@@ -214,8 +210,7 @@ julia> order(G)
 2
 ```
 
-See also [`get_cyclic_group`](@ref), [`get_dihedral_group`](@ref),
-[`get_symmetric_group`](@ref).
+See also [`get_cyclic_group`](@ref), [`get_dihedral_group`](@ref).
 """
 struct PermutationGroup <: Group
     elements::Vector{PermutationGroupElement}
@@ -271,7 +266,7 @@ julia> order(G)
 6
 ```
 
-See also [`get_dihedral_group`](@ref), [`get_symmetric_group`](@ref).
+See also [`get_dihedral_group`](@ref).
 """
 function get_cyclic_group(n::Int)
     g = PermutationGroupElement(circshift(collect(1:n), -1))
@@ -296,7 +291,7 @@ julia> order(G)
 8
 ```
 
-See also [`get_cyclic_group`](@ref), [`get_symmetric_group`](@ref).
+See also [`get_cyclic_group`](@ref).
 """
 function get_dihedral_group(n::Int)
     r = PermutationGroupElement(circshift(collect(1:n), -1)) # Rotation

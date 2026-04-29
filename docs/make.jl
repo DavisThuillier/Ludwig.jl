@@ -14,11 +14,11 @@ makedocs(
             "Overview" => "mesh/mesh.md",
             "Marching Squares" => "mesh/marching_squares.md",
         ],
-        "Collision Operator" => "collision_operator.md",
-        "Transport Properties" => [
-            "Inner Product" => "properties/inner_product.md",
-            "Transport Coefficients" => "properties/transport.md",
+        "Collision Operator" => [
+            "Overview" => "collision_operator.md",
+            "Pournin Volume" => "collision_operator/pournin_volume.md",
         ],
+        "Transport Properties" => "properties/transport.md",
         "API Reference" => "api.md",
     ],
 )

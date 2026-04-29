@@ -14,10 +14,3 @@ For all calculations, ``\hbar = k_B = 1.`` For converting output back to physica
 !!! danger "Energy Scale" 
     Since we take ``k_B = 1``, temperatures must be expressed in the same energy scale used by the Hamiltonian. 
     We recommend expressing all energies in units of eV for simplicity in multiband calculations where each band may have an independent natural energy scale. This is particularly important since many function involve the ratio of the energy to temperature; e.g. [`f0`](@ref)`(E, T)`.
-
-Moreover, all momentum integrals are normalized by the volume of the Brillouin zone. This simplifies calculations, but again requires appropriate dimension to be restored later:
-```math
-\int \frac{d^2\mathbf{k}}{(2\pi)^2} \to \frac{1}{v_\text{cell}} \int d^2\mathbf{k}
-```
-
-## References

@@ -40,6 +40,33 @@ b = InterpolatedBand(itp, lattice)   # uses inv(reciprocal_lattice_vectors(latti
 
 The group velocity is obtained from `Interpolations.gradient` on the spline basis (analytic derivatives, not autodiff) and transformed back to Cartesian momentum coordinates. Like `HamiltonianBand`, an `InterpolatedBand` may be mixed with plain functions and matrix Hamiltonians in the `bands` vector passed to `ibz_mesh` or `bz_mesh`.
 
+## IBZ-restricted interpolated bands
+
+When the band respects the lattice point-group symmetry, it is wasteful to sample and store the dispersion over the entire BZ — the IBZ already contains all of the independent information. An [`IBZInterpolatedBand`](@ref) wraps a 2D spline defined only on (a rectangle covering) the IBZ, and reconstructs the band over the full BZ on demand by symmetry.
+
+```julia
+# expensive band — e.g. an eigenvalue of a large Hamiltonian
+band = HamiltonianBand(H, 1)
+
+# sample once on a (n+1)×(n+1) grid covering the IBZ bounding rectangle
+b = IBZInterpolatedBand(band, lattice, 64)
+```
+
+Let ``B`` denote the matrix whose columns are the reciprocal lattice vectors, so that ``f = B^{-1} k`` are the fractional reciprocal coordinates of a Cartesian momentum ``k``. Evaluation at ``k`` then proceeds in three steps:
+
+1. ``k`` is folded to the first Brillouin zone via [`map_to_bz`](@ref), yielding ``k_{bz}``.
+2. The point-group operation ``O`` whose image ``O \cdot k_{bz}`` lies in the IBZ polygon is selected, giving the IBZ representative ``k_{ibz} = O \cdot k_{bz}``.
+3. ``k_{ibz}`` is converted to fractional reciprocal coordinates ``f = B^{-1} k_{ibz}`` and looked up in the spline.
+
+The group velocity is the IBZ-frame gradient pulled back into Cartesian coordinates and rotated by ``O^\top``:
+```math
+\nabla_k \varepsilon(k) = O^\top \, B^{-\top} \, \nabla_f \mathrm{itp}(f),\qquad f = B^{-1}\, k_{ibz}.
+```
+
+If the IBZ image lands outside the spline support box, the band returns a `sentinel` energy (default `1e3` eV) and a zero velocity. The sentinel is far above any realistic chemical potential, so the energy-conservation cutoff inside the electron-electron kernel naturally drops these out-of-support contributions without any caller-side change. This makes the integer-resolution constructor `IBZInterpolatedBand(band, lattice, n)` — which samples a uniform grid over the IBZ bounding rectangle — safe to use even though that rectangle generally extends past the IBZ itself.
+
+Like the other band wrappers, `IBZInterpolatedBand` may be mixed with plain functions, matrix Hamiltonians, and full-BZ `InterpolatedBand`s in the `bands` vector passed to `ibz_mesh` or `bz_mesh`.
+
 ## Advanced meshing options
 
 [`ibz_mesh`](@ref), [`bz_mesh`](@ref), and [`mesh_region`](@ref) accept several keyword arguments for finer control:
