@@ -1,12 +1,12 @@
 
 "Squared cutoff radius for the hyperspherical approximation to the 5D phase-space volume in [`ee_kernel!`](@ref)."
-const ρ::Float64 = 4*6^(1/3)/pi
+const r5_cutoff_sq::Float64 = 4*6^(1/3)/pi
 
 "Squared cutoff radius for the hyperspherical approximation to the 3D phase-space volume in `electron_phonon`."
-const ρ3::Float64 = 4*sqrt(2)/pi
+const r3_cutoff_sq::Float64 = 4*sqrt(2)/pi
 
 "Volume of the 5-dimensional unit sphere"
-const vol::Float64 = (8 * pi^2 / 15)
+const unit_5sphere_vol::Float64 = (8 * pi^2 / 15)
 
 ###
 ### Internal helpers
@@ -179,10 +179,10 @@ function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc, T, exact::Boo
 
         return vol_5 * a.djinv * b.djinv * c.djinv * (1 - f0(εabc + Δε, T)) / sqrt(uu)
     else
-        ρ < δ^2 / uu && return 0.0
+        r5_cutoff_sq < δ^2 / uu && return 0.0
 
-        r5 = (ρ - δ^2 / uu)^(5/2)
-        return vol * a.djinv * b.djinv * c.djinv * r5 * (1 - f0(εabc + Δε, T)) / sqrt(uu)
+        r5 = (r5_cutoff_sq - δ^2 / uu)^(5/2)
+        return unit_5sphere_vol * a.djinv * b.djinv * c.djinv * r5 * (1 - f0(εabc + Δε, T)) / sqrt(uu)
     end
 end
 
@@ -372,9 +372,9 @@ function ep_kernel!(ζ, u, a::Patch, b::Patch, v, ω0::Real, T::Real)
         u[3] = b.de/2.0 + sign * ζ[3]
         u[4] = sign * ζ[4]
 
-        ρ3 < δ^2 / dot(u, u) && continue # Check for intersection of energy conserving 3-plane with coordinate space
+        r3_cutoff_sq < δ^2 / dot(u, u) && continue # Check for intersection of energy conserving 3-plane with coordinate space
         ω_eff = ω0 - δ * dot(ζ, u) / dot(u, u)
-        V = (4π^3 / 3) * (ρ3 - δ^2 / dot(u, u))^(3/2)
+        V = (4π^3 / 3) * (r3_cutoff_sq - δ^2 / dot(u, u))^(3/2)
 
         Kij -= sign * V / (2 * cosh(ω_eff / T) - 2) / norm(u)
     end

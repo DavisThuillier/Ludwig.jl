@@ -30,7 +30,7 @@ function in_polygon(k, p, atol = 1e-12)
     is_vertex && return true
 
     w = winding_number(p .- Ref(k), atol) # Winding number of polygon wrt k
-    return !(abs(w) < atol) # Returns false is w ≈ 0
+    return !(abs(w) < atol) # Returns false when w ≈ 0
 end
 
 """

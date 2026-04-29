@@ -174,7 +174,7 @@ function closure(generators...)
         gn = g
         while true
             (gn in elements) ? break : push!(elements, gn)
-            gn = gn * g # Compute g^n+1
+            gn = gn * g # Compute g^(n+1)
         end
 
         for h in elements

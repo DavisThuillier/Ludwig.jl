@@ -42,7 +42,7 @@ export point_group, lattice_type, get_bz, get_ibz, map_to_bz
 export Isoline, IsolineBundle, contour_intersection, get_bounding_box
 
 # FSMesh
-export Patch, VirtualPatch, AbstractPatch, energy, momentum, velocity
+export Patch, VirtualPatch, AbstractPatch, energy, momentum, velocity, band, area
 export HamiltonianBand, InterpolatedBand, IBZInterpolatedBand, band_velocity
 export Mesh, patches, corners, corner_indices
 export mesh_region, ibz_mesh, bz_mesh, isotropic_mesh
