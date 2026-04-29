@@ -161,7 +161,7 @@ Remove consecutive points of `segment` that coincide within `rtol = 1e-10` and r
 mutated `segment`.
 """
 function remove_duplicates!(segment)
-    to_delete = []
+    to_delete = Int[]
     for i ∈ eachindex(segment)
         i == 1 && continue
         if isapprox(segment[i], segment[i-1]; rtol = 1e-10)
@@ -569,7 +569,7 @@ function match_contour_segments(b1::Vector{Isoline}, b2::Vector{Isoline})
     c1 = centroid.(b1)
     c2 = centroid.(b2)
 
-    perm = [] # Permutation of b2 isolines that matches with b1 isolines
+    perm = Int[] # Permutation of b2 isolines that matches with b1 isolines
     for i ∈ eachindex(c2)
         order = sortperm(norm.(Ref(c2[i]) .- c1)) # Order centroid c2[i] by distance to all centroids, c1
         push!(perm, order[findfirst(x -> !(x ∈ perm), order)])
