@@ -4,9 +4,9 @@
     gh = PermutationGroupElement([4, 2, 5, 3, 1])
 
     @test g * h == gh
-    @test is_identity(g * inverse(g)) == true
-    @test is_identity(h * inverse(h)) == true
-    @test is_identity(gh * inverse(gh)) == true
+    @test is_identity(g * Ludwig.inverse(g)) == true
+    @test is_identity(h * Ludwig.inverse(h)) == true
+    @test is_identity(gh * Ludwig.inverse(gh)) == true
 
 end
 
@@ -26,7 +26,7 @@ end
 
 @testset "Symmetric Groups" begin
     for n in 1:6
-        Sₙ = get_symmetric_group(n)
+        Sₙ = Ludwig.get_symmetric_group(n)
         @test order(Sₙ) == factorial(n)
     end
 end
