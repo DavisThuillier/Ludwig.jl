@@ -375,13 +375,17 @@ function fill_from_ibz!(L::AbstractMatrix, symmetry_map::BZSymmetryMap)
 end
 
 """
-    ibz_matvec!(y, x, L::AbstractMatrix, sym::BZSymmetryMap) -> y
+    ibz_matvec!(y, L::AbstractMatrix, x, sym::BZSymmetryMap) -> y
 
 Compute `y = L * x` in-place using only the IBZ rows of `L` (those indexed by
 `sym.ibz_inds`). Non-IBZ rows are reconstructed on the fly via the point-group
 invariance `L[O*i, O*j] = L[i, j]`, without calling [`fill_from_ibz!`](@ref).
+
+Argument order matches the `LinearAlgebra.mul!(y, A, x)` convention so this routine
+composes directly with iterative-solver back ends (`IterativeSolvers.bicgstabl`,
+`gmres`, etc.).
 """
-function ibz_matvec!(y::AbstractVector, x::AbstractVector, L::AbstractMatrix, sym::BZSymmetryMap)
+function ibz_matvec!(y::AbstractVector, L::AbstractMatrix, x::AbstractVector, sym::BZSymmetryMap)
     for i_ibz in sym.ibz_inds
         y[i_ibz] = dot(view(L, i_ibz, :), x)
     end
@@ -419,7 +423,7 @@ function diagonalize_ibz(L::AbstractMatrix, sym::BZSymmetryMap)
 
     for j in 1:N
         e_j[j] = one(eltype(L))
-        ibz_matvec!(col, e_j, L, sym)
+        ibz_matvec!(col, L, e_j, sym)
         L_full[:, j] .= col
         e_j[j] = zero(eltype(L))
     end
@@ -852,29 +856,39 @@ function find_boundary_extrema(
 end
 
 """
-    mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int[, N::Int]; kwargs...)
+    mesh_region(region, ε, band_index, e_min, e_max, Δε, n_arc[, N]; <keyword arguments>)
 
 Generate a [`Mesh`](@ref) of momentum-space `region` for dispersion `ε` (band `band_index`)
 covering the energy window `[e_min, e_max]`.
 
 Boundary contours are placed at intervals of `Δε` across `[e_min, e_max]`. The arc-length
-resolution along each contour is `n_arc` patches per sheet. Multiple disconnected Fermi surface
-sheets are handled automatically — one sub-mesh is generated per sheet and the results are
-concatenated.
+resolution along each contour is `n_arc` patches per sheet. Multiple disconnected Fermi
+surface sheets are handled automatically — one sub-mesh is generated per sheet and the
+results are concatenated.
 
 If corner crossings are detected (an isoline endpoint slides around an IBZ corner between
 consecutive energy levels), the crossing region is recursively re-meshed up to `maxdepth`
-recursions. `N` sets the number of sample points along the longer axis of the bounding rectangle
-for the underlying marching-squares contour extraction.
+levels.
+
+A 7-argument overload `mesh_region(region, ε, e_min, e_max, Δε, n_arc[, N]; …)` defaults
+`band_index` to `1` for single-band use.
 
 # Arguments
-- `bbox`: optional bounding-box polygon; when provided the marching-squares grid uses its
-  bounding rectangle instead of that of `region`.
-- `angle_threshold`: turning-angle threshold (radians) for cusp detection (default `π/8`).
-- `boundaries`: if non-empty, use these explicit boundary energies instead of the
-  automatically computed grid.
-- `depth`: current recursion depth (default `1`; do not set manually).
-- `maxdepth`: maximum recursion depth for corner re-meshing (default `2`).
+- `region`: convex polygon vertices bounding the momentum-space region, as a
+  `Vector{<:AbstractVector}`.
+- `ε`: dispersion function called as `ε([kx, ky])`.
+- `band_index::Int`: band index recorded on each generated patch.
+- `e_min`, `e_max`: lower and upper bounds of the energy window.
+- `Δε`: target energy spacing between boundary contours.
+- `n_arc::Int`: patches per sheet along each energy contour. Clamped to `max(3, n_arc)`.
+- `N::Int = 1001`: marching-squares sample count along the longer axis of the bounding
+  rectangle.
+- `bbox = nothing`: optional bounding-box polygon; when provided the marching-squares grid
+  uses its bounding rectangle instead of that of `region`.
+- `angle_threshold = π/8`: turning-angle threshold (radians) for cusp detection.
+- `boundaries::AbstractVector = []`: explicit boundary energies; when non-empty, overrides
+  the automatically computed grid.
+- `maxdepth::Int = 2`: maximum recursion depth for corner re-meshing.
 
 See also [`ibz_mesh`](@ref), [`bz_mesh`](@ref).
 """
@@ -1025,23 +1039,30 @@ mesh_region(region, ε, e_min, e_max, Δε, n_arc::Int, N = 1001;
 ###
 
 """
-    ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int[, N::Int, α::Real]; mask, angle_threshold, boundaries, maxdepth)
+    ibz_mesh(l, bands, T, Δε, n_arc[, N, α]; <keyword arguments>)
 
-Generate a mesh of the irreducible Brillouin Zone (IBZ) for lattice `l` given dispersions
-in `bands` at temperature `T`. See [`mesh_region`](@ref) for a description of the resolution
-parameters `Δε` and `n_arc`.
+Generate a mesh of the irreducible Brillouin zone (IBZ) for lattice `l` given dispersions
+in `bands` at temperature `T`.
+
+The energy window covered is `[-α T, +α T]`. The `Function` overload accepts a single
+dispersion directly in place of `bands`.
 
 # Arguments
-- `mask`: optional vector of vertices defining a convex polygonal sub-region of the IBZ. When
-  `length(mask) > 2` the marching-squares grid is sampled over the axis-aligned bounding
-  rectangle of `mask` instead of that of the full IBZ, which is useful for finer gridding
-  around a small Fermi surface pocket. Contour extraction is still masked by the full IBZ.
-- `angle_threshold`: turning-angle threshold (radians) for cusp detection; passed through to
-  [`mesh_region`](@ref) (default `π/8`).
-- `boundaries`: explicit boundary energy vector passed through to [`mesh_region`](@ref);
-  when non-empty, overrides the automatically computed energy grid (default `[]`).
-- `maxdepth`: maximum recursion depth for corner re-meshing passed through to
-  [`mesh_region`](@ref) (default `2`).
+- `l::Lattice`: lattice whose IBZ is meshed.
+- `bands::AbstractVector`: vector of band dispersions, each callable on a 2-component
+  momentum.
+- `T`: temperature in the same units as the band energies (eV by package convention).
+- `Δε`, `n_arc`, `N`: resolution parameters forwarded to [`mesh_region`](@ref); see
+  there for details.
+- `α::Real = 6.0`: half-width of the energy window in units of `T`.
+- `mask = SVector{2,Float64}[]`: optional convex polygon defining a sub-region of the IBZ.
+  When `length(mask) > 2` the marching-squares grid uses the bounding rectangle of `mask`
+  instead of that of the full IBZ — useful for finer gridding around a small Fermi surface
+  pocket. Contour extraction is still masked by the full IBZ.
+- `angle_threshold = π/8`, `boundaries::AbstractVector = []`, `maxdepth::Int = 2`:
+  forwarded to [`mesh_region`](@ref).
+
+See also [`bz_mesh`](@ref), [`mesh_region`](@ref).
 """
 function ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0;
                   mask = SVector{2,Float64}[], angle_threshold = π/8,
@@ -1069,23 +1090,30 @@ ibz_mesh(l::Lattice, ε::Function, T, Δε, n_arc::Int, N::Int = 1001, α::Real 
     ibz_mesh(l, [ε], T, Δε, n_arc, N, α; mask, angle_threshold, boundaries, maxdepth)
 
 """
-    bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int[, N::Int, α::Real]; mask, angle_threshold, boundaries, maxdepth)
+    bz_mesh(l, bands, T, Δε, n_arc[, N, α]; <keyword arguments>)
 
-Generate a mesh of the Brillouin Zone (BZ) for lattice `l` given dispersions in `bands` at
-temperature `T` by computing the IBZ mesh and replicating it under all point-group operations.
-See [`mesh_region`](@ref) for a description of `Δε` and `n_arc`.
+Generate a mesh of the full Brillouin zone (BZ) for lattice `l` given dispersions in
+`bands` at temperature `T`, by computing the IBZ mesh and replicating it under every
+point-group operation of `l`.
+
+The energy window covered is `[-α T, +α T]`. The output contains
+`order(point_group(l)) × N_ibz` patches per band, where `N_ibz` is the patch count
+returned by [`ibz_mesh`](@ref) for the same arguments. The `Function` overload accepts a
+single dispersion directly in place of `bands`.
 
 # Arguments
-- `mask`: optional vector of vertices defining a convex polygonal sub-region of the IBZ. When
-  `length(mask) > 2` the marching-squares grid is sampled over the axis-aligned bounding
-  rectangle of `mask` instead of that of the full IBZ before the IBZ mesh is replicated
-  across the BZ. Contour extraction is still masked by the full IBZ.
-- `angle_threshold`: turning-angle threshold (radians) for cusp detection; passed through to
-  [`mesh_region`](@ref) (default `π/8`).
-- `boundaries`: explicit boundary energy vector passed through to [`mesh_region`](@ref);
-  when non-empty, overrides the automatically computed energy grid (default `[]`).
-- `maxdepth`: maximum recursion depth for corner re-meshing passed through to
-  [`mesh_region`](@ref) (default `2`).
+- `l::Lattice`: lattice whose BZ is meshed.
+- `bands::AbstractVector`: vector of band dispersions, each callable on a 2-component
+  momentum.
+- `T`: temperature in the same units as the band energies.
+- `Δε`, `n_arc`, `N`: resolution parameters forwarded to [`mesh_region`](@ref).
+- `α::Real = 6.0`: half-width of the energy window in units of `T`.
+- `mask = SVector{2,Float64}[]`: optional convex polygon restricting the marching-squares
+  grid to a sub-region of the IBZ before symmetry replication.
+- `angle_threshold = π/8`, `boundaries::AbstractVector = []`, `maxdepth::Int = 2`:
+  forwarded to [`mesh_region`](@ref).
+
+See also [`ibz_mesh`](@ref), [`bz_symmetry_map`](@ref), [`mesh_region`](@ref).
 """
 function bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0;
                  mask = SVector{2,Float64}[], angle_threshold = π/8,

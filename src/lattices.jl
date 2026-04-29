@@ -99,7 +99,7 @@ Columns of the returned matrix are the primitive vectors ``\\mathbf{a}_1`` and
 # Examples
 ```jldoctest
 julia> primitives(Lattice([1.0 0.0; 0.0 1.0]))
-2×2 Matrix{Float64}:
+2×2 SMatrix{2, 2, Float64, 4} with indices SOneTo(2)×SOneTo(2):
  1.0  0.0
  0.0  1.0
 ```
