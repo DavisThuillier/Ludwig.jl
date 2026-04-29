@@ -236,12 +236,14 @@ end
 ###
 
 """
-    bisect(f, a, b; iter=64)
+    bisect(f, a, b; iter=64, atol=eps(Float64))
 
 Return an approximation to a root of `f` in the bracket `[a, b]` by bisection.
 
-`f(a)` and `f(b)` must have opposite signs. The midpoint of the interval after `iter`
-bisection steps is returned; no convergence test is performed.
+`f(a)` and `f(b)` must have opposite signs. The loop terminates either when `iter`
+bisection steps have run or when the bracket width drops below `atol`, whichever
+comes first; the midpoint of the final bracket is returned. With `atol = 0` the
+function always runs the full `iter` halvings.
 
 # Examples
 ```jldoctest
@@ -249,12 +251,13 @@ julia> bisect(x -> x^2 - 2, 1.0, 2.0)
 1.414213562373095
 ```
 """
-function bisect(f, a, b; iter = 64)
+function bisect(f, a, b; iter = 64, atol = eps(Float64))
     fa = f(a)
     for _ in 1:iter
         mid = (a + b) / 2
         fmid = f(mid)
         fmid * fa > 0 ? (a = mid; fa = fmid) : (b = mid)
+        abs(b - a) < atol && break
     end
     return (a + b) / 2
 end
