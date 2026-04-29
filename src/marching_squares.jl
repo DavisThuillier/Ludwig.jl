@@ -129,7 +129,7 @@ function find_contour(x, y, A::AbstractMatrix, level::Real = 0.0; mask = [])
         end_index = follow_contour!(cells, border_cells, segment, x, y, A, is, js, start_index, start_edge, level; mask)
 
         # Check if the contour forms a loop
-        isclosed = end_index == start_index ? true : false
+        isclosed = end_index == start_index
 
         if !isclosed && (length(cells) > 0 || length(border_cells) > 0)
             # Go back to the starting cell and walk the other direction
