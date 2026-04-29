@@ -266,7 +266,7 @@ function get_ibz(l::Lattice)
     tol = 1e-4 * diameter(bz) # Tolerance for comparing whether two points are equivalent scaled by size of BZ
 
     for v in bz
-        ops_to_delete = []
+        ops_to_delete = Int[]
         for (i,g) in enumerate(ops)
             is_identity(g) && continue
 
@@ -280,7 +280,7 @@ function get_ibz(l::Lattice)
 
                 σ1 = sign(signed_area(v, midpoint, [n[2], -n[1]]))
 
-                to_add = [] # Intersections to add to IBZ
+                to_add = SVector{2,Float64}[] # Intersections to add to IBZ
                 to_delete = Int[] # Indices of points in IBZ to delete
                 for (j, w) in enumerate(ibz)
                     norm(w) < tol && continue
