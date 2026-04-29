@@ -1,5 +1,5 @@
 using Documenter
-using Ludwig, Ludwig.FSMesh
+using Ludwig
 
 makedocs(
     sitename="Ludwig.jl",
@@ -14,16 +14,22 @@ makedocs(
             "Overview" => "mesh/mesh.md",
             "Marching Squares" => "mesh/marching_squares.md",
         ],
-        "Collision Operator" => "collision_operator.md",
-        "Transport Properties" => [
-            "Inner Product" => "properties/inner_product.md",
-            "Transport Coefficients" => "properties/transport.md",
+        "Collision Operator" => [
+            "Overview" => "collision_operator.md",
+            "Pournin Volume" => "collision_operator/pournin_volume.md",
         ],
+        "Transport Properties" => [
+            "Overview" => "properties/transport.md",
+            "Units and SI Conversion" => "properties/units.md",
+        ],
+        "API Reference" => "api.md",
     ],
 )
 
 deploydocs(
     repo = "github.com/DavisThuillier/Ludwig.jl.git",
-    versions = ["stable" => "v^", "v0.2.1", "v0.2.2"],
+    devbranch = "develop",
+    devurl = "dev",
+    versions = ["stable" => "v^", "dev" => "dev", "v0.2.2", "v0.2.1"],
     push_preview = false
 )
