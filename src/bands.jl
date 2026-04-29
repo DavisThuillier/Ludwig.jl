@@ -110,7 +110,7 @@ function band_velocity(b::InterpolatedBand, k)
 end
 
 """
-    IBZInterpolatedBand(itp::I, rlv::Matrix{Float64}, invrlv::Matrix{Float64},
+    IBZInterpolatedBand(itp::I, rlv::SMatrix{2,2,Float64,4}, invrlv::SMatrix{2,2,Float64,4},
                         bz::Vector{SVector{2,Float64}},
                         ibz::Vector{SVector{2,Float64}},
                         group_ops::Vector{SMatrix{2,2,Float64,4}},
@@ -140,8 +140,8 @@ The group velocity transforms as
 
 # Fields
 - `itp::I`: callable spline interpolation in fractional reciprocal coordinates.
-- `rlv::Matrix{Float64}`: reciprocal-lattice-vector matrix.
-- `invrlv::Matrix{Float64}`: inverse of `rlv`.
+- `rlv::SMatrix{2,2,Float64,4}`: reciprocal-lattice-vector matrix.
+- `invrlv::SMatrix{2,2,Float64,4}`: inverse of `rlv`.
 - `bz::Vector{SVector{2,Float64}}`: vertices of the first Brillouin zone.
 - `ibz::Vector{SVector{2,Float64}}`: vertices of the irreducible Brillouin zone.
 - `group_ops::Vector{SMatrix{2,2,Float64,4}}`: 2×2 matrix representations of every
@@ -153,8 +153,8 @@ See also [`InterpolatedBand`](@ref), [`band_velocity`](@ref).
 """
 struct IBZInterpolatedBand{I}
     itp::I
-    rlv::Matrix{Float64}
-    invrlv::Matrix{Float64}
+    rlv::SMatrix{2,2,Float64,4}
+    invrlv::SMatrix{2,2,Float64,4}
     bz::Vector{SVector{2,Float64}}
     ibz::Vector{SVector{2,Float64}}
     group_ops::Vector{SMatrix{2,2,Float64,4}}

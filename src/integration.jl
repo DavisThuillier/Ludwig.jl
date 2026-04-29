@@ -233,13 +233,10 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
     kij = grid[i].k + grid[j].k
     qij = grid[i].k - grid[j].k
 
-    kijm = Vector{Float64}(undef, 2)
-    qimj = Vector{Float64}(undef, 2)
-
     invrlv = inv(rlv)
 
     for m in eachindex(grid)
-        kijm .= kij .- grid[m].k
+        kijm = kij - grid[m].k
 
         for μ in eachindex(bands)
             p = VirtualPatch(
@@ -255,7 +252,7 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
             end
         end
 
-        qimj .= qij .+ grid[m].k
+        qimj = qij + grid[m].k
 
         for μ in eachindex(bands)
             p = VirtualPatch(
@@ -316,16 +313,14 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
     kij = grid[i].k + grid[j].k
     qij = grid[i].k - grid[j].k
 
-    kijm = Vector{Float64}(undef, 2)
-    qimj = Vector{Float64}(undef, 2)
-
     for m in eachindex(grid)
-        kijm .= kij .- grid[m].k
+        kijm = kij - grid[m].k
+        nkijm = norm(kijm)
 
         p = VirtualPatch(
-            ε(norm(kijm)),
+            ε(nkijm),
             kijm,
-            norm(kijm) != 0.0 ? ForwardDiff.derivative(ε, norm(kijm)) * kijm / norm(kijm) : [0.0, 0.0],
+            nkijm != 0.0 ? ForwardDiff.derivative(ε, nkijm) * kijm / nkijm : zero(SVector{2,Float64}),
             1
         )
 
@@ -335,12 +330,13 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
             Lij += w123 * ee_kernel!(ζ, u, grid[i], grid[j], grid[m], p, T, exact) * f0s[j] * (1 - f0s[m])
         end
 
-        qimj .= qij .+ grid[m].k
+        qimj = qij + grid[m].k
+        nqimj = norm(qimj)
 
         p = VirtualPatch(
-            ε(norm(qimj)),
+            ε(nqimj),
             qimj,
-            norm(qimj) != 0.0 ? ForwardDiff.derivative(ε, norm(qimj)) * qimj / norm(qimj) : [0.0, 0.0],
+            nqimj != 0.0 ? ForwardDiff.derivative(ε, nqimj) * qimj / nqimj : zero(SVector{2,Float64}),
             1
         )
         w123 = Weff_squared(grid[i], grid[m], grid[j], p; kwargs...)

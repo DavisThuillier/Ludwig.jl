@@ -54,8 +54,8 @@ Construct a 2D Bravais lattice from primitive vectors.
 assembles the matrix as `hcat(a1, a2)`.
 
 # Fields
-- `primitives::Matrix`: 2×2 matrix whose columns are the primitive lattice vectors
-  ``\\mathbf{a}_1`` and ``\\mathbf{a}_2``.
+- `primitives::SMatrix{2,2,Float64,4}`: 2×2 matrix whose columns are the primitive
+  lattice vectors ``\\mathbf{a}_1`` and ``\\mathbf{a}_2``.
 
 # Examples
 ```julia
@@ -66,7 +66,7 @@ julia> Lattice([1.0, 0.0], [0.5, √3/2])  # hexagonal lattice
 See also [`NoLattice`](@ref), [`primitives`](@ref), [`lattice_type`](@ref).
 """
 struct Lattice <: AbstractLattice
-    primitives::Matrix
+    primitives::SMatrix{2,2,Float64,4}
     function Lattice(A::AbstractArray)
         size(A) == (2, 2) || throw(DimensionMismatch(
             "Lattice primitive matrix must be 2×2; got size $(size(A))."
@@ -74,7 +74,7 @@ struct Lattice <: AbstractLattice
         iszero(det(A)) && throw(ArgumentError(
             "Specified primitive vectors are not linearly independent."
         ))
-        return new(A)
+        return new(SMatrix{2,2,Float64,4}(A))
     end
 end
 
@@ -124,7 +124,7 @@ true
 
 See also [`primitives`](@ref), [`get_bz`](@ref).
 """
-reciprocal_lattice_vectors(l::Lattice) = 2π * Array(inv(primitives(l))')
+reciprocal_lattice_vectors(l::Lattice) = 2π * SMatrix{2,2,Float64,4}(inv(primitives(l))')
 
 """
     point_group(l::Lattice)
@@ -218,7 +218,7 @@ See also [`get_ibz`](@ref), [`reciprocal_lattice_vectors`](@ref), [`map_to_bz`](
 function get_bz(l::Lattice)
     rlv = reciprocal_lattice_vectors(l)
 
-    neighbors = map(x -> SVector{2}(rlv * x), collect.(Iterators.product(-2:2, -2:2))) |> vec
+    neighbors = vec([rlv * SVector{2,Int}(i, j) for i in -2:2, j in -2:2])
     sort!(neighbors, by = norm)
     deleteat!(neighbors, 1) # Deletes element corresponding to [0.0, 0.0]
 
@@ -365,9 +365,10 @@ function map_to_bz(k, bz, rlv, invrlv)
             for i in -1:1
                 for j in -1:1
                     i == 0 && j == 0 && continue
-                    d = norm(k - rlv * [i,j])
+                    nij = SVector{2,Float64}(i, j)
+                    d = norm(k - rlv * nij)
                     if d < min_d
-                        n = [i,j]
+                        n = nij
                         min_d = d
                     end
                 end
