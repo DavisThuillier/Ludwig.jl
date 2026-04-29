@@ -56,3 +56,12 @@ These functions are provided by the `LudwigMakieExt` extension and are only avai
 plot_mesh!
 plot_mesh
 ```
+
+## Internals
+
+Internal helpers referenced by the public API. These are not exported and may change without notice.
+
+```@docs
+Ludwig.ee_kernel!
+Ludwig.pournin_volume
+```

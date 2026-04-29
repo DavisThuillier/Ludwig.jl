@@ -126,7 +126,7 @@ at the intersection.
 
 If the lines are parallel, returns `([NaN, NaN], [NaN, NaN])`.
 
-See also [`intersection`](@ref).
+See also `intersection`.
 
 # Examples
 ```jldoctest
@@ -157,7 +157,7 @@ end
 Return the intersection point of the parametric lines ``\\mathbf{a}_1 + t_1 \\mathbf{v}_1``
 and ``\\mathbf{a}_2 + t_2 \\mathbf{v}_2``, or `[NaN, NaN]` if the lines are parallel.
 
-Equivalent to `param_intersection(a1, v1, a2, v2)[1]`; use [`param_intersection`](@ref) when
+Equivalent to `param_intersection(a1, v1, a2, v2)[1]`; use `param_intersection` when
 the parameter values are also needed.
 
 # Examples

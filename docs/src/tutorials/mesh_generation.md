@@ -7,7 +7,7 @@ This tutorial walks through generating a Fermi-surface mesh for the nearest-neig
 The NNTB dispersion on a square lattice with hopping $t$ and chemical potential $\mu$ is
 
 ```math
-\varepsilon(\mathbf{k}) = -2t\bigl(\cos(k_x a) + \cos(k_y a)\bigr) - \mu,
+\varepsilon(\mathbf{k}) = -2t\bigl(\cos(k_x) + \cos(k_y)\bigr) - \mu,
 ```
 
 where $\mathbf{k}$ has components in units of the inverse lattice constant $a^{-1}$. We use $t = 1\,\text{eV}$ and $\mu = 0\,\text{eV}$, placing the Fermi surface at half-filling.
@@ -23,7 +23,7 @@ l = Lattice([1.0 0.0; 0.0 1.0])
 
 # NNTB dispersion (energies in eV, momenta in units of a^{-1})
 t = 1.0   # eV
-μ = -0.0  # eV
+μ = 0.0  # eV
 ε(k) = -2t * (cos(k[1]) + cos(k[2])) - μ
 
 # Temperature (in eV, same units as the Hamiltonian)

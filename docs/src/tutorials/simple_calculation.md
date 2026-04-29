@@ -95,22 +95,13 @@ This saves both the memory and time of explicitly storing the full symmetry-expa
 
 ## Imposing and Checking Particle Conservation
 
-The numerical integration of `electron_electron` does not guarantee that each row of `L` sums to exactly zero. Particle conservation is enforced explicitly by overwriting each diagonal entry with the negative sum of the rest of its row:
+The numerical integration of `electron_electron` does not guarantee that each row of `L` sums to exactly zero. `enforce_particle_conservation!` enforces the constraint by overwriting each diagonal entry with the negative sum of the of its row:
 
 ```julia
-for i in 1:N
-    L[i, i] -= sum(L[i, :])
-end
+enforce_particle_conservation!(L)
 ```
 
-After this step, `L * ones(N)` should be zero to machine precision:
-
-```julia
-residual = maximum(abs.(L * ones(N))) / maximum(abs.(diag(L)))
-println("Max |L * 1| / max |L_ii|: ", residual)   # should be ≈ 0
-```
-
-A residual much larger than machine epsilon indicates a bug in the scattering vertex or the mesh.
+After this step, `L * ones(N)` should be zero to machine precision.
 
 ## Enforcing Symmetry
 
