@@ -51,15 +51,7 @@ function (@main)(_)
     end
     fill_from_ibz!(L, sym)
 
-    # Impose particle conservation: set diagonal to negative row sum
-    for i in 1:N
-        L[i, i] -= sum(L[i, :])
-    end
-
-    # Particle conservation: L * 1 ≈ 0
-    residual = maximum(abs.(L * ones(N))) / maximum(abs.(diag(L)))
-    @assert residual < 0.05 "Particle conservation violated: relative residual = $residual"
-    println("Particle conservation residual: ", residual, "  ✓")
+    enforce_particle_conservation!(L)
 
     ## Symmetrize #########################################################
 
