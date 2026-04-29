@@ -1,11 +1,15 @@
 """
     boltzmann_weight(E, dV, T)
 
-Return the Fermi-window quadrature weight ``f^{(0)}(\\varepsilon)\\,(1 - f^{(0)}(\\varepsilon))\\,\\Delta V`` on each
-grid point with energy `E[i]`, momentum-space patch area `dV[i]`, and temperature `T`.
+Return the Fermi-window quadrature weight
+``f^{(0)}(\\varepsilon)\\,(1 - f^{(0)}(\\varepsilon))\\,\\Delta V / T`` on each grid point
+with energy `E[i]`, momentum-space patch area `dV[i]`, and temperature `T`.
 
-This is the natural weight for transport inner products in the Boltzmann formalism: it sets
-the size of the Fermi window and the integration measure on the Fermi surface.
+This is equivalent to ``(-\\partial f^{(0)}/\\partial \\varepsilon)\\,\\Delta V``, the
+canonical Fermi-window weight of the linearized Boltzmann formalism. The factor of `1/T`
+is included here so that every transport function in this file can write its inner
+product as ``\\langle a | L^{-1} | b \\rangle`` with no further temperature factors in the
+prefactor.
 
 # Examples
 ```jldoctest
@@ -16,7 +20,7 @@ julia> Ludwig.boltzmann_weight([0.0], [1.0], 1.0)
 """
 function boltzmann_weight(E, dV, T)
     fd = f0.(E, T)
-    return fd .* (1 .- fd) .* dV
+    return fd .* (1 .- fd) .* dV ./ T
 end
 
 """
@@ -110,7 +114,7 @@ function electrical_conductivity(L, v, E, dV, T, ω = 0.0, q = [0.0, 0.0]; solve
     σ[2,1] = inner_product(last.(v),  first.(v), F, weight; solve)
     σ[2,2] = inner_product(last.(v),  last.(v),  F, weight; solve)
 
-    return (G0 / (2π)) * (σ / T)
+    return (G0 / (2π)) * σ
 end
 
 """
@@ -127,7 +131,7 @@ A complex scalar with the same prefactor convention as
 function longitudinal_electrical_conductivity(L, vx, E, dV, T, ω = 0.0; solve = (\))
     L′ = ω != 0.0 ? (L - im*ω*I) : L
     σxx = inner_product(vx, vx, L′, boltzmann_weight(E, dV, T); solve)
-    return (G0 / (2π)) * (σxx / T)
+    return (G0 / (2π)) * σxx
 end
 
 """
@@ -135,7 +139,8 @@ end
 
 Compute the thermal conductivity tensor using
 ``\\kappa_{ij} = \\langle \\varepsilon v_i | L^{-1} | \\varepsilon v_j \\rangle``,
-where the inner product is weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V``.
+where the inner product is weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V / T``
+(see `Ludwig.boltzmann_weight`).
 
 `solve` is forwarded to [`inner_product`](@ref); see [`electrical_conductivity`](@ref).
 
@@ -185,7 +190,8 @@ end
 
 Compute the thermoelectric conductivity tensor using
 ``\\epsilon_{ij} = \\langle v_i | L^{-1} | \\varepsilon v_j \\rangle``,
-where the inner product is weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V``.
+where the inner product is weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V / T``
+(see `Ludwig.boltzmann_weight`).
 
 `solve` is forwarded to [`inner_product`](@ref); see [`electrical_conductivity`](@ref).
 
@@ -236,7 +242,8 @@ end
 
 Compute the Peltier tensor using
 ``\\tau_{ij} = \\langle \\varepsilon v_i | L^{-1} | v_j \\rangle``,
-where the inner product is weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V``.
+where the inner product is weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V / T``
+(see `Ludwig.boltzmann_weight`).
 
 `solve` is forwarded to [`inner_product`](@ref); see [`electrical_conductivity`](@ref).
 
@@ -293,7 +300,7 @@ For correct conversion to SI units, `E`, `Dxx`, `Dyy`, and `T` must be expressed
 A scalar viscosity in SI units (Pa·s).
 """
 function ηB1g(L, E, dV, Dxx, Dyy, T; solve = (\))
-    prefactor = 2 * hbar * e_charge / T # hbar * e_charge converts hbar to units of J.s
+    prefactor = 2 * hbar * e_charge # hbar * e_charge converts hbar to units of J.s
     return prefactor * 0.25 *
         inner_product(Dxx .- Dyy, Dxx .- Dyy, L, boltzmann_weight(E, dV, T); solve)
 end
@@ -309,7 +316,7 @@ For correct conversion to SI units, `E`, `Dxy`, and `T` must be expressed in uni
 A scalar viscosity in SI units (Pa·s).
 """
 function ηB2g(L, E, dV, Dxy, T; solve = (\))
-    prefactor = 2 * hbar * e_charge / T # hbar * e_charge converts hbar to units of J.s
+    prefactor = 2 * hbar * e_charge # hbar * e_charge converts hbar to units of J.s
     return prefactor * inner_product(Dxy, Dxy, L, boltzmann_weight(E, dV, T); solve)
 end
 
@@ -319,7 +326,8 @@ end
 Compute the effective scattering lifetime corresponding to the conductivity.
 
 Defined by ``\\tau_\\sigma = \\hbar\\, \\langle v_x | L^{-1} | v_x \\rangle / \\langle v_x | v_x \\rangle``,
-with both inner products weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V``.
+with both inner products weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V / T``
+(see `Ludwig.boltzmann_weight`).
 
 # Returns
 A real scalar lifetime in SI units (seconds), assuming `E` and `T` are in eV.
