@@ -117,6 +117,10 @@ function band_velocity(b::InterpolatedBand, k)
     return b.invrlv' * Interpolations.gradient(b.itp, rlb[1], rlb[2])
 end
 
+###
+### IBZ-folded band
+###
+
 """
     IBZInterpolatedBand(itp::I, rlv::SMatrix{2,2,Float64,4}, invrlv::SMatrix{2,2,Float64,4},
                         bz::Vector{SVector{2,Float64}},
@@ -213,6 +217,10 @@ function band_velocity(b::IBZInterpolatedBand, k)
         return SVector{2,Float64}(0.0, 0.0)
     end
 end
+
+###
+### Construction from a callable
+###
 
 """
     InterpolatedBand(band, l::AbstractLattice, xs::AbstractRange, ys::AbstractRange=xs)
