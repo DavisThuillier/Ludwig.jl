@@ -23,6 +23,13 @@ function boltzmann_weight(E, dV, T)
     return fd .* (1 .- fd) .* dV ./ T
 end
 
+"Throw an `ArgumentError` if `(i, j)` are not a valid index pair into a 2×2 transport tensor."
+@inline function check_tensor_indices(i::Int, j::Int)
+    1 ≤ i ≤ 2 && 1 ≤ j ≤ 2 ||
+        throw(ArgumentError("indices of tensor must be 1 or 2; got ($i, $j)."))
+    return nothing
+end
+
 """
     inner_product(a, b, L, w; solve = \\)
 
@@ -174,9 +181,7 @@ Compute the single component ``\\kappa_{ij}`` of the thermal conductivity tensor
 A complex scalar; same units as the tensor-valued method.
 """
 function thermal_conductivity(L, v, E, dV, T, i::Int, j::Int; solve = (\))
-    if !((0 < i < 3) && (0 < j < 3))
-        throw(ArgumentError("indices of tensor must be 1 or 2; got ($i, $j)."))
-    end
+    check_tensor_indices(i, j)
     weight = boltzmann_weight(E, dV, T)
 
     j1 = E .* map(x -> x[i], v)
@@ -227,9 +232,7 @@ Compute the single component ``\\epsilon_{ij}`` of the thermoelectric conductivi
 A complex scalar; same units as the tensor-valued method.
 """
 function thermoelectric_conductivity(L, v, E, dV, T, i::Int, j::Int; solve = (\))
-    if !((0 < i < 3) && (0 < j < 3))
-        throw(ArgumentError("indices of tensor must be 1 or 2; got ($i, $j)."))
-    end
+    check_tensor_indices(i, j)
     weight = boltzmann_weight(E, dV, T)
 
     j1  = map(x -> x[i], v)
@@ -279,9 +282,7 @@ Compute the single component ``\\tau_{ij}`` of the Peltier tensor.
 A complex scalar; same units as the tensor-valued method.
 """
 function peltier_tensor(L, v, E, dV, T, i::Int, j::Int; solve = (\))
-    if !((0 < i < 3) && (0 < j < 3))
-        throw(ArgumentError("indices of tensor must be 1 or 2; got ($i, $j)."))
-    end
+    check_tensor_indices(i, j)
     weight = boltzmann_weight(E, dV, T)
 
     je1 = E .* map(x -> x[i], v)

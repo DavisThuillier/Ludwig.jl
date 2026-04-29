@@ -38,14 +38,15 @@ const T, B, R, L = 0x01, 0x02, 0x04, 0x08
 const crossing_lookup = [L|B, B|R, L|R, T|R, 0x0, T|B, L|T, L|T, T|B, 0x0, T|R, L|R, B|R, L|B]
 
 """
-    get_cells(x, y, A::AbstractMatrix [, level = 0.0, mask = []])
+    get_cells(x, y, A::AbstractMatrix [, level = 0.0, mask = SVector{2,Float64}[]])
 
 Obtain the cells and their crossing classifications for matrix `A` through which the level set corresponding to `level` crosses.
 
 The arguments `x` and `y` define the coordinates of the elements of `A`, allowing for nonuniform gridding.
 If `mask` is specified and contains at least three points, it is assumed to be a convex polygon and only cells contained fully within mask will be found.
 """
-function get_cells(x, y, A::AbstractMatrix, level::Real = 0.0, mask = [])
+function get_cells(x, y, A::AbstractMatrix, level::Real = 0.0,
+                   mask::AbstractVector = SVector{2,Float64}[])
     xax, yax = axes(A)
 
     cells = OrderedDict{Tuple{Int, Int}, UInt8}() # Cells with crossing fully contained within masking polygon
@@ -101,13 +102,14 @@ function get_next_cell(edge, index)
 end
 
 """
-    find_contour(x, y, A::AbstractMatrix [, level = 0.0; mask = []])
+    find_contour(x, y, A::AbstractMatrix [, level = 0.0; mask = SVector{2,Float64}[]])
 
 Get all contours of matrix `A` in terms of the coordinate grids `x` and `y` at `level`.
 
 If `mask` is specified, it is treated as an array of points defining a convex polygonal masking region in terms of the coordinates defined by `x` and `y` to which the contours are constrained.
 """
-function find_contour(x, y, A::AbstractMatrix, level::Real = 0.0; mask = [])
+function find_contour(x, y, A::AbstractMatrix, level::Real = 0.0;
+                      mask::AbstractVector = SVector{2,Float64}[])
     bundle = IsolineBundle(Isoline[], level)
     if level > maximum(A[.!isnan.(A)]) || level < minimum(A[.!isnan.(A)])
         return bundle # No contours to be found
@@ -174,7 +176,7 @@ end
 
 """
     follow_contour!(cells, border_cells, contour, x, y, A, is, js,
-                    start_index, start_edge, level[; mask = []])
+                    start_index, start_edge, level[; mask = SVector{2,Float64}[]])
 
 March through `cells` and `border_cells` containing crossings at `level`, appending each
 crossing to `contour` (mutated in place) and removing traversed cells.
@@ -183,7 +185,9 @@ crossing to `contour` (mutated in place) and removing traversed cells.
 start the march. If `mask` is specified, constrain the contour to the convex polygon
 defined by the points in `mask`. Returns the index of the last cell visited.
 """
-function follow_contour!(cells, border_cells, contour, x, y, A, is, js, start_index, start_edge, level; mask = [])
+function follow_contour!(cells, border_cells, contour, x, y, A, is, js,
+                         start_index, start_edge, level;
+                         mask::AbstractVector = SVector{2,Float64}[])
     index = start_index
     edge = start_edge
 
@@ -256,13 +260,13 @@ function get_crossing(x, y, A, index, edge, level)
 end
 
 """
-    contours(x, y, A, levels [; mask = []])
+    contours(x, y, A, levels [; mask = SVector{2,Float64}[]])
 
 Generate contour bundles for each level in `levels` of the matrix `A` on coordinate grids `x` and `y`.
 
 See also [`find_contour`](@ref).
 """
-function contours(x, y, A, levels; mask = [])
+function contours(x, y, A, levels; mask::AbstractVector = SVector{2,Float64}[])
     bundles = Vector{IsolineBundle}(undef, Base.length(levels))
     for i in eachindex(levels)
         bundles[i] = find_contour(x, y, A, levels[i]; mask)

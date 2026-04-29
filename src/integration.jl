@@ -173,7 +173,7 @@ function ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, v, εabc, T, exact::Boo
     Δε = -δ * dot(ζ, u) / uu
 
     if exact
-        b_pournin = ((u[1] + u[2] + u[3] + u[4] + u[5] + u[6]) - δ) / 2
+        b_pournin = (sum(u) - δ) / 2
         vol_5 = 32.0 * pournin_volume(u, b_pournin)
         vol_5 == 0.0 && return 0.0
 
@@ -221,6 +221,12 @@ electron-electron scattering.
   [`pournin_volume`](@ref); otherwise the hyperspherical approximation in
   [`ee_kernel!`](@ref) is used.
 - additional keyword arguments are forwarded verbatim to `Weff_squared`.
+
+A `Lattice` overload is provided that takes `l::Lattice` in place of `(rlv, bz)` and
+derives both from `l` via [`reciprocal_lattice_vectors`](@ref) and [`get_bz`](@ref); this
+is the form most callers will use.
+
+See also [`electron_phonon`](@ref), [`electron_impurity`](@ref).
 """
 function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, rlv, bz; umklapp = true, exact::Bool = true, kwargs...)
     Lij::Float64 = 0.0
@@ -383,15 +389,24 @@ function ep_kernel!(ζ, u, a::Patch, b::Patch, v, ω0::Real, T::Real)
 end
 
 """
-    electron_phonon(grid::Vector{Patch}, i::Int, j::Int, T::Real, g, ω, rlv, bz; kwargs...)
+    electron_phonon(grid, f0s, i, j, T, g, ω, rlv, bz; kwargs...)
 
-Compute the element (`i`,`j`) of the linearized Boltzmann collision operator for
-electron-phonon scattering. `g(k_b, k_a, q, ω0)` is the electron-phonon coupling and
-`ω` is the phonon dispersion (any object accepted by [`band_velocity`](@ref) — a plain
-`Function`, [`HamiltonianBand`](@ref), [`InterpolatedBand`](@ref), or
-[`IBZInterpolatedBand`](@ref)).
+Compute the element (`i`, `j`) of the linearized Boltzmann collision operator for
+electron-phonon scattering.
+
+`g(k_a, k_b, q, ω0; kwargs...)` is the electron-phonon coupling for a transition from
+patch `a = grid[i]` to patch `b = grid[j]` carrying phonon momentum `q = k_b - k_a` and
+frequency `ω0 = ω(q)`. `ω` is the phonon dispersion (any object accepted by
+[`band_velocity`](@ref) — a plain `Function`, [`HamiltonianBand`](@ref),
+[`InterpolatedBand`](@ref), or [`IBZInterpolatedBand`](@ref)). `f0s::Vector{Float64}` is
+the Fermi-Dirac distribution evaluated at each patch center, precomputed by the caller in
+the same way [`electron_electron`](@ref) expects.
+
+A `Lattice` overload takes `l::Lattice` in place of `(rlv, bz)`.
+
+See also [`electron_electron`](@ref), [`electron_impurity`](@ref).
 """
-function electron_phonon(grid::Vector{Patch}, i::Int, j::Int, T::Real, g, ω, rlv, bz; kwargs...)
+function electron_phonon(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, T::Real, g, ω, rlv, bz; kwargs...)
     a = grid[i]
     b = grid[j]
 
@@ -400,18 +415,18 @@ function electron_phonon(grid::Vector{Patch}, i::Int, j::Int, T::Real, g, ω, rl
     invrlv = inv(rlv)
     q = map_to_bz(b.k - a.k, bz, rlv, invrlv)
     ω0 = ω(q)
-    gij2 = abs(g(b.k, a.k, q, ω0; kwargs...))^2
+    gij2 = abs(g(a.k, b.k, q, ω0; kwargs...))^2
 
     v = band_velocity(ω, q)
     ζ = MVector{4,Float64}(undef)
     u = MVector{4,Float64}(undef)
 
-    f0i = f0(a.e, T)
-    f0j = f0(b.e, T)
+    f0i = f0s[i]
+    f0j = f0s[j]
     return 4π * ep_kernel!(ζ, u, a, b, v, ω0, T) * gij2 * (f0j - f0i) * a.djinv * b.djinv / (a.dV * f0i * (1 - f0i) * (2π)^4)
 end
 
-electron_phonon(grid::Vector{Patch}, i::Int, j::Int, T::Real, g, ω, l::Lattice; kwargs...) = electron_phonon(grid, i, j, T, g, ω, reciprocal_lattice_vectors(l), get_bz(l); kwargs...)
+electron_phonon(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, T::Real, g, ω, l::Lattice; kwargs...) = electron_phonon(grid, f0s, i, j, T, g, ω, reciprocal_lattice_vectors(l), get_bz(l); kwargs...)
 
 """
     Iab(a, b, V_squared)

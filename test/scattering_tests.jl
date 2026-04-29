@@ -127,15 +127,16 @@ end
 end
 
 @testset "electron_phonon: Lattice dispatch" begin
-    g_coupling(kb, ka, q, ω0; kwargs...) = 1.0 + 0im
+    g_coupling(ka, kb, q, ω0; kwargs...) = 1.0 + 0im
     ω_phonon(q) = 0.05 * norm(q)
+    f0s_scat = f0.(energy.(grid_scat), T_scat)
 
     # Same-energy patches: kernel returns 0 by the energy-window guard at the
     # top of the function (phonons can only mediate inelastic transitions).
     same = find_same_energy_pair(grid_scat)
     @test same !== nothing
     i, j = same
-    Lij_same = electron_phonon(grid_scat, i, j, T_scat, g_coupling, ω_phonon, lat_scat)
+    Lij_same = electron_phonon(grid_scat, f0s_scat, i, j, T_scat, g_coupling, ω_phonon, lat_scat)
     @test Lij_same == 0.0
 
     # Distant-energy patches: kernel returns a finite value.
@@ -143,7 +144,7 @@ end
     @test distant !== nothing
     di, dj = distant
     Lij_distant = electron_phonon(
-        grid_scat, di, dj, T_scat, g_coupling, ω_phonon, lat_scat
+        grid_scat, f0s_scat, di, dj, T_scat, g_coupling, ω_phonon, lat_scat
     )
     @test isa(Lij_distant, Float64)
     @test isfinite(Lij_distant)

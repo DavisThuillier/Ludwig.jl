@@ -1,3 +1,7 @@
+###
+### Abstract types
+###
+
 """
     Group
 
@@ -34,6 +38,10 @@ julia> order(G)
 ```
 """
 order(G::Group) = length(G.elements)
+
+###
+### Permutation group elements
+###
 
 """
     PermutationGroupElement(permutation::Vector{Int})
@@ -157,6 +165,10 @@ Return the identity permutation of length `n` as a [`PermutationGroupElement`](@
 """
 get_identity_permutation(n::Int) = PermutationGroupElement(collect(1:n))
 
+###
+### Group construction
+###
+
 """
     closure(generators...)
 
@@ -251,6 +263,10 @@ function get_table(G::Group)
     return table
 end
 
+###
+### Common groups
+###
+
 """
     get_cyclic_group(n)
 
@@ -331,6 +347,10 @@ function get_symmetric_group(n::Int)
         return PermutationGroup(elements...)
     end
 end
+
+###
+### Matrix representation
+###
 
 """
     unity_root_vector(p, n)
