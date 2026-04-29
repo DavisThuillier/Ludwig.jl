@@ -387,7 +387,9 @@ end
 
 Compute the element (`i`,`j`) of the linearized Boltzmann collision operator for
 electron-phonon scattering. `g(k_b, k_a, q, ω0)` is the electron-phonon coupling and
-`ω(q)` is the phonon dispersion.
+`ω` is the phonon dispersion (any object accepted by [`band_velocity`](@ref) — a plain
+`Function`, [`HamiltonianBand`](@ref), [`InterpolatedBand`](@ref), or
+[`IBZInterpolatedBand`](@ref)).
 """
 function electron_phonon(grid::Vector{Patch}, i::Int, j::Int, T::Real, g, ω, rlv, bz; kwargs...)
     a = grid[i]
@@ -400,7 +402,7 @@ function electron_phonon(grid::Vector{Patch}, i::Int, j::Int, T::Real, g, ω, rl
     ω0 = ω(q)
     gij2 = abs(g(b.k, a.k, q, ω0; kwargs...))^2
 
-    v = ForwardDiff.gradient(ω, q)
+    v = band_velocity(ω, q)
     ζ = MVector{4,Float64}(undef)
     u = MVector{4,Float64}(undef)
 
