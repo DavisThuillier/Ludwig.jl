@@ -53,7 +53,7 @@ export BZSymmetryMap, bz_symmetry_map
 export electron_electron, electron_impurity, electron_phonon
 
 # Utilities
-export f0, symmetrize
+export f0, symmetrize, enforce_particle_conservation!
 export fill_from_ibz!, ibz_matvec!, diagonalize_ibz
 
 # Properties
