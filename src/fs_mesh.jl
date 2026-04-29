@@ -283,31 +283,68 @@ The returned [`BZSymmetryMap`](@ref) can be passed to [`fill_from_ibz!`](@ref) t
 the non-IBZ rows of a collision matrix after computing only the IBZ rows.
 """
 function bz_symmetry_map(grid::Vector{Patch}, l::Lattice)
-    G   = point_group(l)
-    ibz = get_ibz(l)
-    N   = length(grid)
+    G       = point_group(l)
+    ibz     = get_ibz(l)
+    bz      = get_bz(l)
+    N       = length(grid)
     G_order = length(G.elements)
 
     θperm = group_angle_perm(G, ibz)
 
-    # Build momentum → grid index dictionary (robust: does not depend on ordering)
-    momentum_to_idx = Dict(round.(p.k, digits = 10) => i for (i, p) in enumerate(grid))
-
-    # Identify IBZ patches by polygon membership
+    # Identify IBZ patches by polygon membership.
     ibz_inds = filter(i -> in_polygon(grid[i].k, ibz), 1:N)
 
-    # Build permutation vectors for each group element
+    # `bz_mesh` builds a full BZ by appending each IBZ patch under every group operation,
+    # so length(grid) == G_order × #IBZ-interior patches exactly. Catch the common
+    # mistake of passing an `ibz_mesh` here.
+    N == G_order * length(ibz_inds) || throw(ArgumentError(
+        "bz_symmetry_map requires a full BZ mesh; got $N patches with " *
+        "$(length(ibz_inds)) inside the IBZ, but expected $(G_order * length(ibz_inds)) " *
+        "(G_order × #IBZ-interior). Did you mean to pass the output of `bz_mesh`?"
+    ))
+
+    # Tolerance for matching `O * k` to a grid patch. Sits between float noise
+    # from the matrix multiply (~ulp(|k|), so ≤ 1e-13 × diameter(bz)) and mesh
+    # spacing (≥ ~1e-3 × diameter(bz) for any realistic resolution).
+    tol = 1e-8 * diameter(bz)
+
+    # Sort patches by k[1] so we can find candidates via binary search.
+    sort_perm = sortperm(1:N; by = i -> grid[i].k[1])
+    sorted_kx = Float64[grid[sort_perm[s]].k[1] for s in 1:N]
+
+    # Locate the grid index whose momentum is within `tol` of `query`.
+    find_idx = function(query::SVector{2,Float64})
+        lo = searchsortedfirst(sorted_kx, query[1] - tol)
+        hi = searchsortedlast(sorted_kx, query[1] + tol)
+        best_d = Inf
+        best_i = 0
+        for s in lo:hi
+            i = sort_perm[s]
+            d = norm(grid[i].k - query)
+            if d < best_d
+                best_d = d
+                best_i = i
+            end
+        end
+        best_d ≤ tol || throw(ErrorException(
+            "bz_symmetry_map: no grid patch within tol = $tol of momentum $query " *
+            "(closest distance $best_d). The grid may not be closed under the lattice point group."
+        ))
+        return best_i
+    end
+
+    # Build permutation vectors for each group element.
     g_perms = Vector{Vector{Int}}(undef, G_order)
     for (s, g_idx) in enumerate(θperm)
-        O = get_matrix_representation(G.elements[g_idx])
-        g_perms[s] = [momentum_to_idx[round.(O * grid[j].k, digits = 10)] for j in 1:N]
+        O = SMatrix{2,2,Float64,4}(get_matrix_representation(G.elements[g_idx]))
+        g_perms[s] = [find_idx(O * grid[j].k) for j in 1:N]
     end
     g_inv_perms = [invperm(perm) for perm in g_perms]
 
-    # Find the identity sector (the sector whose permutation is the identity)
+    # Find the identity sector (the sector whose permutation is the identity).
     ibz_sector = findfirst(s -> g_perms[s] == collect(1:N), 1:G_order)
 
-    # For each non-identity sector, map BZ patches to their IBZ representatives
+    # For each non-identity sector, map BZ patches to their IBZ representatives.
     ibz_preimage = Dict{Int,Int}()
     ibz_g_idx    = Dict{Int,Int}()
     for s in 1:G_order
