@@ -6,10 +6,7 @@ Return the Fermi-window quadrature weight
 with energy `E[i]`, momentum-space patch area `dV[i]`, and temperature `T`.
 
 This is equivalent to ``(-\\partial f^{(0)}/\\partial \\varepsilon)\\,\\Delta V``, the
-canonical Fermi-window weight of the linearized Boltzmann formalism. The factor of `1/T`
-is included here so that every transport function in this file can write its inner
-product as ``\\langle a | L^{-1} | b \\rangle`` with no further temperature factors in the
-prefactor.
+canonical Fermi-window weight of the linearized Boltzmann formalism.
 
 # Examples
 ```jldoctest
@@ -144,15 +141,22 @@ end
 """
     thermal_conductivity(L, v, E, dV, T; solve = \\)
 
-Compute the thermal conductivity tensor using
+Compute the thermal conductivity correlator
 ``\\kappa_{ij} = \\langle \\varepsilon v_i | L^{-1} | \\varepsilon v_j \\rangle``,
 where the inner product is weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V / T``
 (see `Ludwig.boltzmann_weight`).
 
+!!! warning "Unvalidated"
+    The SI prefactor for this correlator has not been derived as of v0.3.0. The
+    returned value is the bare
+    ``\\langle \\varepsilon v_i | L^{-1} | \\varepsilon v_j \\rangle`` correlator —
+    do not interpret it as a physical thermal conductivity until the prefactor is
+    verified.
+
 `solve` is forwarded to [`inner_product`](@ref); see [`electrical_conductivity`](@ref).
 
 # Returns
-A 2×2 `Matrix{ComplexF64}`. Unit conversion must be applied by the caller.
+A 2×2 `Matrix{ComplexF64}` of unscaled correlators (see warning above).
 """
 function thermal_conductivity(L, v, E, dV, T; solve = (\))
     weight = boltzmann_weight(E, dV, T)
@@ -174,11 +178,15 @@ end
 """
     thermal_conductivity(L, v, E, dV, T, i::Int, j::Int; solve = \\)
 
-Compute the single component ``\\kappa_{ij}`` of the thermal conductivity tensor.
+Compute the single component ``\\kappa_{ij}`` of the thermal conductivity correlator.
 `i` and `j` must be 1 or 2.
 
+!!! warning "Unvalidated"
+    See the tensor-valued [`thermal_conductivity`](@ref) — the SI prefactor has not
+    been derived as of v0.3.0.
+
 # Returns
-A complex scalar; same units as the tensor-valued method.
+A complex scalar with the same scaling as the tensor-valued method.
 """
 function thermal_conductivity(L, v, E, dV, T, i::Int, j::Int; solve = (\))
     check_tensor_indices(i, j)
@@ -193,15 +201,21 @@ end
 """
     thermoelectric_conductivity(L, v, E, dV, T; solve = \\)
 
-Compute the thermoelectric conductivity tensor using
+Compute the thermoelectric conductivity correlator
 ``\\epsilon_{ij} = \\langle v_i | L^{-1} | \\varepsilon v_j \\rangle``,
 where the inner product is weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V / T``
 (see `Ludwig.boltzmann_weight`).
 
+!!! warning "Unvalidated"
+    The SI prefactor for this correlator has not been derived as of v0.3.0. The
+    returned value is the bare ``\\langle v_i | L^{-1} | \\varepsilon v_j \\rangle``
+    correlator — do not interpret it as a physical thermoelectric conductivity
+    until the prefactor is verified.
+
 `solve` is forwarded to [`inner_product`](@ref); see [`electrical_conductivity`](@ref).
 
 # Returns
-A 2×2 `Matrix{ComplexF64}`. Unit conversion must be applied by the caller.
+A 2×2 `Matrix{ComplexF64}` of unscaled correlators (see warning above).
 """
 function thermoelectric_conductivity(L, v, E, dV, T; solve = (\))
     weight = boltzmann_weight(E, dV, T)
@@ -225,11 +239,15 @@ end
 """
     thermoelectric_conductivity(L, v, E, dV, T, i::Int, j::Int; solve = \\)
 
-Compute the single component ``\\epsilon_{ij}`` of the thermoelectric conductivity tensor.
-`i` and `j` must be 1 or 2.
+Compute the single component ``\\epsilon_{ij}`` of the thermoelectric conductivity
+correlator. `i` and `j` must be 1 or 2.
+
+!!! warning "Unvalidated"
+    See the tensor-valued [`thermoelectric_conductivity`](@ref) — the SI prefactor
+    has not been derived as of v0.3.0.
 
 # Returns
-A complex scalar; same units as the tensor-valued method.
+A complex scalar with the same scaling as the tensor-valued method.
 """
 function thermoelectric_conductivity(L, v, E, dV, T, i::Int, j::Int; solve = (\))
     check_tensor_indices(i, j)
@@ -243,15 +261,21 @@ end
 """
     peltier_tensor(L, v, E, dV, T; solve = \\)
 
-Compute the Peltier tensor using
+Compute the Peltier correlator
 ``\\tau_{ij} = \\langle \\varepsilon v_i | L^{-1} | v_j \\rangle``,
 where the inner product is weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V / T``
 (see `Ludwig.boltzmann_weight`).
 
+!!! warning "Unvalidated"
+    The SI prefactor for this correlator has not been derived as of v0.3.0. The
+    returned value is the bare ``\\langle \\varepsilon v_i | L^{-1} | v_j \\rangle``
+    correlator — do not interpret it as a physical Peltier tensor until the
+    prefactor is verified.
+
 `solve` is forwarded to [`inner_product`](@ref); see [`electrical_conductivity`](@ref).
 
 # Returns
-A 2×2 `Matrix{ComplexF64}`. Unit conversion must be applied by the caller.
+A 2×2 `Matrix{ComplexF64}` of unscaled correlators (see warning above).
 """
 function peltier_tensor(L, v, E, dV, T; solve = (\))
     weight = boltzmann_weight(E, dV, T)
@@ -275,11 +299,15 @@ end
 """
     peltier_tensor(L, v, E, dV, T, i::Int, j::Int; solve = \\)
 
-Compute the single component ``\\tau_{ij}`` of the Peltier tensor.
+Compute the single component ``\\tau_{ij}`` of the Peltier correlator.
 `i` and `j` must be 1 or 2.
 
+!!! warning "Unvalidated"
+    See the tensor-valued [`peltier_tensor`](@ref) — the SI prefactor has not been
+    derived as of v0.3.0.
+
 # Returns
-A complex scalar; same units as the tensor-valued method.
+A complex scalar with the same scaling as the tensor-valued method.
 """
 function peltier_tensor(L, v, E, dV, T, i::Int, j::Int; solve = (\))
     check_tensor_indices(i, j)
