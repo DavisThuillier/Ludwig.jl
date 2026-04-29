@@ -118,13 +118,17 @@ function signed_area(x, y, z)
 end
 
 """
-    param_intersection(a1, v1, a2, v2)
+    param_intersection(a1, v1, a2, v2; rtol=1e-12)
 
 Return the intersection point of the parametric lines ``\\mathbf{a}_1 + t_1 \\mathbf{v}_1``
 and ``\\mathbf{a}_2 + t_2 \\mathbf{v}_2``, together with the parameter pair ``(t_1, t_2)``
 at the intersection.
 
-If the lines are parallel, returns `([NaN, NaN], [NaN, NaN])`.
+The lines are treated as parallel — and `([NaN, NaN], [NaN, NaN])` is returned — when
+``|\\det[v_1\\,{-v_2}]| < \\mathrm{rtol}\\,\\|v_1\\|\\,\\|v_2\\|``. Since
+``\\det[v_1\\,{-v_2}] = \\|v_1\\|\\,\\|v_2\\|\\,\\sin\\theta``, this is equivalent to a
+threshold on ``|\\sin\\theta|``: the default `rtol = 1e-12` flags lines closer than
+``\\sim 10^{-12}`` rad to parallel.
 
 See also `intersection`.
 
@@ -143,9 +147,9 @@ julia> t
  1.0
 ```
 """
-function param_intersection(a1, v1, a2, v2)
+function param_intersection(a1, v1, a2, v2; rtol = 1e-12)
     V = hcat(v1, -v2)
-    det(V) == 0 && return [NaN, NaN], [NaN, NaN] # No intersection (parallel lines)
+    abs(det(V)) < rtol * norm(v1) * norm(v2) && return [NaN, NaN], [NaN, NaN]
 
     t = inv(V) * (a2 - a1)
     return a1 + t[1] * v1, t
