@@ -131,7 +131,7 @@ julia> using StaticArrays
 
 julia> p = VirtualPatch(0.0, SVector(0.0, 0.0), SVector(0.0, 0.0), 3);
 
-julia> Ludwig.band(p)
+julia> band(p)
 3
 ```
 """
@@ -179,7 +179,7 @@ end
 
 """
     Mesh(patches::Vector{Patch}, corners::Vector{SVector{2,Float64}},
-         corner_inds::Vector{SVector{4,Int}})
+         corner_indices::Vector{SVector{4,Int}})
 
 Construct a container of [`Patch`](@ref) objects with the corner geometry needed to plot
 functions defined on patch centers.
@@ -187,13 +187,13 @@ functions defined on patch centers.
 # Fields
 - `patches::Vector{Patch}`: the patches making up the mesh.
 - `corners::Vector{SVector{2,Float64}}`: points on the patch corners, used for rendering.
-- `corner_inds::Vector{SVector{4,Int}}`: for each patch, the four indices into `corners`
-  giving its quadrilateral boundary.
+- `corner_indices::Vector{SVector{4,Int}}`: for each patch, the four indices into
+  `corners` giving its quadrilateral boundary.
 """
 struct Mesh
     patches::Vector{Patch}
     corners::Vector{SVector{2, Float64}}
-    corner_inds::Vector{SVector{4, Int}}
+    corner_indices::Vector{SVector{4, Int}}
 end
 
 """
@@ -215,7 +215,7 @@ corners(m::Mesh) = m.corners
 
 Return the vector mapping each patch of `m` to four indices into [`corners(m)`](@ref).
 """
-corner_indices(m::Mesh) = m.corner_inds
+corner_indices(m::Mesh) = m.corner_indices
 
 ###
 ### BZ symmetry
@@ -937,7 +937,7 @@ function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int
             corner_mesh = mesh_region(corner, ε, band_index, corner_e_min, corner_e_max, corner_Δε, corner_n_arc, N; boundaries = corner_be, depth = depth + 1, maxdepth)
             append!(all_patches,    corner_mesh.patches)
             append!(all_corners,    corner_mesh.corners)
-            append!(all_corner_ids, corner_mesh.corner_inds)
+            append!(all_corner_ids, corner_mesh.corner_indices)
         end
     end
 
@@ -1009,7 +1009,7 @@ function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int
             )
             append!(all_patches,    mesh_s.patches)
             append!(all_corners,    mesh_s.corners)
-            append!(all_corner_ids, mesh_s.corner_inds)
+            append!(all_corner_ids, mesh_s.corner_indices)
         end
     end
 
@@ -1056,7 +1056,7 @@ function ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int
         mesh = mesh_region(ibz, bands[i], i, -α * T, α * T, Δε, n_arc, N; bbox, angle_threshold, boundaries, maxdepth)
         ℓ = length(full_corners)
         append!(full_patches, mesh.patches)
-        append!(full_corner_ids, map(x -> SVector{4,Int}(x .+ ℓ), mesh.corner_inds))
+        append!(full_corner_ids, map(x -> SVector{4,Int}(x .+ ℓ), mesh.corner_indices))
         append!(full_corners, mesh.corners)
     end
 
@@ -1107,7 +1107,7 @@ function bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int 
             O = get_matrix_representation(G.elements[i])
             ℓ = length(full_corners)
             append!(full_patches,     map(x -> patch_op(x, O), mesh.patches))
-            append!(full_corner_inds, map(x -> SVector{4,Int}(x .+ ℓ), mesh.corner_inds))
+            append!(full_corner_inds, map(x -> SVector{4,Int}(x .+ ℓ), mesh.corner_indices))
             append!(full_corners,     map(x -> O * x, mesh.corners))
         end
     end

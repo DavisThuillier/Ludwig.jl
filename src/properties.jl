@@ -33,9 +33,12 @@ The default `\\` dispatches on the type of `L`:
 - a `SparseMatrixCSC` dispatches to sparse `\\`;
 - any user type with `Base.:\\` defined is supported.
 
-To use an iterative solver, pass it explicitly:
+To use an iterative solver, pass it explicitly. Iterative solvers from
+`IterativeSolvers.jl` (`bicgstabl`, `gmres`, …) are not loaded by Ludwig itself,
+so the caller is responsible for `using IterativeSolvers`:
 
 ```julia
+using IterativeSolvers
 inner_product(a, b, L, w; solve = bicgstabl)
 inner_product(a, b, L, w; solve = (A, rhs) -> gmres(A, rhs; reltol = 1e-12))
 ```

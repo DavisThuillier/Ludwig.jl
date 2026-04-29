@@ -20,7 +20,7 @@ function Ludwig.plot_mesh!(
     n        = length(mesh.patches)
     energies = Ludwig.energy.(mesh.patches)
     polys    = [
-        Makie.Polygon([Makie.Point2f(mesh.corners[j]) for j in mesh.corner_inds[i]])
+        Makie.Polygon([Makie.Point2f(mesh.corners[j]) for j in mesh.corner_indices[i]])
         for i in 1:n
     ]
 

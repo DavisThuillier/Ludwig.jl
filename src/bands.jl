@@ -12,6 +12,14 @@ Wrap a matrix-valued Hamiltonian function `H(k)` for the `n`-th band.
 the group velocity is computed by the Hellmann-Feynman theorem using central finite
 differences to differentiate `H`.
 
+!!! warning
+    Selecting eigenvalues by ascending-order index is discontinuous across band
+    crossings or near-degeneracies: when two bands cross or come within numerical
+    noise of each other, the `n`-th eigenvalue can swap between the two physical
+    bands as `k` varies, producing a non-smooth dispersion. Use only on bands that
+    are well separated throughout the momentum region of interest, or apply a
+    band-tracking strategy externally.
+
 # Fields
 - `H::F`: callable returning a Hermitian (or real symmetric) matrix as a function of
   momentum.
