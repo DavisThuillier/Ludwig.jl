@@ -378,6 +378,9 @@ function get_matrix_representation(g::PermutationGroupElement)
 
     M = hcat(w₁, w₂) * inv(T) # Change of basis composed with permutation map of roots of polygon vertices
 
+    # Snap float noise from inv(T) to exact zero. 1e-12 is well above the typical
+    # 2×2 inversion error (~8e-16) and well below any nonzero rotation matrix entry
+    # (smallest is sin(π/n), e.g. sin(π/12) ≈ 0.26).
     for i in eachindex(M)
         abs(M[i]) < 1e-12 && (M[i] = 0.0)
     end
