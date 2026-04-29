@@ -1,52 +1,60 @@
 # Transport Coefficients
 
-Transport coefficients are expressed as matrix elements of the inverse collision operator under the [weighted inner product](@ref "Inner Product"):
+The linearized Boltzmann collision operator computed by `electron_electron` is not Hermitian with respect to the standard inner product. However, one can define the symmetrized auxiliary matrix
 
 ```math
-X_{ij} = \langle \phi_i | L^{-1} | \phi_j \rangle \equiv \sum_{\mathbf{k}} f^{(0)}_{\mathbf{k}} (1 - f^{(0)}_{\mathbf{k}}) \, \Delta V_{\mathbf{k}} \, \phi^{(i)}_{\mathbf{k}} \, [L^{-1} \phi^{(j)}]_{\mathbf{k}}.
+L^{\text{(s)}}_{ij} = \frac{f^{(0)}_i (1 - f^{(0)}_i)}{T} \, \Delta V_i \, L_{ij}
 ```
 
-The driving vectors ``\phi`` differ by transport channel: ``\phi = v_i`` for charge transport, ``\phi = \varepsilon v_i`` for heat transport. Numerically, ``L^{-1} \phi`` is computed by solving the linear system ``L \psi = \phi`` via a biconjugate gradient iteration.
+which is symmetric. This is equivalent to saying that ``L`` is Hermitian with respect to the weighted inner product
 
-## Electrical Conductivity
-
-```@docs
-Ludwig.electrical_conductivity
-Ludwig.longitudinal_electrical_conductivity
+```math
+\langle a | b \rangle \equiv \sum_{\mathbf{k}} \frac{f^{(0)}(\epsilon_{\mathbf{k}}) \bigl(1 - f^{(0)}(\epsilon_{\mathbf{k}})\bigr)}{T} \, a_{\mathbf{k}}^* \, b_{\mathbf{k}} \, \Delta V_{\mathbf{k}}
+= \sum_{\mathbf{k}} \left( -\frac{\partial f^{(0)}}{\partial \varepsilon} \right)_{\mathbf{k}} a_{\mathbf{k}}^* \, b_{\mathbf{k}} \, \Delta V_{\mathbf{k}},
 ```
 
-## Thermal Conductivity
+i.e. the canonical Fermi-window weight of the linearized Boltzmann formalism. The factor of ``1/T`` is folded into the internal `Ludwig.boltzmann_weight` helper so that every transport function in this section can write its prefactor with no further temperature dependence beyond what is intrinsic to the channel.
 
-```@docs
-Ludwig.thermal_conductivity
+Transport coefficients are expressed as matrix elements of ``L^{-1}`` under this inner product:
+
+```math
+X_{ij} = \langle \phi_i | L^{-1} | \phi_j \rangle \equiv \sum_{\mathbf{k}} \frac{f^{(0)}_{\mathbf{k}} (1 - f^{(0)}_{\mathbf{k}})}{T} \, \Delta V_{\mathbf{k}} \, \phi^{(i)}_{\mathbf{k}} \, [L^{-1} \phi^{(j)}]_{\mathbf{k}}.
 ```
 
-## Thermoelectric Conductivity
+The driving vectors ``\phi`` differ by transport channel: ``\phi = v_i`` for charge transport, ``\phi = \varepsilon v_i`` for heat transport. Numerically, ``L^{-1} \phi`` is computed by solving the linear system ``L \psi = \phi`` and then summing ``\sum_\mathbf{k} w_\mathbf{k} \, \phi^{(i)}_\mathbf{k} \, \psi_\mathbf{k}``. See [`inner_product`](@ref).
 
-```@docs
-Ludwig.thermoelectric_conductivity
+## Choosing a solver
+
+[`inner_product`](@ref) and every transport-property function ([`electrical_conductivity`](@ref), [`longitudinal_electrical_conductivity`](@ref), [`ηB1g`](@ref), [`ηB2g`](@ref), [`σ_lifetime`](@ref), [`η_lifetime`](@ref)) accept a `solve` keyword that controls how ``L \phi = b`` is solved. Any 2-argument callable `(L, b) -> ϕ` is acceptable — direct factorizations, sparse solvers, iterative methods, and matrix-free schemes all use the same hook.
+
+The default is `\`. For tensor-valued properties this triggers a single dense LU factorization of the (possibly modified) collision matrix that is then reused across all four component solves, so the ``O(n^3)`` cost is paid only once per call. Passing a precomputed `LinearAlgebra.Factorization` such as `lu(L)`, `qr(L)`, or `cholesky(L)` lets that work be amortized further across multiple property evaluations sharing the same `L`.
+
+For larger meshes where the dense factorization is too expensive, supply an iterative solver from any package implementing the `(A, rhs) -> ϕ` calling convention. For example, with [Krylov.jl](https://github.com/JuliaSmoothOptimizers/Krylov.jl) or [IterativeSolvers.jl](https://github.com/JuliaLinearAlgebra/IterativeSolvers.jl):
+
+```julia
+using IterativeSolvers
+σ = electrical_conductivity(L, v, E, dV, T; solve = bicgstabl)
+
+# wrap a tolerance into a closure
+σ = electrical_conductivity(L, v, E, dV, T;
+                            solve = (A, rhs) -> gmres(A, rhs; reltol = 1e-12))
 ```
 
-## Peltier Tensor
+Iterative solvers also let `L` be supplied as a sparse matrix or a `LinearMap`, avoiding any need to materialize the dense collision matrix.
 
-```@docs
-Ludwig.peltier_tensor
-```
+## Available coefficients
 
-## Viscosity
+### Electrical conductivity
 
-For two-dimensional materials with tetragonal symmetry, the shear viscosity decomposes into B1g and B2g irreducible representations of the D4h point group. These are computed from the corresponding deformation potentials ``D(\mathbf{k})``, which encode the coupling of the quasiparticle momentum to the relevant strain mode.
+See [`electrical_conductivity`](@ref) and [`longitudinal_electrical_conductivity`](@ref).
 
-```@docs
-Ludwig.ηB1g
-Ludwig.ηB2g
-```
+### Viscosity
 
-## Effective Lifetimes
+For two-dimensional materials with tetragonal symmetry, the shear viscosity decomposes into B1g and B2g irreducible representations of the D4h point group. These are computed from the corresponding deformation potentials ``D(\mathbf{k})``, which encode the coupling of the quasiparticle momentum to the relevant strain mode. See [`ηB1g`](@ref) and [`ηB2g`](@ref).
 
-It is sometimes useful to characterize the collision operator by a single effective scattering time obtained by projecting onto the relevant transport mode:
+!!! note "D4h vs. D4"
+    The B1g/B2g labels here refer to irreps of the full three-dimensional crystallographic group D4h, which is the conventional naming for quasi-2D tetragonal materials. The strictly two-dimensional point group used by Ludwig's `Lattice` machinery for a square Bravais lattice is D4 — the eight-element subgroup of D4h generated by the in-plane four-fold rotation and the in-plane mirrors, with the horizontal mirror ``\sigma_h`` and inversion dropped. Both irrep families coincide on the in-plane momenta the collision matrix actually sees: D4h's B1g (``\sim k_x^2 - k_y^2``) and B2g (``\sim k_x k_y``) restrict to the corresponding B1 and B2 irreps of D4.
 
-```@docs
-Ludwig.σ_lifetime
-Ludwig.η_lifetime
-```
+### Effective lifetimes
+
+See [`σ_lifetime`](@ref) and [`η_lifetime`](@ref).
