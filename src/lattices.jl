@@ -163,12 +163,19 @@ function gauss_reduce(A, max_iter = 1e4)
 end
 
 """
-    lattice_type(l::Lattice)
+    lattice_type(l::Lattice; atol = 1e-8)
 
 Return the Bravais lattice type of `l` as a string.
 
 Classifies the lattice by comparing the angle between primitive vectors and their norms.
 Returns one of `"Square"`, `"Rectangular"`, `"Hexagonal"`, or `"Oblique"`.
+
+`atol` is the absolute tolerance applied both to ``|\\cos\\theta|`` (so that primitives
+within `atol` of perpendicular are treated as such, and likewise within `atol` of the
+hexagonal angle ``\\cos\\theta = 1/2``) and as a relative tolerance on the norm comparison
+that distinguishes Square from Rectangular. The default is loose enough to absorb
+double-precision construction noise (e.g. evaluating `√3/2` at runtime) but tight enough
+that genuinely oblique lattices near 89.99° are not promoted to Square.
 
 # Examples
 ```jldoctest
@@ -184,20 +191,17 @@ julia> lattice_type(Lattice([1.0 0.5; 0.0 √3/2]))
 
 See also [`point_group`](@ref), [`get_bz`](@ref).
 """
-function lattice_type(l::Lattice)
+function lattice_type(l::Lattice; atol = 1e-8)
     p = primitives(l)
     a1 = p[:, 1]
     a2 = p[:, 2]
+    n1, n2 = norm(a1), norm(a2)
 
-    cosθ = abs( dot(a1, a2) / (norm(a1) * norm(a2)) )
+    cosθ = abs(dot(a1, a2) / (n1 * n2))
 
-    if cosθ ≈ 0.0
-        if norm(a1) == norm(a2)
-            return "Square"
-        else
-            return "Rectangular"
-        end
-    elseif cosθ ≈ 0.5
+    if cosθ ≤ atol
+        return isapprox(n1, n2; rtol = atol) ? "Square" : "Rectangular"
+    elseif abs(cosθ - 0.5) ≤ atol
         return "Hexagonal"
     else
         return "Oblique"
