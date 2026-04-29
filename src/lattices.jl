@@ -139,30 +139,6 @@ See also [`lattice_type`](@ref), [`get_ibz`](@ref).
 point_group(l::Lattice) = point_groups[lattice_type(l)]
 
 """
-    gauss_reduce(A, max_iter=1e4)
-
-Apply Gauss lattice reduction to the 2D basis stored as columns of `A`.
-
-Returns a 2×2 matrix whose columns span the same lattice as those of `A` but are shorter
-and more nearly orthogonal. Used to obtain a reduced basis before classifying lattice
-type. See [Lattice reduction](https://en.wikipedia.org/wiki/Lattice_reduction).
-"""
-function gauss_reduce(A, max_iter = 1e4)
-    i = 1
-    u = A[:, 1]
-    v = A[:, 2]
-    while norm(v) < norm(u) && i < max_iter
-        q = round(Int, dot(u, v) / norm(v)^2)
-        r = u - q * v
-        u = v
-        v = r
-        i += 1
-    end
-
-    return hcat(u, v)
-end
-
-"""
     lattice_type(l::Lattice; atol = 1e-8)
 
 Return the Bravais lattice type of `l` as a string.
