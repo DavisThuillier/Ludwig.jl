@@ -80,7 +80,7 @@ Requires `Makie` (or any backend such as `CairoMakie`) to be loaded.
 
 # Keyword Arguments
 - `color`: per-patch colors; defaults to `energy.(mesh.patches)`.
-- `colormap=:RdBu`: colormap passed to `poly!`.
+- `colormap=:viridis`: colormap passed to `poly!`.
 - `colorrange`: `(lo, hi)` colormap limits; defaults to `(-emax, emax)` where
   `emax = maximum(abs, energies)`.
 - `strokecolor=:black`: patch edge color.
@@ -105,7 +105,7 @@ Requires `Makie` (or any backend such as `CairoMakie`) to be loaded.
 
 # Keyword Arguments
 - `color`: per-patch colors; defaults to `energy.(mesh.patches)`.
-- `colormap=:RdBu`: colormap passed to `poly!`.
+- `colormap=:viridis`: colormap passed to `poly!`.
 - `colorrange`: `(lo, hi)` colormap limits; defaults to `(-emax, emax)` where
   `emax = maximum(abs, energies)`.
 - `strokecolor=:black`: patch edge color.
