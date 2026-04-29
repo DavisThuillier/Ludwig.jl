@@ -27,12 +27,11 @@ include("properties.jl")
 ###
 
 # GeometryUtilities
-export in_polygon, diameter, signed_area, intersection, param_intersection
-export perpendicular_bisector_intersection, poly_area
+export in_polygon
 
 # Groups
-export Group, PermutationGroup, PermutationGroupElement, GroupElement
-export get_cyclic_group, get_dihedral_group, get_symmetric_group, get_table, inverse
+export Group, PermutationGroup, PermutationGroupElement
+export get_cyclic_group, get_dihedral_group
 export get_matrix_representation, order, is_identity
 
 # Lattices
