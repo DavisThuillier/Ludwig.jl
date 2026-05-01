@@ -63,6 +63,14 @@ export electrical_conductivity, longitudinal_electrical_conductivity
 export ηB1g, ηB2g
 export σ_lifetime, η_lifetime
 
+
+###
+### 3D Extension (In Progress)
+###
+
+include(joinpath("ibz", "ibz.jl"))
+
+
 ###
 ### Makie extension (loaded when Makie is available)
 ###
