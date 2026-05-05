@@ -53,6 +53,13 @@ struct Lattice{D, T<:AbstractFloat, L} <: AbstractLattice
 end
 
 """
+    primitives(l::Lattice) -> SMatrix
+
+Return the matrix whose columns are the primitive direct-space lattice vectors.
+"""
+primitives(l::Lattice) = l.primitives
+
+"""
     reciprocal_lattice_vectors(A)
 
 Return the reciprocal-lattice basis ``B = 2\\pi (A^{-1})^\\mathsf{T}`` of the
