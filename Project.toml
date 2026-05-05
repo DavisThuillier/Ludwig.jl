@@ -14,9 +14,6 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
 Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
 
-[extensions]
-LudwigMakieExt = ["Makie", "LaTeXStrings"]
-
 [compat]
 DataStructures = "0.18.20"
 ForwardDiff = "0.10"
