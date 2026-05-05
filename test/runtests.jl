@@ -4,4 +4,5 @@ using Random
 
 @testset "Ludwig" begin
     include("brillouin_zone_tests.jl")
+    include("irreducible_brillouin_zone_tests.jl")
 end
