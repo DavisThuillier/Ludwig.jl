@@ -6,6 +6,19 @@ Base.@kwdef struct BrillouinZone{D, T<:AbstractFloat} <: AbstractConvexPolytope{
     offsets::Vector{T}
 end
 
+# Cyclic-order facet vertex indices counterclockwise around the facet centroid as
+# viewed from the +n side (outward), so fan triangulation (idx[1], idx[i], idx[i+1])
+# tiles the planar face. 3D only — `cross` is defined for 3-vectors.
+function sort_facet_cyclic(verts, idx, n::SVector{3})
+    pts = [verts[i] for i in idx]
+    c = sum(pts) / length(pts)
+    e = abs(n[1]) < 0.9 ? SVector(1.0, 0.0, 0.0) : SVector(0.0, 1.0, 0.0)
+    u = normalize(e - dot(e, n) * n)
+    w = cross(n, u)
+    angles = [atan(dot(p - c, w), dot(p - c, u)) for p in pts]
+    return idx[sortperm(angles)]
+end
+
 """
     BrillouinZone(rlv::SMatrix{D, D, T})
 
@@ -120,7 +133,9 @@ function BrillouinZone(rlv::SMatrix{D, D, T, L}) where {D, T, L}
         c = nG / 2
         push!(normals, n)
         push!(offsets, c)
-        push!(facets, Facet{D, T}(facet_verts[i], n, c))
+        verts = D == 3 ? sort_facet_cyclic(vertices, facet_verts[i], n) :
+                         facet_verts[i]
+        push!(facets, Facet{D, T}(verts, n, c))
     end
 
     ridges = if D == 3
