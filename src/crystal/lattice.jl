@@ -45,7 +45,10 @@ struct Lattice{D, T<:AbstractFloat, L} <: AbstractLattice
             "Specified primitive vectors are not linearly independent."
         ))
         D = size(A)[1]
-        return new{D,T,L}(SMatrix{D, D, T, D^2}(A))
+        primitives = SMatrix{D, D, T, D^2}(A)
+        reciprocal_vectors = reciprocal_lattice_vectors(primitives)
+        brillouin_zone = BrillouinZone(reciprocal_vectors)
+        return new{D,T,D^2}(primitives, reciprocal_vectors, brillouin_zone)
     end
 end
 
