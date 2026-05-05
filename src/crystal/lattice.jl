@@ -18,7 +18,7 @@ a circular Fermi surface mesh.
 
 See also [`Lattice`](@ref).
 """
-struct NoLattice{D} <: AbstractLattice end 
+struct NoLattice <: AbstractLattice end 
 
 """
     Lattice(A::AbstractArray)
@@ -32,9 +32,12 @@ Construct a Bravais lattice from primitive vectors.
 
 See also [`NoLattice`](@ref), [`primitives`](@ref), [`lattice_type`](@ref).
 """
-struct Lattice{D, T, L} <: AbstractLattice
+struct Lattice{D, T<:AbstractFloat, L} <: AbstractLattice
     primitives::SMatrix{D, D, T, L}
-    function Lattice(A::AbstractArray)
+    reciprocal_vectors::SMatrix{D, D, T, L}
+    brillouin_zone::BrillouinZone{D, T}
+
+    function Lattice(A::AbstractMatrix{T}) where {T}
         size(A)[1] == size(A)[2] || throw(DimensionMismatch(
             "Lattice primitive matrix must be square."
         ))
@@ -42,6 +45,16 @@ struct Lattice{D, T, L} <: AbstractLattice
             "Specified primitive vectors are not linearly independent."
         ))
         D = size(A)[1]
-        return new(SMatrix{D, D, T, D^2}(A))
+        return new{D,T,L}(SMatrix{D, D, T, D^2}(A))
     end
 end
+
+"""
+    reciprocal_lattice_vectors(A)
+
+Return the reciprocal-lattice basis ``B = 2\\pi (A^{-1})^\\mathsf{T}`` of the
+Bravais lattice whose primitive vectors are the columns of `A`. The columns of
+the result are ``\\mathbf{b}_i`` satisfying
+``\\mathbf{a}_i \\cdot \\mathbf{b}_j = 2\\pi \\delta_{ij}``.
+"""
+reciprocal_lattice_vectors(A::AbstractMatrix) = 2π * inv(transpose(A))
