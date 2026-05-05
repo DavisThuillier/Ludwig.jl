@@ -3,7 +3,7 @@ struct PointGroup{D, T<:AbstractFloat, L}
     function PointGroup(generators::Vector{<:AbstractMatrix}, lattice::Lattice{D, T, L}; tol = 1e-10) where {D, T, L}
         static_generators = [SMatrix{D,D,T,L}(g) for g in generators] # Throws Method error if sizes are incommensurate
         for (i, G) ∈ enumerate(static_generators)
-            A = lattice_matrix(lattice)
+            A = primitives(lattice)
             M = A \ G * A
             M_rounded = round.(M)
             drift = maximum(abs.(M .- M_rounded))
