@@ -99,6 +99,27 @@ function diameter(p)
 end
 
 """
+    boundary_distance(p, polygon)
+
+Return the distance from the 2D point `p` to the nearest edge of the closed `polygon`.
+
+# Examples
+```jldoctest
+julia> Ludwig.boundary_distance([0.25, 0.5], [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]])
+0.25
+```
+"""
+function boundary_distance(p, polygon)
+    n = length(polygon)
+    return minimum(1:n) do k
+        a = polygon[k]
+        b = polygon[mod1(k + 1, n)]
+        t = clamp(dot(p - a, b - a) / dot(b - a, b - a), 0.0, 1.0)
+        norm(p - (a + t * (b - a)))
+    end
+end
+
+"""
     signed_area(x, y, z)
 
 Return the signed area of the 2D triangle with vertices `x`, `y`, `z`.

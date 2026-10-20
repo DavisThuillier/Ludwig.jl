@@ -74,7 +74,7 @@ Like the other band wrappers, `IBZInterpolatedBand` may be mixed with plain func
 - `mask`: restrict meshing to a convex sub-polygon of the IBZ, useful for focusing resolution on a small pocket.
 - `angle_threshold`: turning-angle threshold (radians) for cusp detection near van Hove singularities (default `π/8`).
 - `boundaries`: supply an explicit vector of boundary energies, overriding the automatic uniform grid.
-- `maxdepth`: maximum recursion depth for the corner re-meshing algorithm that fills IBZ corners skipped by standard contour generation (default `2`).
+- `maxdepth`: whether to mesh the IBZ corners skipped by standard contour generation (default `2`; pass `1` to disable). A skipped corner is decomposed at the critical points of the dispersion into contour-bounded patches inside each of which the energy is monotone.
 
 ## References
 J. M. Buhmann, Unconventional Transport Properties of Correlated Two-Dimensional Fermi Liquids, Ph.D. thesis, Institute
