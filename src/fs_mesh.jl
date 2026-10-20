@@ -776,83 +776,478 @@ function detect_skipped_corners(
     return events
 end
 
+###
+### Corner-region meshing
+###
+
 """
-    find_boundary_extrema(p1, corner, p2, ε[; n_sample, iter])
+    segment_extrema(a, b, ε[; n_sample, iter]) -> Vector{Float64}
 
-Return the locations of local extrema of `ε` along the piecewise-linear path
-`p1 → corner → p2` on the boundary of the IBZ.
+Return the parameters `t ∈ [0, 1]` of the local extrema of `ε` along the segment
+`a + t (b - a)`, in increasing order.
 
-The path is parameterised by arclength. Each segment is scanned independently with
-`n_sample ÷ 2` evenly spaced points; the interval bordering the corner is excluded
-from each segment so that the corner itself is never returned. Sign changes in the
-finite-difference derivative are refined by bisection.
-
-# Arguments
-- `p1::SVector{2,Float64}`: start of path, lying on one IBZ edge.
-- `corner::SVector{2,Float64}`: IBZ corner vertex shared by the two edges.
-- `p2::SVector{2,Float64}`: end of path, lying on the adjacent IBZ edge.
-- `ε`: dispersion function accepting an `AbstractVector` of length 2.
-- `n_sample::Int=200`: number of points for the coarse scan.
-- `iter::Int=64`: bisection iteration count per bracketed extremum.
-
-# Returns
-`Vector{SVector{2,Float64}}` of extremum locations, ordered by arclength.
+The segment is scanned at `n_sample` evenly spaced points and each sign change of the
+finite-difference derivative is refined by bisection with `iter` iterations.
 
 # Examples
 ```jldoctest
 julia> using StaticArrays
 
-julia> ε(k) = k[1] + k[2];  # linear dispersion, no interior extrema
+julia> ε(k) = (k[1] - 0.25)^2;
 
-julia> p1 = SVector(0.0, 0.0);
-
-julia> corner = SVector(1.0, 0.0);
-
-julia> p2 = SVector(1.0, 1.0);
-
-julia> isempty(find_boundary_extrema(p1, corner, p2, ε))
+julia> Ludwig.segment_extrema(SVector(0.0, 0.0), SVector(1.0, 0.0), ε) ≈ [0.25]
 true
 ```
 
-See also [`detect_skipped_corners`](@ref).
+See also [`side_breaks`](@ref).
 """
-function find_boundary_extrema(
-    p1::SVector{2,Float64},
-    corner::SVector{2,Float64},
-    p2::SVector{2,Float64},
-    ε;
-    n_sample::Int = 200,
-    iter::Int = 64,
-)::Vector{SVector{2,Float64}}
-    L1 = norm(corner - p1)
-    L2 = norm(p2 - corner)
-    L  = L1 + L2
-    L < eps() && return SVector{2,Float64}[]
+function segment_extrema(a, b, ε; n_sample::Int = 200, iter::Int = 64)
+    norm(b - a) < eps() && return Float64[]
+    lerp(t) = a + t * (b - a)
 
-    lerp(t) = t ≤ L1 ? p1 + (t / L1) * (corner - p1) :
-                        corner + ((t - L1) / L2) * (p2 - corner)
+    ts = LinRange(0.0, 1.0, n_sample)
+    es = [ε(lerp(t)) for t in ts]
+    δ  = step(ts) / 2
 
-    # Search each segment separately so the path kink at the corner does not produce
-    # a spurious sign change in the cross-segment finite-difference derivative.
-    # The interval bordering the corner is excluded from each segment: the last
-    # interval of p1→corner and the first interval of corner→p2.
-    extrema_pts = SVector{2,Float64}[]
-    n_seg = max(4, n_sample ÷ 2)
-    for (t_lo, t_hi, i_start) in ((0.0, L1, 1), (L1, L, 2))
-        t_hi - t_lo < eps() && continue
-        ts_seg = LinRange(t_lo, t_hi, n_seg)
-        es_seg = [ε(lerp(t)) for t in ts_seg]
-        δ = step(ts_seg) / 2
-        for i in i_start:(n_seg - 2)
-            Δ_left  = es_seg[i + 1] - es_seg[i]
-            Δ_right = es_seg[i + 2] - es_seg[i + 1]
-            Δ_left * Δ_right < 0 || continue
-            t_ext = bisect(t -> ε(lerp(t + δ)) - ε(lerp(t - δ)), ts_seg[i], ts_seg[i + 1]; iter)
-            push!(extrema_pts, lerp(t_ext))
+    extrema_ts = Float64[]
+    for i in 1:(n_sample - 2)
+        (es[i + 1] - es[i]) * (es[i + 2] - es[i + 1]) < 0 || continue
+        t = bisect(t -> ε(lerp(t + δ)) - ε(lerp(t - δ)), ts[i], ts[i + 2]; iter)
+        push!(extrema_ts, clamp(t, 0.0, 1.0))
+    end
+    return extrema_ts
+end
+
+"""
+    side_breaks(region, ε) -> Vector{Vector{Float64}}
+
+Return, for each edge `k` of polygon `region` (from `region[k]` to `region[k+1]`), the
+sorted edge parameters `[0, t₁, …, tₘ, 1]` that split the edge into intervals on which `ε`
+is monotone.
+
+See also [`segment_extrema`](@ref), [`interval_key`](@ref).
+"""
+function side_breaks(region, ε)
+    n = length(region)
+    return [[0.0; segment_extrema(region[k], region[mod1(k + 1, n)], ε); 1.0] for k in 1:n]
+end
+
+"""
+    interval_key(p, region, breaks[; tol]) -> Union{Tuple{Int,Int},Nothing}
+
+Return `(k, m)` for a point `p` on the boundary of `region`: the edge `k` on which `p`
+lies and the monotone interval `m` of that edge (delimited by `breaks[k]`, see
+[`side_breaks`](@ref)) that contains it. Return `nothing` if `p` lies on no edge.
+
+An open contour of a non-critical energy has its two endpoints in two distinct monotone
+intervals, and keeps them there as the energy varies between consecutive critical
+energies, so the pair of keys identifies the contour across levels.
+"""
+function interval_key(p, region, breaks; tol = 1e-8)
+    k = edge_index(p, region; tol)
+    k == 0 && return nothing
+    a = region[k]
+    b = region[mod1(k + 1, length(region))]
+    t = clamp(dot(p - a, b - a) / dot(b - a, b - a), 0.0, 1.0)
+    m = clamp(searchsortedlast(breaks[k], t), 1, length(breaks[k]) - 1)
+    return (k, m)
+end
+
+"""
+    interval_anchor(key, e, region, breaks, ε) -> SVector{2,Float64}
+
+Return the point of the monotone edge interval `key = (k, m)` of `region` at which `ε`
+equals `e`, or the interval endpoint whose energy is nearer `e` if `e` lies outside the
+range of `ε` on the interval.
+
+This is where a contour endpoint in that interval comes to rest as the contour energy
+approaches `e`.
+"""
+function interval_anchor(key, e, region, breaks, ε)
+    k, m = key
+    a = SVector{2,Float64}(region[k])
+    b = SVector{2,Float64}(region[mod1(k + 1, length(region))])
+    lerp(t) = a + t * (b - a)
+
+    t0, t1 = breaks[k][m], breaks[k][m + 1]
+    e0, e1 = ε(lerp(t0)), ε(lerp(t1))
+    if !(min(e0, e1) ≤ e ≤ max(e0, e1))
+        return abs(e - e0) < abs(e - e1) ? lerp(t0) : lerp(t1)
+    end
+    return lerp(bisect(t -> ε(lerp(t)) - e, t0, t1))
+end
+
+"""
+    interior_critical_points(X, Y, E, region, ε; margin) -> (saddles, extrema)
+
+Return the critical points of `ε` inside `region` farther than `margin` from its boundary,
+split into saddles and extrema, from the energies `E` sampled on the grid `(X, Y)`.
+
+Candidates are the grid cells across which both components of the finite-difference
+gradient change sign. Each is refined by Newton iteration with the grid Hessian and
+classified by the sign of the Hessian determinant. Critical points on the boundary are
+found separately by [`side_breaks`](@ref).
+"""
+function interior_critical_points(X, Y, E, region, ε; margin)
+    saddles = SVector{2,Float64}[]
+    extrema = SVector{2,Float64}[]
+    nx, ny = size(E)
+    (nx < 4 || ny < 4) && return saddles, extrema
+
+    hx, hy = step(X), step(Y)
+    h      = max(hx, hy)
+    gx(i, j) = E[i + 1, j] - E[i - 1, j]
+    gy(i, j) = E[i, j + 1] - E[i, j - 1]
+
+    for i in 2:nx-2, j in 2:ny-2
+        gxs = (gx(i, j), gx(i + 1, j), gx(i, j + 1), gx(i + 1, j + 1))
+        gys = (gy(i, j), gy(i + 1, j), gy(i, j + 1), gy(i + 1, j + 1))
+        (minimum(gxs) < 0 < maximum(gxs) && minimum(gys) < 0 < maximum(gys)) || continue
+
+        p = SVector(X[i] + hx / 2, Y[j] + hy / 2)
+        (in_polygon(p, region) && boundary_distance(p, region) > margin) || continue
+
+        Hxx = (E[i + 1, j] - 2 * E[i, j] + E[i - 1, j]) / hx^2
+        Hyy = (E[i, j + 1] - 2 * E[i, j] + E[i, j - 1]) / hy^2
+        Hxy = (E[i + 1, j + 1] - E[i + 1, j - 1] - E[i - 1, j + 1] + E[i - 1, j - 1]) / (4 * hx * hy)
+        H   = SMatrix{2,2,Float64,4}(Hxx, Hxy, Hxy, Hyy)
+        det(H) == 0 && continue
+
+        q = p
+        for _ in 1:4
+            q = q - H \ band_velocity(ε, q)
+        end
+        norm(q - p) < 2h && (p = q)
+
+        any(r -> norm(r - p) < 3h, (saddles..., extrema...)) && continue
+        push!(det(H) < 0 ? saddles : extrema, p)
+    end
+
+    return saddles, extrema
+end
+
+"""
+    level_chain(u1, u2, e, X, Y, E, region, critical; tol) -> Union{Tuple,Nothing}
+
+Return `(chain, kinks)`: the polyline along the level set `ε = e` inside `region` from
+`u1` to `u2`, and the points of `critical` through which it passes in its interior.
+
+When `u1` and `u2` coincide within `tol` the level set has shrunk to a point, and `chain`
+is that point, snapped to the nearest point of `critical` within `tol`. Otherwise `chain`
+is stitched from the marching-squares fragments at `e`, searching depth first over the
+fragments whose ends meet within `tol`. At a critical energy marching squares drops the
+cells around a saddle, so consecutive fragments are joined through the critical point
+between them, which is recorded in `kinks`. Several fragments can leave the same saddle,
+which is why the search backtracks rather than taking the nearest. Return `nothing` if no
+chain from `u1` reaches `u2`.
+"""
+function level_chain(u1, u2, e, X, Y, E, region, critical; tol)
+    function snap(p)
+        isempty(critical) && return p
+        d, i = findmin(c -> norm(c - p), critical)
+        return d < tol ? critical[i] : p
+    end
+
+    norm(u1 - u2) < tol && return [snap((u1 + u2) / 2)], SVector{2,Float64}[]
+
+    frags = [iso.points for iso in contours(X, Y, E, [e]; mask = region)[1].isolines
+             if iso.arclength > tol / 2]
+
+    function extend(chain, kinks, used)
+        norm(chain[end] - u2) < tol && return [chain[1:end-1]; [u2]], kinks
+
+        cur = chain[end]
+        candidates = Tuple{Float64,Int,Bool}[]
+        for f in eachindex(frags)
+            used[f] && continue
+            d_head = norm(frags[f][begin] - cur)
+            d_tail = norm(frags[f][end] - cur)
+            d_head < tol && push!(candidates, (d_head, f, false))
+            d_tail < tol && push!(candidates, (d_tail, f, true))
+        end
+
+        for (_, f, rev) in sort!(candidates)
+            seg = rev ? reverse(frags[f]) : frags[f]
+            next_chain = copy(chain)
+            next_kinks = copy(kinks)
+            if length(chain) == 1
+                append!(next_chain, seg[2:end]) # seg[1] is u1 up to the contour resolution
+            else
+                # A contour reaches a vertex of the convex region, or the ends of the
+                # chain, only at its own ends, so neither is a kink
+                junction = (cur + seg[begin]) / 2
+                c = snap(junction)
+                if c != junction && !(c in kinks) && !(c in region) &&
+                   norm(c - u1) ≥ tol && norm(c - u2) ≥ tol
+                    push!(next_chain, c)
+                    push!(next_kinks, c)
+                end
+                append!(next_chain, seg)
+            end
+            next_used = copy(used)
+            next_used[f] = true
+            result = extend(next_chain, next_kinks, next_used)
+            isnothing(result) || return result
+        end
+        return nothing
+    end
+
+    return extend([SVector{2,Float64}(u1)], SVector{2,Float64}[], falses(length(frags)))
+end
+
+"""
+    stitch_fragments(isolines, region; tol) -> Vector{Vector{SVector{2,Float64}}}
+
+Return the open contours among `isolines`, joining fragments whose ends meet within `tol`
+away from the boundary of `region`.
+
+Marching squares stops following a contour that leaves the cells cut by the masking
+polygon for its interior, so a contour that grazes an edge of `region` is returned in
+pieces that end at the same interior point.
+"""
+function stitch_fragments(isolines, region; tol)
+    pieces   = [iso.points for iso in isolines if !iso.isclosed]
+    interior = p -> edge_index(p, region) == 0
+
+    # Return the pieces `i`, `j` and their orientations such that the end of piece `i`
+    # meets the start of piece `j` at an interior point
+    function joinable()
+        for i in eachindex(pieces), j in eachindex(pieces)
+            i == j && continue
+            for rev_i in (false, true), rev_j in (false, true)
+                tail = rev_i ? pieces[i][begin] : pieces[i][end]
+                head = rev_j ? pieces[j][end]   : pieces[j][begin]
+                (interior(tail) && norm(tail - head) < tol) && return i, j, rev_i, rev_j
+            end
+        end
+        return nothing
+    end
+
+    while (pair = joinable()) !== nothing
+        i, j, rev_i, rev_j = pair
+        pieces[i] = [rev_i ? reverse(pieces[i]) : pieces[i];
+                     rev_j ? reverse(pieces[j]) : pieces[j]]
+        deleteat!(pieces, j)
+    end
+    return pieces
+end
+
+"""
+    split_polyline(pts, a, b) -> Union{Tuple,Nothing}
+
+Split the polyline `pts` at its first crossing of the segment from `a` to `b`, returning
+the two halves (both containing the crossing point), or `nothing` if they do not cross.
+"""
+function split_polyline(pts, a, b)
+    for s in 1:length(pts)-1
+        q, t = param_intersection(pts[s], pts[s + 1] - pts[s], a, b - a)
+        any(isnan, t) && continue
+        (0 ≤ t[1] ≤ 1 && 0 ≤ t[2] ≤ 1) || continue
+        x = SVector{2,Float64}(q)
+        return [pts[1:s]; [x]], [[x]; pts[s+1:end]]
+    end
+    return nothing
+end
+
+"""
+    split_at_fraction(pts, f) -> Tuple
+
+Split the polyline `pts` at the fraction `f` of its arclength, returning the two halves
+(both containing the split point).
+"""
+function split_at_fraction(pts, f)
+    s = get_arclengths(pts)
+    target = clamp(f, 0.0, 1.0) * s[end]
+    j = clamp(searchsortedlast(s, target), 1, length(pts) - 1)
+    x = pts[j] + (pts[j + 1] - pts[j]) * (target - s[j]) / max(s[j + 1] - s[j], eps())
+    return [pts[1:j]; [x]], [[x]; pts[j+1:end]]
+end
+
+"""
+    split_at_kinks(levels, kinks) -> Vector
+
+Split a contour family at the kinks of its boundary contours.
+
+`levels` holds the polylines of one contour family at increasing energies, all oriented
+alike, with the first and last bounding the family. A boundary contour that passes through
+a saddle turns sharply there, so each kink is joined by a straight cut to the opposite
+boundary (its point, or the point at the same arclength fraction) and every level is
+split where it crosses that cut. Returns the list of resulting families, none of which
+has a kink.
+"""
+function split_at_kinks(levels, kinks)
+    isempty(kinks) && return [levels]
+
+    P, rest = first(kinks), kinks[2:end]
+    bottom, top = levels[begin], levels[end]
+    i_kink = P in bottom[2:end-1] ? firstindex(levels) :
+             P in top[2:end-1]    ? lastindex(levels)  : nothing
+    i_kink === nothing && return split_at_kinks(levels, rest)
+    i_opp = i_kink == firstindex(levels) ? lastindex(levels) : firstindex(levels)
+
+    chain = levels[i_kink]
+    j_kink = findfirst(==(P), chain)
+    f = get_arclengths(chain[1:j_kink])[end] / get_arclengths(chain)[end]
+    opposite = levels[i_opp]
+    Q = length(opposite) == 1 ? opposite[1] : split_at_fraction(opposite, f)[1][end]
+
+    left  = similar(levels)
+    right = similar(levels)
+    for (idx, pts) in enumerate(levels)
+        if length(pts) == 1
+            left[idx], right[idx] = pts, pts
+        elseif idx == i_kink
+            left[idx], right[idx] = pts[1:j_kink], pts[j_kink:end]
+        elseif idx == i_opp
+            left[idx], right[idx] = split_at_fraction(pts, f)
+        else
+            halves = split_polyline(pts, Q, P)
+            left[idx], right[idx] = isnothing(halves) ? split_at_fraction(pts, f) : halves
         end
     end
 
-    return extrema_pts
+    in_bounds(fam, k) = k in fam[begin] || k in fam[end]
+    return [split_at_kinks(left,  filter(k -> in_bounds(left, k),  rest));
+            split_at_kinks(right, filter(k -> in_bounds(right, k) && !in_bounds(left, k), rest))]
+end
+
+"""
+    resampled_isoline(pts[; n_min]) -> Isoline
+
+Return an open [`Isoline`](@ref) through `pts`, resampled at no fewer than `n_min`
+arclength-uniform points so that its end tangents are well defined. A single point is
+returned as a degenerate isoline of zero length.
+"""
+function resampled_isoline(pts; n_min = 64)
+    pts = remove_duplicates!(copy(pts))
+    length(pts) == 1 && return Isoline(pts, false, 0.0)
+    grid, _ = arclength_slice(pts, max(n_min, length(pts)))
+    return Isoline(grid, false, get_arclengths(grid)[end])
+end
+
+"""
+    mesh_corner_region(region, ε, band_index, Δε, δL[, N]; angle_threshold) -> Mesh
+
+Mesh the convex polygon `region` (typically the triangle `[p1, corner, p2]` returned by
+[`detect_skipped_corners`](@ref)) into patches bounded by contours of `ε`, inside each of
+which `ε` is monotone.
+
+By Morse theory the contours of `ε` in `region` change their arrangement only at critical
+energies: the energies of the vertices, of the extrema of `ε` along each edge, and of the
+critical points of `ε` inside `region`. Between consecutive critical energies every
+contour is an arc whose endpoints slide along fixed monotone intervals of the edges, so
+each arc bounds a family that is meshed by [`mesh_sheet`](@ref). A family whose arcs
+shrink to a point (a vertex or an extremum) at one end is a fan of triangular patches
+there. A boundary contour through a saddle is split at the saddle by
+[`split_at_kinks`](@ref), so that the patches on either side meet at the saddle.
+
+Each family is divided into `max(1, round(ΔE / Δε))` energy layers and
+`max(2, round(L / δL))` patches along its middle contour of length `L`. `N` is the
+marching-squares sample count along `x`.
+
+Interior extrema, whose contours are closed loops, are not supported: a warning is issued
+and the region is left unmeshed.
+
+See also [`mesh_region`](@ref).
+"""
+function mesh_corner_region(region, ε, band_index::Int, Δε, δL, N::Int = 1001;
+                            angle_threshold = π/8)
+    all_patches    = Patch[]
+    all_corners    = SVector{2,Float64}[]
+    all_corner_ids = SVector{4,Int}[]
+    region = SVector{2,Float64}.(region)
+
+    ((x_min, x_max), (y_min, y_max)) = get_bounding_box(region)
+    Δx = (x_max - x_min) / (N - 1)
+    Ny = round(Int, (y_max - y_min) / Δx)
+    (N < 4 || Ny < 4) && return Mesh(all_patches, all_corners, all_corner_ids)
+
+    X = LinRange(x_min, x_max, N)
+    Y = LinRange(y_min, y_max, Ny)
+    E = [ε([x, y]) for x in X, y in Y]
+    tol = 4 * max(step(X), step(Y)) # Contour-resolution tolerance for matching points
+
+    ###
+    ### Critical points and energies
+    ###
+    n_r    = length(region)
+    breaks = side_breaks(region, ε)
+    side_extrema = [region[k] + t * (region[mod1(k + 1, n_r)] - region[k])
+                    for k in 1:n_r for t in breaks[k][2:end-1]]
+    saddles, extrema = interior_critical_points(X, Y, E, region, ε; margin = tol)
+    if !isempty(extrema)
+        @warn "mesh_corner_region: ε has an extremum inside the corner region; closed " *
+              "contours are not supported, so the region is left unmeshed." region
+        return Mesh(all_patches, all_corners, all_corner_ids)
+    end
+    critical = [region; side_extrema; saddles]
+
+    # Critical energies closer than a small fraction of Δε are merged so that no
+    # vanishingly thin layer is meshed between them
+    critical_energies = Float64[]
+    for e in sort(ε.(critical))
+        (isempty(critical_energies) || e - critical_energies[end] > 1e-3 * Δε) &&
+            push!(critical_energies, e)
+    end
+
+    ###
+    ### Mesh each contour family between consecutive critical energies
+    ###
+    for s in 1:length(critical_energies)-1
+        E_lo, E_hi = critical_energies[s], critical_energies[s + 1]
+        n_e = max(1, round(Int, (E_hi - E_lo) / Δε))
+        fe  = foliate(collect(LinRange(E_lo, E_hi, n_e + 1)))
+
+        # Levels strictly between the critical energies are regular, so marching squares
+        # resolves them; the families are identified at the first of them.
+        regular = [stitch_fragments(b.isolines, region; tol)
+                   for b in contours(X, Y, E, fe[2:end-1]; mask = region)]
+        arc_keys(pts) = (interval_key(pts[begin], region, breaks),
+                         interval_key(pts[end],   region, breaks))
+
+        for pts in regular[1]
+            k1, k2 = arc_keys(pts)
+            (isnothing(k1) || isnothing(k2) || k1 == k2) && continue
+            kA, kB = minmax(k1, k2)
+
+            levels = Vector{Vector{SVector{2,Float64}}}(undef, length(fe))
+            kinks  = SVector{2,Float64}[]
+            complete = true
+            for (idx, e) in enumerate(fe)
+                if idx == firstindex(fe) || idx == lastindex(fe)
+                    u1 = interval_anchor(kA, e, region, breaks, ε)
+                    u2 = interval_anchor(kB, e, region, breaks, ε)
+                    lc = level_chain(u1, u2, e, X, Y, E, region, critical; tol)
+                    isnothing(lc) && (complete = false; break)
+                    levels[idx] = lc[1]
+                    append!(kinks, lc[2])
+                else
+                    i_arc = findfirst(a -> Set(arc_keys(a)) == Set((kA, kB)), regular[idx - 1])
+                    isnothing(i_arc) && (complete = false; break)
+                    arc = regular[idx - 1][i_arc]
+                    levels[idx] = arc_keys(arc)[1] == kA ? arc : reverse(arc)
+                end
+            end
+            if !complete
+                @warn "mesh_corner_region: could not trace the contour family between " *
+                      "ε = $(E_lo) and $(E_hi); it is left unmeshed." region
+                continue
+            end
+
+            for family in split_at_kinks(levels, kinks)
+                isolines = [resampled_isoline(pts) for pts in family]
+                L_mid    = isolines[(length(isolines) + 1) ÷ 2].arclength
+                n_s      = max(2, round(Int, L_mid / δL))
+                mesh_f   = mesh_sheet(isolines, ε, band_index, n_s, fe,
+                                      length(all_corners); angle_threshold)
+                append!(all_patches,    mesh_f.patches)
+                append!(all_corners,    mesh_f.corners)
+                append!(all_corner_ids, mesh_f.corner_indices)
+            end
+        end
+    end
+
+    return Mesh(all_patches, all_corners, all_corner_ids)
 end
 
 """
@@ -867,8 +1262,9 @@ surface sheets are handled automatically — one sub-mesh is generated per sheet
 results are concatenated.
 
 If corner crossings are detected (an isoline endpoint slides around an IBZ corner between
-consecutive energy levels), the crossing region is recursively re-meshed up to `maxdepth`
-levels.
+consecutive energy levels), the triangle that the contours of that layer leave uncovered
+is meshed separately by `mesh_corner_region`, into contour-bounded patches inside each of
+which the energy is monotone.
 
 A 7-argument overload `mesh_region(region, ε, e_min, e_max, Δε, n_arc[, N]; …)` defaults
 `band_index` to `1` for single-band use.
@@ -888,7 +1284,8 @@ A 7-argument overload `mesh_region(region, ε, e_min, e_max, Δε, n_arc[, N]; �
 - `angle_threshold = π/8`: turning-angle threshold (radians) for cusp detection.
 - `boundaries::AbstractVector = []`: explicit boundary energies; when non-empty, overrides
   the automatically computed grid.
-- `maxdepth::Int = 2`: maximum recursion depth for corner re-meshing.
+- `maxdepth::Int = 2`: skipped corners are meshed only when `maxdepth > 1`; pass `1` to
+  leave them uncovered.
 
 See also [`ibz_mesh`](@ref), [`bz_mesh`](@ref).
 """
@@ -918,40 +1315,19 @@ function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int
     fe = foliate(be)
     c = contours(X, Y, E, fe; mask = region)
 
-    if depth < maxdepth # Recursive step on skipped corner regions.
+    if depth < maxdepth # Mesh the regions left uncovered by skipped corners
         # Corner energies that may be pinned by `boundary_energies`; matches the
         # set of levels excluded there so the two stay in sync.
         corner_levels = [ε(k) for k in region if k != [0.0, 0.0]]
         skips = detect_skipped_corners(c, region; corner_levels)
 
         for (i, s, corner) in skips
-            corner_e_min = c[i].level - Δε
-            corner_e_max = c[i+2].level + Δε
-            corner_Δε = 0.1 * Δε * (corner_e_max - corner_e_min) / (e_max - e_min)
-            corner_be = ε.(corner)
-            boundary_extrema = ε.(find_boundary_extrema(corner..., ε))
-
-            append!(corner_be, boundary_extrema)
-            sort!(corner_be)
-            if length(corner_be) > 1
-                corner_be[begin] += eps(Float64)
-                corner_be[end]   -= eps(Float64)
-            end
-
-            δL0 = c[i].isolines[s].arclength / n_arc
-            longest_leg = 0.0
-            for i ∈ eachindex(corner)
-                leg = norm(corner[mod1(i + 1, 3)] - corner[i])
-                if leg > longest_leg
-                    longest_leg = leg
-                end
-            end
-
-            corner_n_arc = round(Int, 0.5 * longest_leg / δL0)
-            corner_mesh = mesh_region(corner, ε, band_index, corner_e_min, corner_e_max, corner_Δε, corner_n_arc, N; boundaries = corner_be, depth = depth + 1, maxdepth)
+            δL = c[i].isolines[s].arclength / n_arc # Arc spacing of the adjacent patches
+            corner_mesh = mesh_corner_region(corner, ε, band_index, Δε, δL, N; angle_threshold)
+            ℓ = length(all_corners)
             append!(all_patches,    corner_mesh.patches)
+            append!(all_corner_ids, map(x -> SVector{4,Int}(x .+ ℓ), corner_mesh.corner_indices))
             append!(all_corners,    corner_mesh.corners)
-            append!(all_corner_ids, corner_mesh.corner_indices)
         end
     end
 
