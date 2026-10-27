@@ -27,8 +27,6 @@ const num_bz_points = Dict("Oblique" => 6, "Rectangular" => 4, "Square" => 4, "H
     AbstractLattice
 
 Abstract supertype for all lattice representations.
-
-See also [`Lattice`](@ref), [`NoLattice`](@ref).
 """
 abstract type AbstractLattice end
 
@@ -36,11 +34,6 @@ abstract type AbstractLattice end
     NoLattice <: AbstractLattice
 
 Singleton type representing the absence of a periodic lattice (free electron gas).
-
-Use `NoLattice()` when no lattice periodicity is needed, for example when constructing
-a circular Fermi surface mesh.
-
-See also [`Lattice`](@ref).
 """
 struct NoLattice <: AbstractLattice end # Singleton type for free electron gas
 
@@ -52,18 +45,6 @@ Construct a 2D Bravais lattice from primitive vectors.
 
 `A` must be a 2×2 matrix with linearly independent columns. The two-argument form
 assembles the matrix as `hcat(a1, a2)`.
-
-# Fields
-- `primitives::SMatrix{2,2,Float64,4}`: 2×2 matrix whose columns are the primitive
-  lattice vectors ``\\mathbf{a}_1`` and ``\\mathbf{a}_2``.
-
-# Examples
-```julia
-julia> Lattice([1.0 0.0; 0.0 1.0])   # square lattice
-julia> Lattice([1.0, 0.0], [0.5, √3/2])  # hexagonal lattice
-```
-
-See also [`NoLattice`](@ref), [`primitives`](@ref), [`lattice_type`](@ref).
 """
 struct Lattice <: AbstractLattice
     primitives::SMatrix{2,2,Float64,4}
@@ -92,19 +73,6 @@ Base.:(==)(l1::Lattice, l2::Lattice) = primitives(l1) == primitives(l2)
     primitives(l::Lattice)
 
 Return the 2×2 matrix of primitive lattice vectors for `l`.
-
-Columns of the returned matrix are the primitive vectors ``\\mathbf{a}_1`` and
-``\\mathbf{a}_2``.
-
-# Examples
-```jldoctest
-julia> primitives(Lattice([1.0 0.0; 0.0 1.0]))
-2×2 SMatrix{2, 2, Float64, 4} with indices SOneTo(2)×SOneTo(2):
- 1.0  0.0
- 0.0  1.0
-```
-
-See also [`reciprocal_lattice_vectors`](@ref).
 """
 primitives(l::Lattice) = l.primitives
 
@@ -112,29 +80,13 @@ primitives(l::Lattice) = l.primitives
     reciprocal_lattice_vectors(l::Lattice)
 
 Return the 2×2 matrix of reciprocal lattice vectors for `l`.
-
-Uses the convention ``B = 2π (A^{-1})^\\top``, where `A` is the primitive vector matrix,
-so that ``A^\\top B = 2π I``.
-
-# Examples
-```jldoctest
-julia> reciprocal_lattice_vectors(Lattice([1.0 0.0; 0.0 1.0])) ≈ [2π 0.0; 0.0 2π]
-true
-```
-
-See also [`primitives`](@ref), [`get_bz`](@ref).
 """
 reciprocal_lattice_vectors(l::Lattice) = 2π * SMatrix{2,2,Float64,4}(inv(primitives(l))')
 
 """
     point_group(l::Lattice)
 
-Return the point group of `l` as a [`Group`](@ref).
-
-The group is selected based on [`lattice_type`](@ref): Oblique → C₂, Rectangular → D₂,
-Square → D₄, Hexagonal → D₆.
-
-See also [`lattice_type`](@ref), [`get_ibz`](@ref).
+Return the point group of `l` as a [`Group`](@ref) assuming holohedry.
 """
 point_group(l::Lattice) = point_groups[lattice_type(l)]
 
@@ -142,30 +94,6 @@ point_group(l::Lattice) = point_groups[lattice_type(l)]
     lattice_type(l::Lattice; atol = 1e-8)
 
 Return the Bravais lattice type of `l` as a string.
-
-Classifies the lattice by comparing the angle between primitive vectors and their norms.
-Returns one of `"Square"`, `"Rectangular"`, `"Hexagonal"`, or `"Oblique"`.
-
-`atol` is the absolute tolerance applied both to ``|\\cos\\theta|`` (so that primitives
-within `atol` of perpendicular are treated as such, and likewise within `atol` of the
-hexagonal angle ``\\cos\\theta = 1/2``) and as a relative tolerance on the norm comparison
-that distinguishes Square from Rectangular. The default is loose enough to absorb
-double-precision construction noise (e.g. evaluating `√3/2` at runtime) but tight enough
-that genuinely oblique lattices near 89.99° are not promoted to Square.
-
-# Examples
-```jldoctest
-julia> lattice_type(Lattice([1.0 0.0; 0.0 1.0]))
-"Square"
-
-julia> lattice_type(Lattice([1.0 0.0; 0.0 2.0]))
-"Rectangular"
-
-julia> lattice_type(Lattice([1.0 0.5; 0.0 √3/2]))
-"Hexagonal"
-```
-
-See also [`point_group`](@ref), [`get_bz`](@ref).
 """
 function lattice_type(l::Lattice; atol = 1e-8)
     p = primitives(l)
@@ -189,11 +117,6 @@ end
 
 Return the vertices of the first Brillouin zone for `l` as a vector of
 `SVector{2,Float64}`, sorted counterclockwise by angle from the origin.
-
-The BZ is constructed as the Wigner-Seitz cell of the reciprocal lattice via
-perpendicular bisectors of nearest-neighbor reciprocal lattice vectors.
-
-See also [`get_ibz`](@ref), [`reciprocal_lattice_vectors`](@ref), [`map_to_bz`](@ref).
 """
 function get_bz(l::Lattice)
     rlv = reciprocal_lattice_vectors(l)
@@ -225,12 +148,6 @@ end
 
 Return the vertices of the irreducible Brillouin zone for `l` as a vector of
 `SVector{2,Float64}`, sorted counterclockwise by angle from the origin.
-
-The IBZ is constructed by iteratively bisecting the BZ with the mirror planes of the
-point group, then rotated to minimize the average angle of its vertices. The origin is
-always included as a vertex.
-
-See also [`get_bz`](@ref), [`point_group`](@ref), [`ibz_mesh`](@ref).
 """
 function get_ibz(l::Lattice)
     G = point_group(l)
@@ -319,19 +236,6 @@ end
     map_to_bz(k, l::Lattice)
 
 Map the momentum vector `k` into the first Brillouin zone `bz`.
-
-If `k` already lies inside `bz`, it is returned unchanged. Otherwise, a reciprocal
-lattice translation ``\\mathbf{G} = rlv \\cdot \\mathbf{n}`` is found such that
-``k - \\mathbf{G}`` lies inside `bz`. `invrlv` is the inverse of `rlv`; if omitted it is
-computed internally. The `Lattice` method computes `bz` and `rlv` from `l`.
-
-# Arguments
-- `k`: 2-vector momentum to fold back.
-- `bz`: polygon vertices of the first Brillouin zone (from [`get_bz`](@ref)).
-- `rlv`: 2×2 matrix of reciprocal lattice vectors.
-- `invrlv`: precomputed inverse of `rlv`.
-
-See also [`get_bz`](@ref), [`reciprocal_lattice_vectors`](@ref).
 """
 function map_to_bz(k, bz, rlv, invrlv)
     if in_polygon(k, bz)

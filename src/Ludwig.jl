@@ -17,6 +17,7 @@ include("geometry_utilities.jl")
 include("groups.jl")
 include("lattices.jl")
 include("marching_squares.jl")
+include("eigensolvers.jl")
 include("bands.jl")
 include("fs_mesh.jl")
 include("integration.jl")
@@ -43,13 +44,13 @@ export Isoline, IsolineBundle, contour_intersection, get_bounding_box
 
 # FSMesh
 export Patch, VirtualPatch, AbstractPatch, energy, momentum, velocity, band, area
-export HamiltonianBand, InterpolatedBand, IBZInterpolatedBand, band_velocity
+export HamiltonianBand, InterpolatedBand, band_velocity
 export Mesh, patches, corners, corner_indices
 export mesh_region, ibz_mesh, bz_mesh, isotropic_mesh
 export BZSymmetryMap, bz_symmetry_map
 
 # Integration
-export electron_electron, electron_impurity, electron_phonon
+export electron_electron, eigenstates, electron_impurity, electron_phonon
 
 # Utilities
 export f0, symmetrize, enforce_particle_conservation!

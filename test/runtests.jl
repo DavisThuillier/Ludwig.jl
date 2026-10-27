@@ -14,6 +14,10 @@ end
     include("ibz_fill_test.jl")
 end
 
+@testset "Eigensolver Tests" begin
+    include("eigensolver_tests.jl")
+end
+
 @testset "Band Tests" begin
     include("band_test.jl")
 end
