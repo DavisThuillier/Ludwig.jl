@@ -5,6 +5,7 @@ using LinearAlgebra
     # The D₄ point group (order 8) means the IBZ is 1/8 of the full BZ.
     T = 0.025
     l = Lattice([1.0 0.0; 0.0 1.0])
+    rlv, bz = reciprocal_lattice_vectors(l), get_bz(l)
 
     ε(k) = -2.0 * (cos(k[1]) + cos(k[2])) - 1.0 # Nearest neighbor TBM
     bands = [ε]
@@ -37,13 +38,13 @@ using LinearAlgebra
     # Full collision matrix (naive: every (i,j) pair)
     L_full = zeros(N, N)
     for i in 1:N, j in 1:N
-        L_full[i, j] = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, l)
+        L_full[i, j] = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, rlv, bz)
     end
 
     # Symmetry-reduced: compute only IBZ rows, then propagate by fill_from_ibz!
     L_sym = zeros(N, N)
     for i in sym.ibz_inds, j in 1:N
-        L_sym[i, j] = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, l)
+        L_sym[i, j] = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, rlv, bz)
     end
     fill_from_ibz!(L_sym, sym)
 
@@ -53,6 +54,7 @@ end
 @testset "IBZ diagonalize: eigenvalues match fill_from_ibz! + eigen" begin
     T = 0.025
     l = Lattice([1.0 0.0; 0.0 1.0])
+    rlv, bz = reciprocal_lattice_vectors(l), get_bz(l)
     ε(k) = -2.0 * (cos(k[1]) + cos(k[2])) - 1.0
     bands = [ε]
 
@@ -70,7 +72,7 @@ end
     # Populate only IBZ rows
     L_sym = zeros(N, N)
     for i in sym.ibz_inds, j in 1:N
-        L_sym[i, j] = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, l)
+        L_sym[i, j] = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, rlv, bz)
     end
 
     # Reference: fill then eigen
