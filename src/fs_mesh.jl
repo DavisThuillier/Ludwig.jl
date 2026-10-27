@@ -298,41 +298,6 @@ function ibz_matvec!(y::AbstractVector, L::AbstractMatrix, x::AbstractVector, sy
     return y
 end
 
-"""
-    diagonalize_ibz(L::AbstractMatrix, sym::BZSymmetryMap) -> LinearAlgebra.Eigen
-
-Diagonalize the full N×N collision operator `L` without calling [`fill_from_ibz!`](@ref).
-Only the IBZ rows of `L` (those indexed by `sym.ibz_inds`) need to be populated.
-
-Internally reconstructs the full matrix column-by-column via [`ibz_matvec!`](@ref) applied
-to each standard basis vector, then returns `eigen(L_full)`. `L` is not mutated.
-
-# Example
-```julia
-L_sym = zeros(N, N)
-for i in sym.ibz_inds, j in 1:N
-    L_sym[i, j] = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, l)
-end
-result = diagonalize_ibz(L_sym, sym)
-vals, vecs = result.values, result.vectors
-```
-"""
-function diagonalize_ibz(L::AbstractMatrix, sym::BZSymmetryMap)
-    N      = size(L, 1)
-    L_full = similar(L)
-    e_j    = zeros(eltype(L), N)
-    col    = Vector{eltype(L)}(undef, N)
-
-    for j in 1:N
-        e_j[j] = one(eltype(L))
-        ibz_matvec!(col, L, e_j, sym)
-        L_full[:, j] .= col
-        e_j[j] = zero(eltype(L))
-    end
-
-    return eigen(L_full)
-end
-
 ###
 ### Energy-level grid
 ###
