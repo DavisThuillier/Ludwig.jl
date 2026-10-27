@@ -1,0 +1,17 @@
+[HDF5]
+libhdf5 = "/opt/apps/hdf5/2.0.0/gcc/15.2.0/openmpi/5.0.9/lib/libhdf5.so"
+libhdf5_hl = "/opt/apps/hdf5/2.0.0/gcc/15.2.0/openmpi/5.0.9/lib/libhdf5_hl.so"
+
+[HDF5_jll]
+libhdf5_hl_path = "/opt/apps/hdf5/2.0.0/gcc/15.2.0/openmpi/5.0.9/lib/libhdf5_hl.so"
+libhdf5_path = "/opt/apps/hdf5/2.0.0/gcc/15.2.0/openmpi/5.0.9/lib/libhdf5.so"
+
+[MPIPreferences]
+__clear__ = ["preloads_env_switch"]
+_format = "1.0"
+abi = "OpenMPI"
+binary = "system"
+cclibs = []
+libmpi = "libmpi"
+mpiexec = "mpiexec"
+preloads = []

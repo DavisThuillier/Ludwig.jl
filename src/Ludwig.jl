@@ -1,127 +1,46 @@
 module Ludwig
 
-include("constants.jl")
-
-using LinearAlgebra
 using StaticArrays
-using DataStructures
-using ForwardDiff
-using Interpolations
+using LinearAlgebra
+using NonNegLeastSquares
+using FastGaussQuadrature: gausslegendre
+using ProgressMeter: Progress, next!
+using SparseArrays
+using KrylovKit
+using TensorOperations
 
-# Both ForwardDiff and Interpolations export `gradient`; bind unqualified usage to ForwardDiff.
-# Interpolations.gradient is used explicitly by qualified name in Integration.jl.
-import ForwardDiff: gradient, derivative
+export PointGroup, operations, order, group_multiplication_table, operation_permutation
 
-include("utilities.jl")
-include("geometry_utilities.jl")
-include("groups.jl")
-include("lattices.jl")
-include("marching_squares.jl")
-include("eigensolvers.jl")
-include("bands.jl")
-include("fs_mesh.jl")
-include("integration.jl")
-include("properties.jl")
+export Lattice, primitives, reciprocal_lattice_vectors
+export Crystal, brillouin_zone, irreducible_brillouin_zone
 
-###
-### Exports
-###
+export CharacterTable, character_table, characters, irrep_labels, class_symbols
+export irrep_content, which_irrep
 
-# GeometryUtilities
-export in_polygon
+export SimplexMesh, vertices, simplices, build_simplex, build_simplices, volume, perimeter, integrate_over_mesh
 
-# Groups
-export Group, PermutationGroup, PermutationGroupElement
-export get_cyclic_group, get_dihedral_group
-export get_matrix_representation, order, is_identity
+export level_set, merge_vertices
 
-# Lattices
-export AbstractLattice, Lattice, NoLattice, primitives, reciprocal_lattice_vectors
-export point_group, lattice_type, get_bz, get_ibz, map_to_bz
+export electron_electron, fermi_dirac
+export detailed_balance_factors, full_collision_matrix, symmetrized_collision_matrix
+export collision_eigen, enforce_particle_conservation!
+export IsotypicBlocks, isotypic_blocks, block_modes
 
-# MarchingSquares
-export Isoline, IsolineBundle, contour_intersection, get_bounding_box
+export correlator, conductivity, effective_lifetime
 
-# FSMesh
-export Patch, VirtualPatch, AbstractPatch, energy, momentum, velocity, band, area
-export HamiltonianBand, InterpolatedBand, band_velocity
-export Mesh, patches, corners, corner_indices
-export mesh_region, ibz_mesh, bz_mesh, isotropic_mesh
-export BZSymmetryMap, bz_symmetry_map
+export kb, G0, hbar, e_charge
 
-# Integration
-export electron_electron, eigenstates, electron_impurity, electron_phonon
+include("constants.jl")
+include("point_group.jl")
+include("polytope.jl")
+include("lattice.jl")
+include("representations.jl")
+include("mesh.jl")
+include("marching_simplices.jl")
+include("sampling_mesh.jl")
+include("quadrature.jl")
+include("collision_operator.jl")
+include("processing.jl")
+include("transport.jl")
 
-# Utilities
-export f0, symmetrize, enforce_particle_conservation!
-
-# IBZ symmetry helpers (defined alongside FSMesh)
-export fill_from_ibz!, ibz_matvec!, diagonalize_ibz
-
-# Properties
-export inner_product
-export electrical_conductivity, longitudinal_electrical_conductivity
-export ηB1g, ηB2g
-export σ_lifetime, η_lifetime
-
-###
-### Makie extension (loaded when Makie is available)
-###
-
-"""
-    plot_mesh!(ax, mesh; color, colormap, colorrange, strokecolor, strokewidth)
-
-Plot the Fermi surface `mesh` as a polygon collection into an existing `Makie.Axis`.
-
-Each patch is drawn as a quadrilateral colored by its energy by default.
-Requires `Makie` (or any backend such as `CairoMakie`) to be loaded.
-
-# Arguments
-- `ax`: a `Makie.Axis`.
-- `mesh::Mesh`: the Fermi surface mesh to plot.
-
-# Keyword Arguments
-- `color`: per-patch colors; defaults to `energy.(mesh.patches)`.
-- `colormap=:viridis`: colormap passed to `poly!`.
-- `colorrange`: `(lo, hi)` colormap limits; defaults to `(-emax, emax)` where
-  `emax = maximum(abs, energies)`.
-- `strokecolor=:black`: patch edge color.
-- `strokewidth=0.3`: patch edge width in scene units.
-
-# Returns
-The `PolyPlot` returned by the underlying `poly!` call.
-
-See also [`plot_mesh`](@ref).
-"""
-function plot_mesh! end
-
-"""
-    plot_mesh(mesh; color, colormap, colorrange, strokecolor, strokewidth, axis, figure)
-
-Create a `Figure` containing a plot of the Fermi surface `mesh`.
-
-Requires `Makie` (or any backend such as `CairoMakie`) to be loaded.
-
-# Arguments
-- `mesh::Mesh`: the Fermi surface mesh to plot.
-
-# Keyword Arguments
-- `color`: per-patch colors; defaults to `energy.(mesh.patches)`.
-- `colormap=:viridis`: colormap passed to `poly!`.
-- `colorrange`: `(lo, hi)` colormap limits; defaults to `(-emax, emax)` where
-  `emax = maximum(abs, energies)`.
-- `strokecolor=:black`: patch edge color.
-- `strokewidth=0.3`: patch edge width in scene units.
-- `axis=(;)`: keyword arguments forwarded to `Makie.Axis`.
-- `figure=(;)`: keyword arguments forwarded to `Makie.Figure`.
-
-# Returns
-A `Makie.FigureAxisPlot`.
-
-See also [`plot_mesh!`](@ref).
-"""
-function plot_mesh end
-
-export plot_mesh!, plot_mesh
-
-end # module Ludwig
+end

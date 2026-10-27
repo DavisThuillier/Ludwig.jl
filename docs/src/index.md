@@ -1,7 +1,7 @@
 # Ludwig.jl Documentation
 
 ## Overview
-Ludwig provides a framework for generating the linearized Boltzmann collision operator for electron-electron scattering in two-dimensional materials and materials with a quasi-2D band structure. This package also provides utilities for calculating transport properties such as conductivity and viscosity from the generated collision matrix.
+Ludwig provides a framework for generating the linearized Boltzmann collision operator for electron-electron scattering. This package also provides utilities for calculating transport properties such as conductivity and viscosity from the generated collision matrix.
 
 !!! info "Unicode"
     This package uses Unicode characters (primarily Greek letters) such as `η`, `σ`, and `ε` in both function names and for function arguments. 
