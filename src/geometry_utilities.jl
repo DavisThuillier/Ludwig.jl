@@ -31,45 +31,50 @@ function in_polygon(k, p, atol = 1e-12)
     end
     is_vertex && return true
 
-    w = winding_number(p .- Ref(k), atol) # Winding number of polygon wrt k
+    w = winding_number(p, k, atol)
     return !(abs(w) < atol) # Returns false when w ≈ 0
 end
 
 """
-    winding_number(v, atol=1e-12)
+    winding_number(v, center, atol=1e-12)
 
-Return the winding number of the closed polygon with vertices `v` about the origin.
+Return the winding number of the closed polygon with vertices `v` about the point `center`.
 
 `v` is a sequence of 2D points; the polygon is implicitly closed by joining the last vertex
-to the first. The result is an integer for generic inputs and a half-integer when the
-origin lies on an edge or vertex (within `atol`).
+to the first. The result is an integer for generic inputs and a half-integer when `center`
+lies on an edge or vertex (within `atol`). Each vertex is shifted by `center` as it is
+read, so no shifted copy of `v` is allocated.
 
 # Examples
 ```jldoctest
-julia> winding_number([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0], [0.0, -1.0]])
+julia> winding_number([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0], [0.0, -1.0]], [0.0, 0.0])
 1.0
 
-julia> winding_number([[2.0, 1.0], [1.0, 2.0], [0.0, 1.0], [1.0, 0.0]])
+julia> winding_number([[3.0, 2.0], [2.0, 3.0], [1.0, 2.0], [2.0, 1.0]], [1.0, 1.0])
 0.0
 ```
 """
-function winding_number(v, atol = 1e-12)
-    w = 0
+function winding_number(v, center, atol = 1e-12)
+    w = 0.0
     for i in eachindex(v)
         j = (i == length(v)) ? 1 : i + 1
 
-        if v[i][2] * v[j][2] < 0 # [vᵢvⱼ] crosses the x-axis
-            m = (v[j][1] - v[i][1]) / (v[i][2] - v[j][2])
-            r = v[i][1] + m * v[i][2]  # x-coordinate of intersection of [vᵢvⱼ] with x-axis
+        # Vertices i and j relative to center
+        xi, yi = v[i][1] - center[1], v[i][2] - center[2]
+        xj, yj = v[j][1] - center[1], v[j][2] - center[2]
+
+        if yi * yj < 0 # [vᵢvⱼ] crosses the x-axis
+            m = (xj - xi) / (yi - yj)
+            r = xi + m * yi # x-coordinate of intersection of [vᵢvⱼ] with x-axis
             if abs(r) < atol
                 m > 0 ? (w += 0.5) : (w -= 0.5)
             elseif r > 0
-                v[i][2] < 0 ? (w += 1) : (w -= 1)
+                yi < 0 ? (w += 1) : (w -= 1)
             end
-        elseif abs(v[i][2]) < atol && abs(v[j][2]) > atol && v[i][1] > 0 # vᵢ on the positive x-axis
-            v[j][2] > 0 ? (w += 0.5) : (w -= 0.5)
-        elseif abs(v[i][2]) > atol && abs(v[j][2]) < atol && v[j][1] > 0 # vⱼ on the positive x-axis
-            v[i][2] < 0 ? (w += 0.5) : (w -= 0.5)
+        elseif abs(yi) < atol && abs(yj) > atol && xi > 0 # vᵢ on the positive x-axis
+            yj > 0 ? (w += 0.5) : (w -= 0.5)
+        elseif abs(yi) > atol && abs(yj) < atol && xj > 0 # vⱼ on the positive x-axis
+            yi < 0 ? (w += 0.5) : (w -= 0.5)
         end
     end
     return w
