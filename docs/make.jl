@@ -16,7 +16,7 @@ makedocs(
         ],
         "Collision Operator" => [
             "Overview" => "collision_operator.md",
-            "Pournin Volume" => "collision_operator/pournin_volume.md",
+            "Pournin Volume" => "collision_operator/hyperspherical_volume.md",
         ],
         "Transport Properties" => [
             "Overview" => "properties/transport.md",
