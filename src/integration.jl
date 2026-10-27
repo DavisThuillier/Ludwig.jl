@@ -90,7 +90,7 @@ ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, d::VirtualPatch, T::Real) = ee_k
 
 """
     electron_electron(grid, f0s, i, j, bands, T, Weff_squared, rlv, bz;
-                      umklapp=true, kwargs...)
+                      umklapp=true, states=nothing, kwargs...)
 
 Compute the element (`i`, `j`) of the linearized Boltzmann collision operator for
 electron-electron scattering.
@@ -105,13 +105,20 @@ electron-electron scattering.
 - `T::Real`: temperature.
 - `Weff_squared`: user-defined function `Weff_squared(p1, p2, p3, p4; kwargs...)` of four
   `Patch`/`VirtualPatch` arguments returning the effective spinless quasiparticle
-  scattering vertex.
+  scattering vertex; see `states` for the form that also takes their states.
 - `rlv::AbstractMatrix`: reciprocal lattice vector matrix.
 - `bz`: first Brillouin zone polygon.
 
 # Keyword Arguments
 - `umklapp::Bool=true`: when `true`, intermediate momenta are folded back into `bz` via
   the reciprocal lattice before the bands are sampled there.
+- `states=nothing`: per-patch states aligned with `grid`, typically from
+  [`eigenstates`](@ref). When given, the vertex is called as
+  `Weff_squared(p1, p2, p3, p4, ψ1, ψ2, ψ3, ψ4; kwargs...)`: the four patches as above,
+  followed by their states in the same order, `states[n]` for a grid patch `grid[n]` and
+  the state that [`bandstate`](@ref) returns for the virtual patch. A vertex built from
+  Bloch states, such as a Coulomb interaction with orbital form factors, then never
+  rediagonalizes.
 - additional keyword arguments are forwarded verbatim to `Weff_squared`.
 
 `rlv` and `bz` are typically [`reciprocal_lattice_vectors`](@ref) and [`get_bz`](@ref) of
@@ -119,7 +126,11 @@ the lattice, computed once by the caller rather than for every matrix element.
 
 See also [`electron_phonon`](@ref), [`electron_impurity`](@ref).
 """
-function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, rlv, bz; umklapp = true, kwargs...)
+function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, rlv, bz; umklapp = true, states = nothing, kwargs...)
+    isnothing(states) || axes(states) == axes(grid) || throw(DimensionMismatch(
+        "states has axes $(axes(states)), but grid has axes $(axes(grid))."
+    ))
+
     Lij::Float64 = 0.0
     w123::Float64 = 0.0
     w124::Float64 = 0.0
@@ -139,9 +150,16 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         umklapp && (kijm = map_to_bz(kijm, bz, rlv, invrlv))
 
         for μ in eachindex(bands)
-            e, v, _ = bandstate(bands[μ], kijm)
+            e, v, ψ = bandstate(bands[μ], kijm)
             p = VirtualPatch(e, kijm, v, μ)
-            w123 = Weff_squared(grid[i], grid[j], grid[m], p; kwargs...)
+
+            # `states` is `nothing` or a vector, so the branch is resolved at compile time
+            w123 = if isnothing(states)
+                Weff_squared(grid[i], grid[j], grid[m], p; kwargs...)
+            else
+                Weff_squared(grid[i], grid[j], grid[m], p,
+                             states[i], states[j], states[m], ψ; kwargs...)
+            end
 
             if w123 != 0
                 Lij += w123 * ee_kernel!(ζ, u, grid[i], grid[j], grid[m], p, T) * f0s[j] * (1 - f0s[m])
@@ -152,11 +170,18 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         umklapp && (qimj = map_to_bz(qimj, bz, rlv, invrlv))
 
         for μ in eachindex(bands)
-            e, v, _ = bandstate(bands[μ], qimj)
+            e, v, ψ = bandstate(bands[μ], qimj)
             p = VirtualPatch(e, qimj, v, μ)
 
-            w123 = Weff_squared(grid[i], grid[m], grid[j], p; kwargs...)
-            w124 = Weff_squared(grid[i], grid[m], p, grid[j]; kwargs...)
+            if isnothing(states)
+                w123 = Weff_squared(grid[i], grid[m], grid[j], p; kwargs...)
+                w124 = Weff_squared(grid[i], grid[m], p, grid[j]; kwargs...)
+            else
+                w123 = Weff_squared(grid[i], grid[m], grid[j], p,
+                                    states[i], states[m], states[j], ψ; kwargs...)
+                w124 = Weff_squared(grid[i], grid[m], p, grid[j],
+                                    states[i], states[m], ψ, states[j]; kwargs...)
+            end
 
             if w123 + w124 != 0
                 Lij -= (w123 + w124) * ee_kernel!(ζ, u, grid[i], grid[m], grid[j], p, T) * f0s[m] * (1 - f0s[j])
@@ -166,6 +191,25 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
 
     return π * Lij / (grid[i].dV * (1 - f0s[i]) * (2π)^6)
 end
+
+"""
+    eigenstates(grid, bands)
+
+Return the state of each patch of `grid` in its band, for the `states` keyword of
+[`electron_electron`](@ref).
+
+Entry `n` is the state `ψ` that [`bandstate`](@ref) returns for `bands[band(grid[n])]` at
+`momentum(grid[n])`: for a [`HamiltonianBand`](@ref), the eigenvector there. Every patch
+is evaluated directly rather than mapped from its image in the IBZ, since an antiunitary
+symmetry takes an eigenvector to its complex conjugate rather than to itself up to a phase.
+
+# Examples
+```julia
+ψs = eigenstates(grid, bands)
+L[i, j] = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, rlv, bz; states=ψs)
+```
+"""
+eigenstates(grid, bands) = [bandstate(bands[band(p)], momentum(p))[3] for p in grid]
 
 """
     electron_electron(grid, f0s, i, j, ε, T, Weff_squared, l::NoLattice; kwargs...)

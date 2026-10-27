@@ -49,7 +49,7 @@ export mesh_region, ibz_mesh, bz_mesh, isotropic_mesh
 export BZSymmetryMap, bz_symmetry_map
 
 # Integration
-export electron_electron, electron_impurity, electron_phonon
+export electron_electron, eigenstates, electron_impurity, electron_phonon
 
 # Utilities
 export f0, symmetrize, enforce_particle_conservation!

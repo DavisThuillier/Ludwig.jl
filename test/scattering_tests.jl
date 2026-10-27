@@ -1,4 +1,5 @@
 using LinearAlgebra
+using StaticArrays
 
 ###
 ### Shared workload
@@ -88,6 +89,62 @@ end
         grid_iso, f0s_iso, N, 1, ε_iso, T_scat, Weff_squared, nl
     )
     @test isfinite(Lend)
+end
+
+###
+### Vertex from Bloch states
+###
+
+# Two-orbital Bloch Hamiltonian on the square lattice whose lower band crosses zero energy
+function H_states(k)
+    s1, s2 = sin(k[1]), sin(k[2])
+    d = 2.5 + cos(k[1]) + cos(k[2])
+    return @SMatrix [2.5 + d s1 - im*s2; s1 + im*s2 2.5 - d]
+end
+
+lower_eigenvector(k) = eigen(Hermitian(H_states(k))).vectors[:, 1]
+
+# The same screened-Coulomb vertex with orbital form factors, from patches and their states
+# or from patches alone by diagonalizing at each one
+function W_states(p1, p2, p3, p4, ψ1, ψ2, ψ3, ψ4)
+    q = momentum(p1) - momentum(p3)
+    return abs2(dot(ψ3, ψ1)) * abs2(dot(ψ4, ψ2)) / (dot(q, q) + 0.25)^2
+end
+W_patches(ps...) = W_states(ps..., lower_eigenvector.(momentum.(ps))...)
+
+W_const(args...) = 1.0
+
+@testset "electron_electron: states" begin
+    bands = (HamiltonianBand(H_states, 1),)
+    mesh  = ibz_mesh(lat_scat, collect(bands), T_scat, Δε_scat, n_arc_scat, N_grid_scat)
+    grid  = patches(mesh)
+    f0s   = f0.(energy.(grid), T_scat)
+    N     = length(grid)
+
+    ψs = eigenstates(grid, bands)
+    @test length(ψs) == N
+    for (p, ψ) in zip(grid, ψs)
+        @test H_states(momentum(p)) * ψ ≈ bands[1](momentum(p)) * ψ
+    end
+
+    for i in 1:3
+        L_states  = [electron_electron(grid, f0s, i, j, bands, T_scat, W_states,
+                                       rlv_scat, bz_scat; states=ψs) for j in 1:N]
+        L_patches = [electron_electron(grid, f0s, i, j, bands, T_scat, W_patches,
+                                       rlv_scat, bz_scat) for j in 1:N]
+        @test any(!iszero, L_patches)
+        @test isapprox(L_states, L_patches; rtol=1e-10)
+
+        # A vertex that ignores its arguments gives the same row on either path
+        @test [electron_electron(grid, f0s, i, j, bands, T_scat, W_const,
+                                 rlv_scat, bz_scat; states=ψs) for j in 1:N] ==
+              [electron_electron(grid, f0s, i, j, bands, T_scat, W_const,
+                                 rlv_scat, bz_scat) for j in 1:N]
+    end
+
+    @test_throws DimensionMismatch electron_electron(
+        grid, f0s, 1, 1, bands, T_scat, W_states, rlv_scat, bz_scat; states=ψs[1:end-1]
+    )
 end
 
 @testset "electron_impurity: Function dispatch" begin
