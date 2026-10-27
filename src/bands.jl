@@ -75,10 +75,7 @@ Dispatches on band type:
 - a [`HamiltonianBand`](@ref) uses the Hellmann-Feynman theorem with central
   finite differences applied to the Hamiltonian matrix;
 - an [`InterpolatedBand`](@ref) uses `Interpolations.gradient` on the spline
-  basis and transforms the result back to Cartesian coordinates;
-- an [`IBZInterpolatedBand`](@ref) folds `k` into the IBZ via the lattice
-  point group and returns ``O^\\top \\mathrm{invrlv}^\\top \\nabla_f
-  \\mathrm{itp}`` inside the support box (zero outside).
+  basis and transforms the result back to Cartesian coordinates.
 """
 band_velocity(ε::Function, k) = gradient(ε, k)
 

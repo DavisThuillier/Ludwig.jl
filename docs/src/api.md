@@ -66,5 +66,4 @@ Ludwig.bandstate
 Ludwig.hermitian_eigen
 Ludwig.hermitian_eigvals
 Ludwig.ee_kernel!
-Ludwig.pournin_volume
 ```
