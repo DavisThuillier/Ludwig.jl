@@ -9,13 +9,11 @@ Wrap a matrix-valued Hamiltonian function `H(k)` for the `n`-th band.
 
 `H` must return a square Hermitian (or real symmetric) matrix for each momentum
 `k::AbstractVector`, with both triangles filled in. The band energy is the `n`-th
-eigenvalue (in ascending order); the group velocity is computed by the Hellmann-Feynman
-theorem using central finite differences to differentiate `H`.
+eigenvalue (in ascending order).
 
 If `H` returns an `SMatrix`, every diagonalization runs on the stack by Jacobi rotations
-(see [`hermitian_eigen`](@ref)), so evaluating the band allocates nothing and never calls
-LAPACK. This is the form to use inside loops over many momenta, such as a collision
-operator assembled under `Threads.@threads`. Any other matrix is diagonalized by LAPACK.
+(see [`hermitian_eigen`](@ref)), so evaluating the band allocates nothing. This is the form 
+to use inside hot loops. Any other matrix is diagonalized by LAPACK.
 
 !!! warning
     Selecting eigenvalues by ascending-order index is discontinuous across band
@@ -26,22 +24,8 @@ operator assembled under `Threads.@threads`. Any other matrix is diagonalized by
     band-tracking strategy externally.
 
 # Fields
-- `H::F`: callable returning a Hermitian (or real symmetric) matrix as a function of
-  momentum.
+- `H::F`: callable returning a Hermitian matrix as a function of momentum.
 - `n::Int`: index of the band to extract (1-based, in ascending eigenvalue order).
-
-# Examples
-```julia
-function H(k)
-    t = 1.0
-    @SMatrix [0.0+0im  t*(exp(im*k[1]) + exp(im*k[2]));
-              t*(exp(-im*k[1]) + exp(-im*k[2]))  0.0+0im]
-end
-band = HamiltonianBand(H, 1)  # lower band
-```
-
-See also [`InterpolatedBand`](@ref), [`band_velocity`](@ref), [`bz_mesh`](@ref),
-[`ibz_mesh`](@ref).
 """
 struct HamiltonianBand{F}
     H::F
@@ -64,17 +48,9 @@ given a Cartesian momentum `k`, the band evaluates `itp` at
 `mod.(invrlv * k, 1.0)`. When constructed from an `AbstractLattice`,
 `invrlv = inv(reciprocal_lattice_vectors(l))` is computed automatically.
 
-The group velocity is obtained from `Interpolations.gradient` on the spline
-basis (analytic derivatives, not autodiff) and transformed back to Cartesian
-momentum coordinates by ``\\nabla_k \\varepsilon = \\mathrm{invrlv}^\\top
-\\nabla_f \\mathrm{itp}``, where ``f = \\mathrm{invrlv}\\,k`` are the
-fractional reciprocal coordinates.
-
 # Fields
 - `itp::I`: callable spline interpolation in fractional reciprocal coordinates.
 - `invrlv::M`: inverse of the reciprocal-lattice-vector matrix.
-
-See also [`HamiltonianBand`](@ref), [`band_velocity`](@ref).
 """
 struct InterpolatedBand{I, M}
     itp::I
@@ -118,16 +94,6 @@ end
 
 Return the energy, group velocity, and state of `band` at Cartesian momentum `k` as the
 tuple `(e, v, ψ)`.
-
-The collision integrals sample each off-grid momentum through this function, once per
-momentum. The fallback evaluates `band(k)` and [`band_velocity`](@ref) separately and
-has no state, so `ψ` is `nothing`. A [`HamiltonianBand`](@ref) diagonalizes its
-Hamiltonian once for all three: `e` is the `n`-th eigenvalue, `v` follows from the
-eigenvector by the Hellmann-Feynman theorem, and `ψ` is that eigenvector.
-
-# Implementation
-A band type whose energy and velocity share an expensive intermediate result should add
-a method computing it once.
 """
 bandstate(band, k) = (band(k), band_velocity(band, k), nothing)
 

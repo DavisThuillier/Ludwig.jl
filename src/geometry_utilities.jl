@@ -2,27 +2,6 @@
     in_polygon(k, p, atol=1e-12)
 
 Test whether the 2D point `k` lies inside the polygon `p`, including its vertices and edges.
-
-`p` is a sequence of vertices (e.g. a `Vector{<:AbstractVector}`); the polygon is implicitly
-closed by joining the last vertex to the first. Points coincident with a vertex (within
-`atol`) or lying on an edge between adjacent vertices are reported as inside.
-
-# Implementation
-A point coincident with a vertex returns `true` directly. Otherwise the result is
-determined by the winding number of `p` about `k`: the winding number is ±1 for generic
-interior points and ±0.5 (a half-integer signature) for points on an edge, so both cases
-return `true` and only zero-winding exterior points return `false`.
-
-# Examples
-```jldoctest
-julia> square = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
-
-julia> in_polygon([0.5, 0.5], square)
-true
-
-julia> in_polygon([2.0, 0.5], square)
-false
-```
 """
 function in_polygon(k, p, atol = 1e-12)
     is_vertex = false
@@ -31,7 +10,7 @@ function in_polygon(k, p, atol = 1e-12)
     end
     is_vertex && return true
 
-    w = winding_number(p, k, atol)
+    w = winding_number(p, k, atol) # Assumes p is counterclockwise ordered
     return !(abs(w) < atol) # Returns false when w ≈ 0
 end
 
@@ -39,20 +18,6 @@ end
     winding_number(v, center, atol=1e-12)
 
 Return the winding number of the closed polygon with vertices `v` about the point `center`.
-
-`v` is a sequence of 2D points; the polygon is implicitly closed by joining the last vertex
-to the first. The result is an integer for generic inputs and a half-integer when `center`
-lies on an edge or vertex (within `atol`). Each vertex is shifted by `center` as it is
-read, so no shifted copy of `v` is allocated.
-
-# Examples
-```jldoctest
-julia> winding_number([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0], [0.0, -1.0]], [0.0, 0.0])
-1.0
-
-julia> winding_number([[3.0, 2.0], [2.0, 3.0], [1.0, 2.0], [2.0, 1.0]], [1.0, 1.0])
-0.0
-```
 """
 function winding_number(v, center, atol = 1e-12)
     w = 0.0
@@ -84,12 +49,6 @@ end
     diameter(p)
 
 Return the maximal distance between two points in `p`.
-
-# Examples
-```jldoctest
-julia> diameter([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]])
-1.4142135623730951
-```
 """
 function diameter(p)
     diameter = 0.0
@@ -107,12 +66,6 @@ end
     boundary_distance(p, polygon)
 
 Return the distance from the 2D point `p` to the nearest edge of the closed `polygon`.
-
-# Examples
-```jldoctest
-julia> Ludwig.boundary_distance([0.25, 0.5], [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]])
-0.25
-```
 """
 function boundary_distance(p, polygon)
     n = length(polygon)
@@ -128,18 +81,6 @@ end
     signed_area(x, y, z)
 
 Return the signed area of the 2D triangle with vertices `x`, `y`, `z`.
-
-The result is positive when ``x \\to y \\to z`` traces the triangle counter-clockwise and
-negative when clockwise.
-
-# Examples
-```jldoctest
-julia> signed_area([0.0, 0.0], [1.0, 0.0], [0.0, 1.0])
-0.5
-
-julia> signed_area([0.0, 0.0], [0.0, 1.0], [1.0, 0.0])
--0.5
-```
 """
 function signed_area(x, y, z)
     return 0.5 * (-y[1] * x[2] + z[1] * x[2] + x[1] * y[2] - z[1] * y[2] - x[1]*z[2] + y[1] * z[2])
@@ -157,23 +98,6 @@ The lines are treated as parallel — and `([NaN, NaN], [NaN, NaN])` is returned
 ``\\det[v_1\\,{-v_2}] = \\|v_1\\|\\,\\|v_2\\|\\,\\sin\\theta``, this is equivalent to a
 threshold on ``|\\sin\\theta|``: the default `rtol = 1e-12` flags lines closer than
 ``\\sim 10^{-12}`` rad to parallel.
-
-See also `intersection`.
-
-# Examples
-```jldoctest
-julia> p, t = param_intersection([0.0, 0.0], [1.0, 0.0], [1.0, -1.0], [0.0, 1.0]);
-
-julia> p
-2-element Vector{Float64}:
- 1.0
- 0.0
-
-julia> t
-2-element Vector{Float64}:
- 1.0
- 1.0
-```
 """
 function param_intersection(a1, v1, a2, v2; rtol = 1e-12)
     V = hcat(v1, -v2)
@@ -188,17 +112,6 @@ end
 
 Return the intersection point of the parametric lines ``\\mathbf{a}_1 + t_1 \\mathbf{v}_1``
 and ``\\mathbf{a}_2 + t_2 \\mathbf{v}_2``, or `[NaN, NaN]` if the lines are parallel.
-
-Equivalent to `param_intersection(a1, v1, a2, v2)[1]`; use `param_intersection` when
-the parameter values are also needed.
-
-# Examples
-```jldoctest
-julia> intersection([0.0, 0.0], [1.0, 0.0], [1.0, -1.0], [0.0, 1.0])
-2-element Vector{Float64}:
- 1.0
- 0.0
-```
 """
 intersection(a1, v1, a2, v2) = param_intersection(a1, v1, a2, v2)[1]
 
@@ -207,18 +120,6 @@ intersection(a1, v1, a2, v2) = param_intersection(a1, v1, a2, v2)[1]
 
 Return the point where the perpendicular bisectors of the segments from the origin to `v1`
 and from the origin to `v2` meet.
-
-This is the circumcenter of the triangle with vertices `[0, 0]`, `v1`, and `v2`, i.e. the
-point equidistant from all three. Returns `[NaN, NaN]` when the origin, `v1`, and `v2` are
-colinear.
-
-# Examples
-```jldoctest
-julia> perpendicular_bisector_intersection([2.0, 0.0], [0.0, 2.0])
-2-element Vector{Float64}:
- 1.0
- 1.0
-```
 """
 function perpendicular_bisector_intersection(v1, v2)
     return intersection(0.5 * v1, [v1[2], -v1[1]], 0.5 * v2, [v2[2], -v2[1]])
@@ -229,20 +130,6 @@ end
 
 Return the area of the 2D polygon with vertex set `poly`, oriented about the interior
 point `c`.
-
-`c` must lie inside the convex hull of `poly`; otherwise the result is meaningless. The
-returned value is positive for non-degenerate inputs.
-
-# Implementation
-Vertices are sorted by polar angle about `c` and the shoelace formula is applied to the
-resulting traversal. When `c` lies outside the convex hull, this sort can produce a
-self-intersecting polygon.
-
-# Examples
-```jldoctest
-julia> poly_area([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]], [0.5, 0.5])
-1.0
-```
 """
 function poly_area(poly, c)
     A = 0.0
@@ -266,18 +153,7 @@ end
 """
     bisect(f, a, b; iter=64, atol=eps(Float64))
 
-Return an approximation to a root of `f` in the bracket `[a, b]` by bisection.
-
-`f(a)` and `f(b)` must have opposite signs. The loop terminates either when `iter`
-bisection steps have run or when the bracket width drops below `atol`, whichever
-comes first; the midpoint of the final bracket is returned. With `atol = 0` the
-function always runs the full `iter` halvings.
-
-# Examples
-```jldoctest
-julia> bisect(x -> x^2 - 2, 1.0, 2.0)
-1.414213562373095
-```
+Return an approximation to a root of monotone `f` in the bracket `[a, b]` by bisection.
 """
 function bisect(f, a, b; iter = 64, atol = eps(Float64))
     fa = f(a)
@@ -293,22 +169,7 @@ end
 """
     edge_index(p, region[; tol]) -> Int
 
-Return the 1-based index of the edge of polygon `region` on which point `p` lies, or `0`.
-
-Edge `k` is the segment from `region[k]` to `region[mod1(k+1, n)]`. Point `p` is considered
-to lie on that edge when it is collinear with the segment (cross-product residual per unit
-length ≤ `tol`) and the projection parameter `t ∈ [0, 1]` (within `tol`).
-
-# Examples
-```jldoctest
-julia> square = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
-
-julia> edge_index([0.5, 0.0], square)
-1
-
-julia> edge_index([0.5, 0.5], square)
-0
-```
+Return the index of the edge of polygon `region` on which point `p` lies, or `0`.
 """
 function edge_index(p, region; tol = 1e-8)
     n = length(region)

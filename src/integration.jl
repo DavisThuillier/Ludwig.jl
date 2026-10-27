@@ -100,14 +100,14 @@ electron-electron scattering.
 - `f0s::Vector{Float64}`: Fermi-Dirac distribution evaluated at each patch center
   (independent of `i` and `j`, so it is precomputed by the caller).
 - `i::Int`, `j::Int`: row and column indices of the matrix element to compute.
-- `bands`: collection of dispersions used to construct `grid`; each entry is callable on
-  a 2-component momentum, and is sampled off the grid through [`bandstate`](@ref).
+- `bands`: collection of dispersions used to construct `grid`, sampled off the grid 
+   through [`bandstate`](@ref).
 - `T::Real`: temperature.
 - `Weff_squared`: user-defined function `Weff_squared(p1, p2, p3, p4; kwargs...)` of four
   `Patch`/`VirtualPatch` arguments returning the effective spinless quasiparticle
   scattering vertex; see `states` for the form that also takes their states.
 - `rlv::AbstractMatrix`: reciprocal lattice vector matrix.
-- `bz`: first Brillouin zone polygon.
+- `bz`: Brillouin zone polygon.
 
 # Keyword Arguments
 - `umklapp::Bool=true`: when `true`, intermediate momenta are folded back into `bz` via
@@ -116,15 +116,11 @@ electron-electron scattering.
   [`eigenstates`](@ref). When given, the vertex is called as
   `Weff_squared(p1, p2, p3, p4, ψ1, ψ2, ψ3, ψ4; kwargs...)`: the four patches as above,
   followed by their states in the same order, `states[n]` for a grid patch `grid[n]` and
-  the state that [`bandstate`](@ref) returns for the virtual patch. A vertex built from
-  Bloch states, such as a Coulomb interaction with orbital form factors, then never
-  rediagonalizes.
+  the state that [`bandstate`](@ref) returns for the virtual patch.
 - additional keyword arguments are forwarded verbatim to `Weff_squared`.
 
-`rlv` and `bz` are typically [`reciprocal_lattice_vectors`](@ref) and [`get_bz`](@ref) of
-the lattice, computed once by the caller rather than for every matrix element.
-
-See also [`electron_phonon`](@ref), [`electron_impurity`](@ref).
+`rlv` and `bz` are [`reciprocal_lattice_vectors`](@ref) and [`get_bz`](@ref) of
+the lattice, computed once by the caller.
 """
 function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, rlv, bz; umklapp = true, states = nothing, kwargs...)
     isnothing(states) || axes(states) == axes(grid) || throw(DimensionMismatch(
@@ -195,19 +191,8 @@ end
 """
     eigenstates(grid, bands)
 
-Return the state of each patch of `grid` in its band, for the `states` keyword of
+Return the Bloch state of each patch of `grid` in its band, for the `states` keyword of
 [`electron_electron`](@ref).
-
-Entry `n` is the state `ψ` that [`bandstate`](@ref) returns for `bands[band(grid[n])]` at
-`momentum(grid[n])`: for a [`HamiltonianBand`](@ref), the eigenvector there. Every patch
-is evaluated directly rather than mapped from its image in the IBZ, since an antiunitary
-symmetry takes an eigenvector to its complex conjugate rather than to itself up to a phase.
-
-# Examples
-```julia
-ψs = eigenstates(grid, bands)
-L[i, j] = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, rlv, bz; states=ψs)
-```
 """
 eigenstates(grid, bands) = [bandstate(bands[band(p)], momentum(p))[3] for p in grid]
 
@@ -326,8 +311,6 @@ frequency `ω0 = ω(q)`. `ω` is the phonon dispersion (any object accepted by
 [`InterpolatedBand`](@ref), or [`IBZInterpolatedBand`](@ref)). `f0s::Vector{Float64}` is
 the Fermi-Dirac distribution evaluated at each patch center, precomputed by the caller in
 the same way [`electron_electron`](@ref) expects.
-
-A `Lattice` overload takes `l::Lattice` in place of `(rlv, bz)`.
 
 See also [`electron_electron`](@ref), [`electron_impurity`](@ref).
 """

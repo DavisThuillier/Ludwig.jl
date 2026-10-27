@@ -65,83 +65,11 @@ struct VirtualPatch <: AbstractPatch
     band_index::Int
 end
 
-"""
-    energy(p::AbstractPatch)
-
-Return the energy at the centre of patch `p`.
-
-# Examples
-```jldoctest
-julia> using StaticArrays
-
-julia> p = VirtualPatch(0.5, SVector(0.0, 0.0), SVector(1.0, 0.0), 1);
-
-julia> energy(p)
-0.5
-```
-"""
+# Patch accessors
 energy(p::AbstractPatch)   = p.e
-
-"""
-    momentum(p::AbstractPatch)
-
-Return the momentum at the centre of patch `p`.
-
-# Examples
-```jldoctest
-julia> using StaticArrays
-
-julia> p = VirtualPatch(0.0, SVector(0.1, 0.2), SVector(1.0, 0.0), 1);
-
-julia> momentum(p)
-2-element SVector{2, Float64} with indices SOneTo(2):
- 0.1
- 0.2
-```
-"""
 momentum(p::AbstractPatch) = p.k
-
-"""
-    velocity(p::AbstractPatch)
-
-Return the group velocity at the centre of patch `p`.
-
-# Examples
-```jldoctest
-julia> using StaticArrays
-
-julia> p = VirtualPatch(0.0, SVector(0.0, 0.0), SVector(1.0, -0.5), 1);
-
-julia> velocity(p)
-2-element SVector{2, Float64} with indices SOneTo(2):
-  1.0
- -0.5
-```
-"""
 velocity(p::AbstractPatch) = p.v
-
-"""
-    band(p::AbstractPatch)
-
-Return the band index of `p`.
-
-# Examples
-```jldoctest
-julia> using StaticArrays
-
-julia> p = VirtualPatch(0.0, SVector(0.0, 0.0), SVector(0.0, 0.0), 3);
-
-julia> band(p)
-3
-```
-"""
 band(p::AbstractPatch)     = p.band_index
-
-"""
-    area(p::Patch)
-
-Return the momentum-space area of patch `p`.
-"""
 area(p::Patch)             = p.dV
 
 """
@@ -196,25 +124,9 @@ struct Mesh
     corner_indices::Vector{SVector{4, Int}}
 end
 
-"""
-    patches(m::Mesh)
-
-Return the vector of [`Patch`](@ref) objects that make up `m`.
-"""
+# Mesh accessors
 patches(m::Mesh) = m.patches
-
-"""
-    corners(m::Mesh)
-
-Return the vector of corner points used to render the patches of `m`.
-"""
 corners(m::Mesh) = m.corners
-
-"""
-    corner_indices(m::Mesh)
-
-Return the vector mapping each patch of `m` to four indices into [`corners(m)`](@ref).
-"""
 corner_indices(m::Mesh) = m.corner_indices
 
 ###
@@ -253,13 +165,6 @@ end
 
 Return the permutation that sorts the elements of point group `G` by the polar angle of
 the image of the IBZ centroid under each element's matrix representation.
-
-Concretely, for each group element `g` with 2×2 matrix `O`, the angle
-`θ_g = atan(k[2], k[1]) mod 2π` is computed where `k = O * centroid(ibz)`.
-The returned index vector `p` satisfies `θ_{p[1]} ≤ θ_{p[2]} ≤ … ≤ θ_{p[|G|]}`.
-
-This ordering assigns each group element to a unique angular sector of the BZ and is the
-canonical sector ordering shared by [`bz_mesh`](@ref) and [`bz_symmetry_map`](@ref).
 """
 function group_angle_perm(G, ibz)
     centroid = sum(ibz)
@@ -295,20 +200,17 @@ function bz_symmetry_map(grid::Vector{Patch}, l::Lattice)
     ibz_inds = filter(i -> in_polygon(grid[i].k, ibz), 1:N)
 
     # `bz_mesh` builds a full BZ by appending each IBZ patch under every group operation,
-    # so length(grid) == G_order × #IBZ-interior patches exactly. Catch the common
-    # mistake of passing an `ibz_mesh` here.
+    # so length(grid) == G_order × #IBZ-interior patches exactly.
     N == G_order * length(ibz_inds) || throw(ArgumentError(
         "bz_symmetry_map requires a full BZ mesh; got $N patches with " *
         "$(length(ibz_inds)) inside the IBZ, but expected $(G_order * length(ibz_inds)) " *
         "(G_order × #IBZ-interior). Did you mean to pass the output of `bz_mesh`?"
     ))
 
-    # Tolerance for matching `O * k` to a grid patch. Sits between float noise
-    # from the matrix multiply (~ulp(|k|), so ≤ 1e-13 × diameter(bz)) and mesh
-    # spacing (≥ ~1e-3 × diameter(bz) for any realistic resolution).
+    # Tolerance for matching `O * k` to a grid patch. 
     tol = 1e-8 * diameter(bz)
 
-    # Sort patches by k[1] so we can find candidates via binary search.
+    # Sort patches by k[1] for binary search
     sort_perm = sortperm(grid; by = p -> p.k[1])
     sorted_kx = Float64[grid[sort_perm[s]].k[1] for s in 1:N]
 
@@ -439,11 +341,6 @@ end
     foliate(x::AbstractVector) -> Vector{Float64}
 
 Interleave midpoints between consecutive elements of `x`.
-
-Returns a vector of length `2*length(x) - 1` where odd-indexed entries (1-based) hold the
-original values of `x` and even-indexed entries hold midpoints between adjacent elements.
-
-See also [`mesh_region`](@ref).
 """
 function foliate(x::AbstractVector)
     n = length(x)
@@ -585,7 +482,7 @@ function mesh_sheet(
         # Index of the original contour point nearest each corner along
         # sheet_isolines[i±1]. `aligned_arclength_slice` may reverse the
         # contour and pin cusps, so the corners are NOT at the raw arclength
-        # fraction of the contour — locate them geometrically instead.
+        # fraction of the contour
         inner_pts = sheet_isolines[i-1].points
         outer_pts = sheet_isolines[i+1].points
         inner_corner_idx = [argmin(norm(p - kc) for p in inner_pts) for kc in k_inner]
@@ -686,10 +583,10 @@ whether one endpoint of an open isoline slides from one IBZ edge to an adjacent 
 
 # Arguments
 - `c::Vector{IsolineBundle}`: isoline bundles ordered by energy.
-- `region`: IBZ polygon vertices as a counterclockwise `Vector{SVector{2,Float64}}`.
+- `region`: polygon vertices as a counterclockwise `Vector{SVector{2,Float64}}`.
 - `corner_levels`: energies at which a contour is pinned exactly to an IBZ corner; bundle
   pairs containing such a level are skipped because their endpoints terminate at the
-  corner by construction rather than crossing past it (default `Float64[]`).
+  corner by construction.
 - `tol`: collinearity/range tolerance passed to [`edge_index`](@ref) and used as the
   matching tolerance against `corner_levels` (default `1e-8`).
 
@@ -785,21 +682,6 @@ end
 
 Return the parameters `t ∈ [0, 1]` of the local extrema of `ε` along the segment
 `a + t (b - a)`, in increasing order.
-
-The segment is scanned at `n_sample` evenly spaced points and each sign change of the
-finite-difference derivative is refined by bisection with `iter` iterations.
-
-# Examples
-```jldoctest
-julia> using StaticArrays
-
-julia> ε(k) = (k[1] - 0.25)^2;
-
-julia> Ludwig.segment_extrema(SVector(0.0, 0.0), SVector(1.0, 0.0), ε) ≈ [0.25]
-true
-```
-
-See also [`side_breaks`](@ref).
 """
 function segment_extrema(a, b, ε; n_sample::Int = 200, iter::Int = 64)
     norm(b - a) < eps() && return Float64[]
@@ -824,8 +706,6 @@ end
 Return, for each edge `k` of polygon `region` (from `region[k]` to `region[k+1]`), the
 sorted edge parameters `[0, t₁, …, tₘ, 1]` that split the edge into intervals on which `ε`
 is monotone.
-
-See also [`segment_extrema`](@ref), [`interval_key`](@ref).
 """
 function side_breaks(region, ε)
     n = length(region)
@@ -838,10 +718,6 @@ end
 Return `(k, m)` for a point `p` on the boundary of `region`: the edge `k` on which `p`
 lies and the monotone interval `m` of that edge (delimited by `breaks[k]`, see
 [`side_breaks`](@ref)) that contains it. Return `nothing` if `p` lies on no edge.
-
-An open contour of a non-critical energy has its two endpoints in two distinct monotone
-intervals, and keeps them there as the energy varies between consecutive critical
-energies, so the pair of keys identifies the contour across levels.
 """
 function interval_key(p, region, breaks; tol = 1e-8)
     k = edge_index(p, region; tol)
@@ -859,9 +735,6 @@ end
 Return the point of the monotone edge interval `key = (k, m)` of `region` at which `ε`
 equals `e`, or the interval endpoint whose energy is nearer `e` if `e` lies outside the
 range of `ε` on the interval.
-
-This is where a contour endpoint in that interval comes to rest as the contour energy
-approaches `e`.
 """
 function interval_anchor(key, e, region, breaks, ε)
     k, m = key
@@ -882,11 +755,6 @@ end
 
 Return the critical points of `ε` inside `region` farther than `margin` from its boundary,
 split into saddles and extrema, from the energies `E` sampled on the grid `(X, Y)`.
-
-Candidates are the grid cells across which both components of the finite-difference
-gradient change sign. Each is refined by Newton iteration with the grid Hessian and
-classified by the sign of the Hessian determinant. Critical points on the boundary are
-found separately by [`side_breaks`](@ref).
 """
 function interior_critical_points(X, Y, E, region, ε; margin)
     saddles = SVector{2,Float64}[]
@@ -931,15 +799,6 @@ end
 
 Return `(chain, kinks)`: the polyline along the level set `ε = e` inside `region` from
 `u1` to `u2`, and the points of `critical` through which it passes in its interior.
-
-When `u1` and `u2` coincide within `tol` the level set has shrunk to a point, and `chain`
-is that point, snapped to the nearest point of `critical` within `tol`. Otherwise `chain`
-is stitched from the marching-squares fragments at `e`, searching depth first over the
-fragments whose ends meet within `tol`. At a critical energy marching squares drops the
-cells around a saddle, so consecutive fragments are joined through the critical point
-between them, which is recorded in `kinks`. Several fragments can leave the same saddle,
-which is why the search backtracks rather than taking the nearest. Return `nothing` if no
-chain from `u1` reaches `u2`.
 """
 function level_chain(u1, u2, e, X, Y, E, region, critical; tol)
     function snap(p)
@@ -1000,10 +859,6 @@ end
 
 Return the open contours among `isolines`, joining fragments whose ends meet within `tol`
 away from the boundary of `region`.
-
-Marching squares stops following a contour that leaves the cells cut by the masking
-polygon for its interior, so a contour that grazes an edge of `region` is returned in
-pieces that end at the same interior point.
 """
 function stitch_fragments(isolines, region; tol)
     pieces   = [iso.points for iso in isolines if !iso.isclosed]
@@ -1067,13 +922,6 @@ end
     split_at_kinks(levels, kinks) -> Vector
 
 Split a contour family at the kinks of its boundary contours.
-
-`levels` holds the polylines of one contour family at increasing energies, all oriented
-alike, with the first and last bounding the family. A boundary contour that passes through
-a saddle turns sharply there, so each kink is joined by a straight cut to the opposite
-boundary (its point, or the point at the same arclength fraction) and every level is
-split where it crosses that cut. Returns the list of resulting families, none of which
-has a kink.
 """
 function split_at_kinks(levels, kinks)
     isempty(kinks) && return [levels]
@@ -1131,24 +979,6 @@ end
 Mesh the convex polygon `region` (typically the triangle `[p1, corner, p2]` returned by
 [`detect_skipped_corners`](@ref)) into patches bounded by contours of `ε`, inside each of
 which `ε` is monotone.
-
-By Morse theory the contours of `ε` in `region` change their arrangement only at critical
-energies: the energies of the vertices, of the extrema of `ε` along each edge, and of the
-critical points of `ε` inside `region`. Between consecutive critical energies every
-contour is an arc whose endpoints slide along fixed monotone intervals of the edges, so
-each arc bounds a family that is meshed by [`mesh_sheet`](@ref). A family whose arcs
-shrink to a point (a vertex or an extremum) at one end is a fan of triangular patches
-there. A boundary contour through a saddle is split at the saddle by
-[`split_at_kinks`](@ref), so that the patches on either side meet at the saddle.
-
-Each family is divided into `max(1, round(ΔE / Δε))` energy layers and
-`max(2, round(L / δL))` patches along its middle contour of length `L`. `N` is the
-marching-squares sample count along `x`.
-
-Interior extrema, whose contours are closed loops, are not supported: a warning is issued
-and the region is left unmeshed.
-
-See also [`mesh_region`](@ref).
 """
 function mesh_corner_region(region, ε, band_index::Int, Δε, δL, N::Int = 1001;
                             angle_threshold = π/8)
@@ -1256,19 +1086,6 @@ end
 Generate a [`Mesh`](@ref) of momentum-space `region` for dispersion `ε` (band `band_index`)
 covering the energy window `[e_min, e_max]`.
 
-Boundary contours are placed at intervals of `Δε` across `[e_min, e_max]`. The arc-length
-resolution along each contour is `n_arc` patches per sheet. Multiple disconnected Fermi
-surface sheets are handled automatically — one sub-mesh is generated per sheet and the
-results are concatenated.
-
-If corner crossings are detected (an isoline endpoint slides around an IBZ corner between
-consecutive energy levels), the triangle that the contours of that layer leave uncovered
-is meshed separately by `mesh_corner_region`, into contour-bounded patches inside each of
-which the energy is monotone.
-
-A 7-argument overload `mesh_region(region, ε, e_min, e_max, Δε, n_arc[, N]; …)` defaults
-`band_index` to `1` for single-band use.
-
 # Arguments
 - `region`: convex polygon vertices bounding the momentum-space region, as a
   `Vector{<:AbstractVector}`.
@@ -1286,8 +1103,6 @@ A 7-argument overload `mesh_region(region, ε, e_min, e_max, Δε, n_arc[, N]; �
   the automatically computed grid.
 - `maxdepth::Int = 2`: skipped corners are meshed only when `maxdepth > 1`; pass `1` to
   leave them uncovered.
-
-See also [`ibz_mesh`](@ref), [`bz_mesh`](@ref).
 """
 function mesh_region(region, ε, band_index::Int, e_min, e_max, Δε, n_arc::Int, N = 1001;
                      bbox = nothing, angle_threshold = π/8, boundaries::AbstractVector = [], depth = 1, maxdepth = 2)
@@ -1437,8 +1252,6 @@ dispersion directly in place of `bands`.
   pocket. Contour extraction is still masked by the full IBZ.
 - `angle_threshold = π/8`, `boundaries::AbstractVector = []`, `maxdepth::Int = 2`:
   forwarded to [`mesh_region`](@ref).
-
-See also [`bz_mesh`](@ref), [`mesh_region`](@ref).
 """
 function ibz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0;
                   mask = SVector{2,Float64}[], angle_threshold = π/8,
@@ -1488,8 +1301,6 @@ single dispersion directly in place of `bands`.
   grid to a sub-region of the IBZ before symmetry replication.
 - `angle_threshold = π/8`, `boundaries::AbstractVector = []`, `maxdepth::Int = 2`:
   forwarded to [`mesh_region`](@ref).
-
-See also [`ibz_mesh`](@ref), [`bz_symmetry_map`](@ref), [`mesh_region`](@ref).
 """
 function bz_mesh(l::Lattice, bands::AbstractVector, T, Δε, n_arc::Int, N::Int = 1001, α::Real = 6.0;
                  mask = SVector{2,Float64}[], angle_threshold = π/8,
@@ -1658,19 +1469,7 @@ end
 Generate a mesh for an isotropic Fermi surface given the radial dispersion `ε` at temperature `T`.
 
 `kf` is a vector of Fermi momenta — the radii at which `ε` is zero. The number of Fermi surface
-sheets and the radial extent of the mesh are inferred directly from `kf`: radial extrema are
-located by bisection in the intervals between consecutive Fermi crossings, and `r_max` is the
-radius beyond `kf[end]` where `|ε| = αT`.
-
-The mesh covers all sheets of the Fermi surface within the energy window [-`αT`, +`αT`]. The
-dispersion is partitioned at each extremum into monotone sections, and each section intersecting
-the energy window is meshed as a separate annular sheet and combined into a single `Mesh`.
-
-The energy spacing `Δε` controls the resolution in the energy direction: each sheet of clipped
-energy range `ΔE` receives `max(4, round(Int, ΔE / Δε) + 1)` levels (rounded up to an even
-number). Each energy contour carries `n_arc` patches in the angular direction.
-
-See also [`mesh_region`](@ref), [`bz_mesh`](@ref).
+sheets and the radial extent of the mesh are inferred directly from `kf`.
 """
 function isotropic_mesh(ε, kf::AbstractVector{<:Real}, T::Real, Δε::Real, n_arc::Int, α::Real = 6.0)
     n_arc    = max(2, n_arc)
