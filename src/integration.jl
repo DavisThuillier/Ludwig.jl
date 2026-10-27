@@ -307,10 +307,10 @@ electron-phonon scattering.
 `g(k_a, k_b, q, ω0; kwargs...)` is the electron-phonon coupling for a transition from
 patch `a = grid[i]` to patch `b = grid[j]` carrying phonon momentum `q = k_b - k_a` and
 frequency `ω0 = ω(q)`. `ω` is the phonon dispersion (any object accepted by
-[`band_velocity`](@ref) — a plain `Function`, [`HamiltonianBand`](@ref),
-[`InterpolatedBand`](@ref), or [`IBZInterpolatedBand`](@ref)). `f0s::Vector{Float64}` is
-the Fermi-Dirac distribution evaluated at each patch center, precomputed by the caller in
-the same way [`electron_electron`](@ref) expects.
+[`band_velocity`](@ref) — a plain `Function`, [`HamiltonianBand`](@ref), or
+[`InterpolatedBand`](@ref)). `f0s::Vector{Float64}` is the Fermi-Dirac distribution
+evaluated at each patch center, precomputed by the caller in the same way
+[`electron_electron`](@ref) expects.
 
 See also [`electron_electron`](@ref), [`electron_impurity`](@ref).
 """
