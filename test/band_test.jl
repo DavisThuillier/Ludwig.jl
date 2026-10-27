@@ -111,83 +111,6 @@ end
 end
 
 ###
-### IBZInterpolatedBand: sample on the IBZ bounding rectangle of the square
-### lattice ([0, 0.5]² in fractional reciprocal coords). The reference H(k)
-### is D₄-symmetric in addition to being BZ-periodic, so any Cartesian k in
-### the full BZ folds to an IBZ image whose energy and velocity must match
-### the direct H(k) reference.
-###
-
-sentinel = 1e3
-xs_ibz = range(0.0, stop = 0.5, length = N + 1)
-ys_ibz = range(0.0, stop = 0.5, length = N + 1)
-samples_ibz = [hb([2π*fx, 2π*fy]) for fx in xs_ibz, fy in ys_ibz]
-itp_ibz = Interpolations.scale(
-    interpolate(samples_ibz, BSpline(Cubic(Line(OnGrid())))),
-    xs_ibz, ys_ibz,
-)
-ibz_band = IBZInterpolatedBand(itp_ibz, l; sentinel = sentinel)
-
-# Probes drawn uniformly from the full BZ [-π, π)²; both translation
-# folding and point-group folding are exercised.
-bz_probes = [SVector(2π*(rand(rng) - 0.5), 2π*(rand(rng) - 0.5)) for _ in 1:n_probes]
-
-@testset "IBZInterpolatedBand: full-BZ energy" begin
-    for k in bz_probes
-        @test isapprox(hb(k), ibz_band(k); atol = 1e-3)
-    end
-end
-
-@testset "IBZInterpolatedBand: full-BZ velocity" begin
-    for k in bz_probes
-        v_h = band_velocity(hb, k)
-        v_i = band_velocity(ibz_band, k)
-        @test isapprox(v_h, v_i; atol = 5e-3)
-    end
-end
-
-# Distant translation: the same k offset by a reciprocal lattice vector must
-# give the identical band value (catches a missing or wrong map_to_bz step).
-@testset "IBZInterpolatedBand: translation invariance" begin
-    rlv_sq = reciprocal_lattice_vectors(l)
-    for k in bz_probes[1:20]
-        for shift in (rlv_sq * [1, 0], rlv_sq * [-1, 0], rlv_sq * [0, 1], rlv_sq * [2, -3])
-            @test isapprox(ibz_band(k), ibz_band(k + shift); atol = 1e-9)
-        end
-    end
-end
-
-###
-### Out-of-support: sample only [0, 0.2]² in fractional coords. Probes
-### whose IBZ image has |f| > 0.2 should hit the sentinel.
-###
-
-xs_small = range(0.0, stop = 0.2, length = N + 1)
-ys_small = range(0.0, stop = 0.2, length = N + 1)
-samples_small = [hb([2π*fx, 2π*fy]) for fx in xs_small, fy in ys_small]
-itp_small = Interpolations.scale(
-    interpolate(samples_small, BSpline(Cubic(Line(OnGrid())))),
-    xs_small, ys_small,
-)
-ibz_band_small = IBZInterpolatedBand(itp_small, l; sentinel = sentinel)
-
-@testset "IBZInterpolatedBand: out-of-support energy" begin
-    # Pick fractional points strictly inside the IBZ wedge (0 ≤ f₂ ≤ f₁ ≤ 0.5)
-    # but outside the support box [0, 0.2]².
-    for (fx, fy) in ((0.4, 0.1), (0.3, 0.25), (0.45, 0.05))
-        k = SVector(2π*fx, 2π*fy)
-        @test ibz_band_small(k) == sentinel
-    end
-end
-
-@testset "IBZInterpolatedBand: out-of-support velocity" begin
-    for (fx, fy) in ((0.4, 0.1), (0.3, 0.25), (0.45, 0.05))
-        k = SVector(2π*fx, 2π*fy)
-        @test band_velocity(ibz_band_small, k) == SVector(0.0, 0.0)
-    end
-end
-
-###
 ### Convenience constructors: pass a callable + lattice + resolution and
 ### get a fully-built band, no manual interpolation step required.
 ###
@@ -200,14 +123,6 @@ end
     end
 end
 
-@testset "IBZInterpolatedBand convenience constructor" begin
-    ibz_auto = IBZInterpolatedBand(hb, l, N; sentinel = sentinel)
-    for k in bz_probes
-        @test isapprox(hb(k), ibz_auto(k); atol = 1e-3)
-        @test isapprox(band_velocity(hb, k), band_velocity(ibz_auto, k); atol = 5e-3)
-    end
-end
-
 @testset "InterpolatedBand range constructor" begin
     xs_full = range(0.0, stop = 1.0, length = N + 1)
     ib_range = InterpolatedBand(hb, l, xs_full)
@@ -216,21 +131,55 @@ end
     end
 end
 
-@testset "IBZInterpolatedBand range constructor" begin
-    # Custom sub-rectangle [0, 0.2]² inside the IBZ wedge: in-support points
-    # match the reference; points whose IBZ image is outside the rectangle
-    # hit the sentinel.
-    xs_custom = range(0.0, stop = 0.2, length = N + 1)
-    ibz_custom = IBZInterpolatedBand(hb, l, xs_custom; sentinel = sentinel)
-    for _ in 1:n_probes
-        # In-support: pick fx ∈ [0, 0.2], fy ∈ [0, fx] (inside IBZ wedge)
-        fx = 0.2 * rand(rng)
-        fy = fx * rand(rng)
-        k = SVector(2π*fx, 2π*fy)
-        @test isapprox(hb(k), ibz_custom(k); atol = 1e-3)
+@testset "bandstate" begin
+    δ = 1e-6
+    for k in probes
+        e, v, ψ = Ludwig.bandstate(hb, k)
+        @test e ≈ hb(k)
+        @test H(k) * ψ ≈ e * ψ
+        @test norm(ψ) ≈ 1
+        # Hellmann-Feynman velocity against central differences of the energy
+        v_fd = SVector((hb(k + [δ, 0]) - hb(k - [δ, 0])) / 2δ,
+                       (hb(k + [0, δ]) - hb(k - [0, δ])) / 2δ)
+        @test isapprox(v, v_fd; atol = 1e-6)
+        @test v == band_velocity(hb, k)
     end
-    for (fx, fy) in ((0.4, 0.1), (0.3, 0.25), (0.45, 0.05))
-        k = SVector(2π*fx, 2π*fy)
-        @test ibz_custom(k) == sentinel
+
+    # Fallback: no state
+    k = first(probes)
+    @test Ludwig.bandstate(ib, k) == (ib(k), band_velocity(ib, k), nothing)
+end
+
+###
+### Static and dynamic Hamiltonians: the Jacobi path for an SMatrix must agree with LAPACK
+### for a Matrix. The 4×4 Hamiltonian is beyond StaticArrays' closed forms, and its lowest
+### band stays at least 0.8 below the next.
+###
+
+function H4(k)
+    s1, s2 = sin(k[1]), sin(k[2])
+    d = 2.5 + cos(k[1]) + cos(k[2])
+    h = @SMatrix [d s1 - im*s2; s1 + im*s2 -d]
+    t = @SMatrix [0.3 0.4im; 0.1 0.2]
+    return vcat(hcat(h, t), hcat(t', 1.5I - h))
+end
+
+allocated_bandstate(b, k) = @allocated Ludwig.bandstate(b, k)
+
+@testset "HamiltonianBand: static and dynamic agree" begin
+    hb_static  = HamiltonianBand(H4, 1)
+    hb_dynamic = HamiltonianBand(k -> Matrix(H4(k)), 1)
+    for k in probes
+        @test hb_static(k) ≈ hb_dynamic(k)
+        e_s, v_s, ψ_s = Ludwig.bandstate(hb_static, k)
+        e_d, v_d, ψ_d = Ludwig.bandstate(hb_dynamic, k)
+        @test ψ_s isa SVector{4,ComplexF64}
+        @test e_s ≈ e_d
+        @test isapprox(v_s, v_d; atol = 1e-10)
+        @test abs(dot(ψ_s, ψ_d)) ≈ 1  # equal up to a phase
     end
+
+    k = SVector{2}(first(probes))
+    allocated_bandstate(hb_static, k)
+    @test allocated_bandstate(hb_static, k) == 0
 end
