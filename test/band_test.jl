@@ -253,3 +253,37 @@ end
     k = first(probes)
     @test Ludwig.bandstate(ib, k) == (ib(k), band_velocity(ib, k), nothing)
 end
+
+###
+### Static and dynamic Hamiltonians: the Jacobi path for an SMatrix must agree with LAPACK
+### for a Matrix. The 4×4 Hamiltonian is beyond StaticArrays' closed forms, and its lowest
+### band stays at least 0.8 below the next.
+###
+
+function H4(k)
+    s1, s2 = sin(k[1]), sin(k[2])
+    d = 2.5 + cos(k[1]) + cos(k[2])
+    h = @SMatrix [d s1 - im*s2; s1 + im*s2 -d]
+    t = @SMatrix [0.3 0.4im; 0.1 0.2]
+    return vcat(hcat(h, t), hcat(t', 1.5I - h))
+end
+
+allocated_bandstate(b, k) = @allocated Ludwig.bandstate(b, k)
+
+@testset "HamiltonianBand: static and dynamic agree" begin
+    hb_static  = HamiltonianBand(H4, 1)
+    hb_dynamic = HamiltonianBand(k -> Matrix(H4(k)), 1)
+    for k in probes
+        @test hb_static(k) ≈ hb_dynamic(k)
+        e_s, v_s, ψ_s = Ludwig.bandstate(hb_static, k)
+        e_d, v_d, ψ_d = Ludwig.bandstate(hb_dynamic, k)
+        @test ψ_s isa SVector{4,ComplexF64}
+        @test e_s ≈ e_d
+        @test isapprox(v_s, v_d; atol = 1e-10)
+        @test abs(dot(ψ_s, ψ_d)) ≈ 1  # equal up to a phase
+    end
+
+    k = SVector{2}(first(probes))
+    allocated_bandstate(hb_static, k)
+    @test allocated_bandstate(hb_static, k) == 0
+end

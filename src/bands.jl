@@ -8,9 +8,14 @@
 Wrap a matrix-valued Hamiltonian function `H(k)` for the `n`-th band.
 
 `H` must return a square Hermitian (or real symmetric) matrix for each momentum
-`k::AbstractVector`. The band energy is the `n`-th eigenvalue (in ascending order);
-the group velocity is computed by the Hellmann-Feynman theorem using central finite
-differences to differentiate `H`.
+`k::AbstractVector`, with both triangles filled in. The band energy is the `n`-th
+eigenvalue (in ascending order); the group velocity is computed by the Hellmann-Feynman
+theorem using central finite differences to differentiate `H`.
+
+If `H` returns an `SMatrix`, every diagonalization runs on the stack by Jacobi rotations
+(see [`hermitian_eigen`](@ref)), so evaluating the band allocates nothing and never calls
+LAPACK. This is the form to use inside loops over many momenta, such as a collision
+operator assembled under `Threads.@threads`. Any other matrix is diagonalized by LAPACK.
 
 !!! warning
     Selecting eigenvalues by ascending-order index is discontinuous across band
@@ -29,8 +34,8 @@ differences to differentiate `H`.
 ```julia
 function H(k)
     t = 1.0
-    [0.0+0im  t*(exp(im*k[1]) + exp(im*k[2]));
-     t*(exp(-im*k[1]) + exp(-im*k[2]))  0.0+0im]
+    @SMatrix [0.0+0im  t*(exp(im*k[1]) + exp(im*k[2]));
+              t*(exp(-im*k[1]) + exp(-im*k[2]))  0.0+0im]
 end
 band = HamiltonianBand(H, 1)  # lower band
 ```
@@ -43,7 +48,7 @@ struct HamiltonianBand{F}
     n::Int
 end
 
-(b::HamiltonianBand)(k) = real(eigvals(Hermitian(b.H(k)))[b.n])
+(b::HamiltonianBand)(k) = hermitian_eigvals(b.H(k))[b.n]
 
 """
     InterpolatedBand(itp::I, invrlv::M) where {I, M}
@@ -127,7 +132,7 @@ a method computing it once.
 bandstate(band, k) = (band(k), band_velocity(band, k), nothing)
 
 function bandstate(b::HamiltonianBand, k)
-    F   = eigen(Hermitian(b.H(k)))
+    F   = hermitian_eigen(b.H(k))
     ψ   = F.vectors[:, b.n]
     δ   = sqrt(eps(Float64))
     e1  = SVector{2,Float64}(1, 0)
