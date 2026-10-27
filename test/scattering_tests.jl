@@ -9,6 +9,8 @@ const Δε_scat    = 1.5 * T_scat
 const n_arc_scat = 6
 const N_grid_scat = 401
 const lat_scat   = Lattice([1.0 0.0; 0.0 1.0])
+const rlv_scat   = reciprocal_lattice_vectors(lat_scat)
+const bz_scat    = get_bz(lat_scat)
 ε_scat(k)        = -2.0 * (cos(k[1]) + cos(k[2]))
 
 const mesh_scat = ibz_mesh(lat_scat, [ε_scat], T_scat, Δε_scat, n_arc_scat, N_grid_scat)
@@ -39,13 +41,13 @@ end
 
 @testset "electron_electron: Lattice dispatch" begin
     L11 = electron_electron(
-        grid_scat, f0s_scat, 1, 1, [ε_scat], T_scat, Weff_squared, lat_scat
+        grid_scat, f0s_scat, 1, 1, [ε_scat], T_scat, Weff_squared, rlv_scat, bz_scat
     )
     @test isa(L11, Float64)
     @test isfinite(L11)
 
     L12 = electron_electron(
-        grid_scat, f0s_scat, 1, 2, [ε_scat], T_scat, Weff_squared, lat_scat
+        grid_scat, f0s_scat, 1, 2, [ε_scat], T_scat, Weff_squared, rlv_scat, bz_scat
     )
     @test isa(L12, Float64)
     @test isfinite(L12)
@@ -53,12 +55,12 @@ end
     N    = length(grid_scat)
     mid  = (N + 1) ÷ 2
     Lmid = electron_electron(
-        grid_scat, f0s_scat, mid, mid, [ε_scat], T_scat, Weff_squared, lat_scat
+        grid_scat, f0s_scat, mid, mid, [ε_scat], T_scat, Weff_squared, rlv_scat, bz_scat
     )
     @test isfinite(Lmid)
 
     Lend = electron_electron(
-        grid_scat, f0s_scat, N, 1, [ε_scat], T_scat, Weff_squared, lat_scat
+        grid_scat, f0s_scat, N, 1, [ε_scat], T_scat, Weff_squared, rlv_scat, bz_scat
     )
     @test isfinite(Lend)
 end
