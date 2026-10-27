@@ -101,7 +101,32 @@ Dispatches on band type:
 """
 band_velocity(ε::Function, k) = gradient(ε, k)
 
-function band_velocity(b::HamiltonianBand, k)
+band_velocity(b::HamiltonianBand, k) = bandstate(b, k)[2]
+
+function band_velocity(b::InterpolatedBand, k)
+    rlb = mod.(b.invrlv * k, 1.0)
+    return b.invrlv' * Interpolations.gradient(b.itp, rlb[1], rlb[2])
+end
+
+"""
+    bandstate(band, k)
+
+Return the energy, group velocity, and state of `band` at Cartesian momentum `k` as the
+tuple `(e, v, ψ)`.
+
+The collision integrals sample each off-grid momentum through this function, once per
+momentum. The fallback evaluates `band(k)` and [`band_velocity`](@ref) separately and
+has no state, so `ψ` is `nothing`. A [`HamiltonianBand`](@ref) diagonalizes its
+Hamiltonian once for all three: `e` is the `n`-th eigenvalue, `v` follows from the
+eigenvector by the Hellmann-Feynman theorem, and `ψ` is that eigenvector.
+
+# Implementation
+A band type whose energy and velocity share an expensive intermediate result should add
+a method computing it once.
+"""
+bandstate(band, k) = (band(k), band_velocity(band, k), nothing)
+
+function bandstate(b::HamiltonianBand, k)
     F   = eigen(Hermitian(b.H(k)))
     ψ   = F.vectors[:, b.n]
     δ   = sqrt(eps(Float64))
@@ -109,12 +134,8 @@ function band_velocity(b::HamiltonianBand, k)
     e2  = SVector{2,Float64}(0, 1)
     dHx = (b.H(k + δ*e1) - b.H(k - δ*e1)) / (2δ)
     dHy = (b.H(k + δ*e2) - b.H(k - δ*e2)) / (2δ)
-    return SVector{2,Float64}(real(ψ'*dHx*ψ), real(ψ'*dHy*ψ))
-end
-
-function band_velocity(b::InterpolatedBand, k)
-    rlb = mod.(b.invrlv * k, 1.0)
-    return b.invrlv' * Interpolations.gradient(b.itp, rlb[1], rlb[2])
+    v   = SVector{2,Float64}(real(ψ'*dHx*ψ), real(ψ'*dHy*ψ))
+    return F.values[b.n], v, ψ
 end
 
 ###
