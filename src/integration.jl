@@ -279,8 +279,6 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
     return π * Lij / (grid[i].dV * (1 - f0s[i]) * (2π)^6)
 end
 
-electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j::Int, bands, T::Real, Weff_squared, l::Lattice; umklapp = true, kwargs...) = electron_electron(grid, f0s, i, j, bands, T, Weff_squared, reciprocal_lattice_vectors(l), get_bz(l); umklapp, kwargs...)
-
 """
     electron_electron(grid, f0s, i, j, ε, T, Weff_squared, l::NoLattice;
                       exact=true, kwargs...)
