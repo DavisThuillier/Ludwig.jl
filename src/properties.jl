@@ -4,16 +4,6 @@
 Return the Fermi-window quadrature weight
 ``f^{(0)}(\\varepsilon)\\,(1 - f^{(0)}(\\varepsilon))\\,\\Delta V / T`` on each grid point
 with energy `E[i]`, momentum-space patch area `dV[i]`, and temperature `T`.
-
-This is equivalent to ``(-\\partial f^{(0)}/\\partial \\varepsilon)\\,\\Delta V``, the
-canonical Fermi-window weight of the linearized Boltzmann formalism.
-
-# Examples
-```jldoctest
-julia> Ludwig.boltzmann_weight([0.0], [1.0], 1.0)
-1-element Vector{Float64}:
- 0.25
-```
 """
 function boltzmann_weight(E, dV, T)
     fd = f0.(E, T)
@@ -82,7 +72,8 @@ prepare_solve(L, solve) = solve === (\) ? factorize(L) : L
 Compute the conductivity tensor using
 ``\\sigma_{ij}(\\omega, \\mathbf{q}) = 2 e^2 \\langle v_i | (L - i\\omega + i\\mathbf{q}\\cdot\\mathbf{v})^{-1} | v_j \\rangle``.
 
-For correct conversion to SI units, `E` and `T` must be expressed in units of eV, `dV` must be in units of ``(1/a)^2``, where ``a`` is the lattice constant, and `v` must be in units of ``(a/\\hbar) \\,\\mathrm{eV}``.
+For correct conversion to SI units, `E` and `T` must be expressed in units of eV, `dV` must be in units of ``(1/a)^2``, 
+where ``a`` is the lattice constant, and `v` must be in units of ``(a/\\hbar) \\,\\mathrm{eV}``.
 
 `solve` is forwarded to [`inner_product`](@ref) and controls the linear-solver back end.
 The default `\\` factorizes the modified collision matrix once and reuses the factorization
@@ -125,12 +116,6 @@ end
     longitudinal_electrical_conductivity(L, vx, E, dV, T [, ω]; solve = \\)
 
 Compute ``\\sigma_{xx}`` only.
-
-`solve` is forwarded to [`inner_product`](@ref); see [`electrical_conductivity`](@ref).
-
-# Returns
-A complex scalar with the same prefactor convention as
-[`electrical_conductivity`](@ref); imaginary part vanishes at ``\\omega = 0``.
 """
 function longitudinal_electrical_conductivity(L, vx, E, dV, T, ω = 0.0; solve = (\))
     L′ = ω != 0.0 ? (L - im*ω*I) : L
@@ -141,10 +126,7 @@ end
 """
     thermal_conductivity(L, v, E, dV, T; solve = \\)
 
-Compute the thermal conductivity correlator
-``\\kappa_{ij} = \\langle \\varepsilon v_i | L^{-1} | \\varepsilon v_j \\rangle``,
-where the inner product is weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V / T``
-(see `Ludwig.boltzmann_weight`).
+Compute the thermal conductivity correlator.
 
 !!! warning "Unvalidated"
     The SI prefactor for this correlator has not been derived as of v0.3.0. The
@@ -152,11 +134,6 @@ where the inner product is weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V / T``
     ``\\langle \\varepsilon v_i | L^{-1} | \\varepsilon v_j \\rangle`` correlator —
     do not interpret it as a physical thermal conductivity until the prefactor is
     verified.
-
-`solve` is forwarded to [`inner_product`](@ref); see [`electrical_conductivity`](@ref).
-
-# Returns
-A 2×2 `Matrix{ComplexF64}` of unscaled correlators (see warning above).
 """
 function thermal_conductivity(L, v, E, dV, T; solve = (\))
     weight = boltzmann_weight(E, dV, T)
@@ -179,14 +156,10 @@ end
     thermal_conductivity(L, v, E, dV, T, i::Int, j::Int; solve = \\)
 
 Compute the single component ``\\kappa_{ij}`` of the thermal conductivity correlator.
-`i` and `j` must be 1 or 2.
 
 !!! warning "Unvalidated"
     See the tensor-valued [`thermal_conductivity`](@ref) — the SI prefactor has not
     been derived as of v0.3.0.
-
-# Returns
-A complex scalar with the same scaling as the tensor-valued method.
 """
 function thermal_conductivity(L, v, E, dV, T, i::Int, j::Int; solve = (\))
     check_tensor_indices(i, j)
@@ -201,21 +174,13 @@ end
 """
     thermoelectric_conductivity(L, v, E, dV, T; solve = \\)
 
-Compute the thermoelectric conductivity correlator
-``\\epsilon_{ij} = \\langle v_i | L^{-1} | \\varepsilon v_j \\rangle``,
-where the inner product is weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V / T``
-(see `Ludwig.boltzmann_weight`).
+Compute the thermoelectric conductivity correlator.
 
 !!! warning "Unvalidated"
     The SI prefactor for this correlator has not been derived as of v0.3.0. The
     returned value is the bare ``\\langle v_i | L^{-1} | \\varepsilon v_j \\rangle``
     correlator — do not interpret it as a physical thermoelectric conductivity
     until the prefactor is verified.
-
-`solve` is forwarded to [`inner_product`](@ref); see [`electrical_conductivity`](@ref).
-
-# Returns
-A 2×2 `Matrix{ComplexF64}` of unscaled correlators (see warning above).
 """
 function thermoelectric_conductivity(L, v, E, dV, T; solve = (\))
     weight = boltzmann_weight(E, dV, T)
@@ -240,14 +205,11 @@ end
     thermoelectric_conductivity(L, v, E, dV, T, i::Int, j::Int; solve = \\)
 
 Compute the single component ``\\epsilon_{ij}`` of the thermoelectric conductivity
-correlator. `i` and `j` must be 1 or 2.
+correlator.
 
 !!! warning "Unvalidated"
     See the tensor-valued [`thermoelectric_conductivity`](@ref) — the SI prefactor
     has not been derived as of v0.3.0.
-
-# Returns
-A complex scalar with the same scaling as the tensor-valued method.
 """
 function thermoelectric_conductivity(L, v, E, dV, T, i::Int, j::Int; solve = (\))
     check_tensor_indices(i, j)
@@ -261,21 +223,13 @@ end
 """
     peltier_tensor(L, v, E, dV, T; solve = \\)
 
-Compute the Peltier correlator
-``\\tau_{ij} = \\langle \\varepsilon v_i | L^{-1} | v_j \\rangle``,
-where the inner product is weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V / T``
-(see `Ludwig.boltzmann_weight`).
+Compute the Peltier correlator.
 
 !!! warning "Unvalidated"
     The SI prefactor for this correlator has not been derived as of v0.3.0. The
     returned value is the bare ``\\langle \\varepsilon v_i | L^{-1} | v_j \\rangle``
     correlator — do not interpret it as a physical Peltier tensor until the
     prefactor is verified.
-
-`solve` is forwarded to [`inner_product`](@ref); see [`electrical_conductivity`](@ref).
-
-# Returns
-A 2×2 `Matrix{ComplexF64}` of unscaled correlators (see warning above).
 """
 function peltier_tensor(L, v, E, dV, T; solve = (\))
     weight = boltzmann_weight(E, dV, T)
@@ -300,14 +254,10 @@ end
     peltier_tensor(L, v, E, dV, T, i::Int, j::Int; solve = \\)
 
 Compute the single component ``\\tau_{ij}`` of the Peltier correlator.
-`i` and `j` must be 1 or 2.
 
 !!! warning "Unvalidated"
     See the tensor-valued [`peltier_tensor`](@ref) — the SI prefactor has not been
     derived as of v0.3.0.
-
-# Returns
-A complex scalar with the same scaling as the tensor-valued method.
 """
 function peltier_tensor(L, v, E, dV, T, i::Int, j::Int; solve = (\))
     check_tensor_indices(i, j)
@@ -324,9 +274,6 @@ end
 Compute the B1g viscosity from the deformation potentials `Dxx` and `Dyy`.
 
 For correct conversion to SI units, `E`, `Dxx`, `Dyy`, and `T` must be expressed in units of eV and `dV` must be in units of ``(1/a)^2``, where ``a`` is the lattice constant.
-
-# Returns
-A scalar viscosity in SI units (Pa·s).
 """
 function ηB1g(L, E, dV, Dxx, Dyy, T; solve = (\))
     prefactor = 2 * hbar * e_charge # hbar * e_charge converts hbar to units of J.s
@@ -340,9 +287,6 @@ end
 Compute the B2g viscosity from the deformation potential `Dxy`.
 
 For correct conversion to SI units, `E`, `Dxy`, and `T` must be expressed in units of eV and `dV` must be in units of ``(1/a)^2``, where ``a`` is the lattice constant.
-
-# Returns
-A scalar viscosity in SI units (Pa·s).
 """
 function ηB2g(L, E, dV, Dxy, T; solve = (\))
     prefactor = 2 * hbar * e_charge # hbar * e_charge converts hbar to units of J.s
@@ -353,13 +297,6 @@ end
     σ_lifetime(L, v, E, dV, T; solve = \\)
 
 Compute the effective scattering lifetime corresponding to the conductivity.
-
-Defined by ``\\tau_\\sigma = \\hbar\\, \\langle v_x | L^{-1} | v_x \\rangle / \\langle v_x | v_x \\rangle``,
-with both inner products weighted by ``f^{(0)}(1 - f^{(0)}) \\Delta V / T``
-(see `Ludwig.boltzmann_weight`).
-
-# Returns
-A real scalar lifetime in SI units (seconds), assuming `E` and `T` are in eV.
 """
 function σ_lifetime(L, v, E, dV, T; solve = (\))
     weight = boltzmann_weight(E, dV, T)
@@ -379,9 +316,6 @@ end
 
 Compute the effective scattering lifetime corresponding to the viscosity
 ``\\eta = \\langle D | L^{-1} | D \\rangle``.
-
-# Returns
-A scalar lifetime in SI units (seconds), assuming `E` and `T` are in eV.
 """
 function η_lifetime(L, D, E, dV, T; solve = (\))
     weight = boltzmann_weight(E, dV, T)

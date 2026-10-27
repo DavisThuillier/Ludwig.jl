@@ -279,16 +279,6 @@ end
     get_bounding_box(points)
 
 Find bounding values for each coordinate of 2D `points`.
-
-Returns `((x_min, x_max), (y_min, y_max))` over the supplied points.
-
-# Examples
-```jldoctest
-julia> using StaticArrays
-
-julia> get_bounding_box([SVector(-1.0, 0.0), SVector(2.0, 3.0), SVector(0.0, -2.0)])
-((-1.0, 2.0), (-2.0, 3.0))
-```
 """
 function get_bounding_box(points)
     min_x = minimum(first.(points))
@@ -304,11 +294,6 @@ end
     contour_intersection(a, v, iso::Isoline[, i = 1])
 
 Find intersection of contour `iso` with the line x = `a` + t `v` for real parameter t.
-
-All sign changes of the cross product (iso.points[i] - a) × v are located; the crossing
-with minimum |t| is returned. For closed isolines there are typically two crossings; for
-open arcs there may also be two crossings when the arc is U-shaped and the gradient line
-cuts both arms. In all cases only the nearest crossing is returned.
 
 If `i` is specified, the search starts at point `i` of `iso.points`.
 """
@@ -357,11 +342,6 @@ end
     arc_points(iso::Isoline, ia::Int, ib::Int)
 
 Return the points of `iso` between indices `ia` and `ib`, taking the shorter arc.
-
-For open isolines this is a plain slice. For closed isolines, if the direct slice
-`min(ia,ib):max(ia,ib)` covers more than half the loop, the wrap-around arc (from
-the larger index to the end and from the beginning to the smaller index) is returned
-instead.
 """
 function arc_points(iso::Isoline, ia::Int, ib::Int)
     a, b = min(ia, ib), max(ia, ib)
@@ -382,18 +362,6 @@ end
     centroid(iso::Isoline)
 
 Return the centroid of the points of `iso`.
-
-# Examples
-```jldoctest
-julia> using StaticArrays
-
-julia> iso = Isoline([SVector(0.0, 0.0), SVector(2.0, 0.0), SVector(1.0, 3.0)], false, 0.0);
-
-julia> Ludwig.centroid(iso)
-2-element SVector{2, Float64} with indices SOneTo(2):
- 1.0
- 1.0
-```
 """
 centroid(iso::Isoline) = sum(iso.points) / length(iso.points)
 
@@ -401,19 +369,6 @@ centroid(iso::Isoline) = sum(iso.points) / length(iso.points)
     get_arclengths(curve)
 
 Get the distance to each point along `curve`.
-
-Treats `curve` as an ordered list of points defining a piecewise linear path.
-
-# Examples
-```jldoctest
-julia> using StaticArrays
-
-julia> Ludwig.get_arclengths([SVector(0.0, 0.0), SVector(3.0, 0.0), SVector(3.0, 4.0)])
-3-element Vector{Float64}:
- 0.0
- 3.0
- 7.0
-```
 """
 function get_arclengths(curve)
     s = 0.0
@@ -466,13 +421,6 @@ interpolation is used to find intermediate points. Returns interpolated points a
 arclengths along original curve of interpolated points.
 For best results, points in `curve` should have approximately uniform spacing and `n`
 should be much less than the number of points in `curve`.
-
-# Arguments
-- `pinned_arclengths`: optional list of arclength values at which a cut must be placed.
-  For each value, the nearest interior corner position (odd 1-based index, excluding the
-  two endpoints) is snapped to that arclength. The two adjacent even-indexed (patch-center)
-  positions are then recentered halfway between their bounding corners. Values within one
-  uniform corner step (`δs = L / n_arc`) of either endpoint are skipped.
 """
 function arclength_slice(curve, n::Int; pinned_arclengths = Float64[])
     if length(curve) == 1
@@ -483,7 +431,8 @@ function arclength_slice(curve, n::Int; pinned_arclengths = Float64[])
     τ = collect(LinRange(0.0, arclengths[end], n))
 
     δs = n > 1 ? 2 * arclengths[end] / (n - 1) : arclengths[end]
-    for s_pin in pinned_arclengths
+    # Guarantee inclusion of pinned arclengths
+    for s_pin in pinned_arclengths 
         s = clamp(s_pin, 0.0, arclengths[end])
         (s < δs || s > arclengths[end] - δs) && continue
         best_idx = 0

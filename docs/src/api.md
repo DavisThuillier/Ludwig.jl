@@ -62,6 +62,9 @@ plot_mesh
 Internal helpers referenced by the public API. These are not exported and may change without notice.
 
 ```@docs
+Ludwig.bandstate
+Ludwig.hermitian_eigen
+Ludwig.hermitian_eigvals
 Ludwig.ee_kernel!
 Ludwig.pournin_volume
 ```

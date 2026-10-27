@@ -18,6 +18,8 @@ Under these constraints the we can write down an effective, spin-summed, antisym
 ```
 To allow for flexibility in scattering models, a user-defined effective scattering vertex of the form `Weff_squared(p1::AbstractPatch, p2::AbstractPatch, p3::AbstractPatch, p4::AbstractPatch; kwargs...)` must be supplied. For a vertex depending only on the band index and momentum differences between patches, all required information is already contained in the fields of each `AbstractPatch`, making the calculation efficient. If the scattering vertex depends on some function value defined on the patches (for example the orbital mixing character at the sampled point), passing an array of values calulated ahead of time via a keyword argument prevents needed to repeatedly evaluate a costly function each time the vertex function is invoked. All keyword arguments passed to `electron_electron` will be bypassed to the user's `Weff_squared` function.
 
+When the vertex is built from the Bloch states of a [`HamiltonianBand`](@ref), as for orbital form factors, pass `states = eigenstates(grid, bands)` to `electron_electron` and write the vertex as `Weff_squared(p1, p2, p3, p4, ψ1, ψ2, ψ3, ψ4; kwargs...)`: the four patches, which still carry momentum, energy, and velocity (for example to build the momentum transfer of a Coulomb interaction), followed by their states in the same order. The grid patches' states are their precomputed eigenvectors, and the off-grid patch's state is the eigenvector found while computing its energy and velocity, so no Hamiltonian is diagonalized inside the vertex.
+
 The linearized collision integral is given by
 ```math
 \begin{aligned}
