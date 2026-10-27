@@ -234,3 +234,22 @@ end
         @test ibz_custom(k) == sentinel
     end
 end
+
+@testset "bandstate" begin
+    δ = 1e-6
+    for k in probes
+        e, v, ψ = Ludwig.bandstate(hb, k)
+        @test e ≈ hb(k)
+        @test H(k) * ψ ≈ e * ψ
+        @test norm(ψ) ≈ 1
+        # Hellmann-Feynman velocity against central differences of the energy
+        v_fd = SVector((hb(k + [δ, 0]) - hb(k - [δ, 0])) / 2δ,
+                       (hb(k + [0, δ]) - hb(k - [0, δ])) / 2δ)
+        @test isapprox(v, v_fd; atol = 1e-6)
+        @test v == band_velocity(hb, k)
+    end
+
+    # Fallback: no state
+    k = first(probes)
+    @test Ludwig.bandstate(ib, k) == (ib(k), band_velocity(ib, k), nothing)
+end

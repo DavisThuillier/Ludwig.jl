@@ -90,7 +90,7 @@ ee_kernel!(ζ, u, a::Patch, b::Patch, c::Patch, d::VirtualPatch, T::Real) = ee_k
 
 """
     electron_electron(grid, f0s, i, j, bands, T, Weff_squared, rlv, bz;
-                      umklapp=true; kwargs...)
+                      umklapp=true, kwargs...)
 
 Compute the element (`i`, `j`) of the linearized Boltzmann collision operator for
 electron-electron scattering.
@@ -101,7 +101,7 @@ electron-electron scattering.
   (independent of `i` and `j`, so it is precomputed by the caller).
 - `i::Int`, `j::Int`: row and column indices of the matrix element to compute.
 - `bands`: collection of dispersions used to construct `grid`; each entry is callable on
-  a 2-component momentum.
+  a 2-component momentum, and is sampled off the grid through [`bandstate`](@ref).
 - `T::Real`: temperature.
 - `Weff_squared`: user-defined function `Weff_squared(p1, p2, p3, p4; kwargs...)` of four
   `Patch`/`VirtualPatch` arguments returning the effective spinless quasiparticle
@@ -111,12 +111,11 @@ electron-electron scattering.
 
 # Keyword Arguments
 - `umklapp::Bool=true`: when `true`, intermediate momenta are folded back into `bz` via
-  the reciprocal lattice.
+  the reciprocal lattice before the bands are sampled there.
 - additional keyword arguments are forwarded verbatim to `Weff_squared`.
 
-A `Lattice` overload is provided that takes `l::Lattice` in place of `(rlv, bz)` and
-derives both from `l` via [`reciprocal_lattice_vectors`](@ref) and [`get_bz`](@ref); this
-is the form most callers will use.
+`rlv` and `bz` are typically [`reciprocal_lattice_vectors`](@ref) and [`get_bz`](@ref) of
+the lattice, computed once by the caller rather than for every matrix element.
 
 See also [`electron_phonon`](@ref), [`electron_impurity`](@ref).
 """
@@ -134,15 +133,14 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
     invrlv = inv(rlv)
 
     for m in eachindex(grid)
+        # Bands are sampled at the folded momentum that `p.k` reports, so that a band state
+        # such as an eigenvector belongs to it; energy and velocity are periodic
         kijm = kij - grid[m].k
+        umklapp && (kijm = map_to_bz(kijm, bz, rlv, invrlv))
 
         for μ in eachindex(bands)
-            p = VirtualPatch(
-                bands[μ](kijm),
-                umklapp ? map_to_bz(kijm, bz, rlv, invrlv) : kijm,
-                band_velocity(bands[μ], kijm),
-                μ
-            )
+            e, v, _ = bandstate(bands[μ], kijm)
+            p = VirtualPatch(e, kijm, v, μ)
             w123 = Weff_squared(grid[i], grid[j], grid[m], p; kwargs...)
 
             if w123 != 0
@@ -151,14 +149,11 @@ function electron_electron(grid::Vector{Patch}, f0s::Vector{Float64}, i::Int, j:
         end
 
         qimj = qij + grid[m].k
+        umklapp && (qimj = map_to_bz(qimj, bz, rlv, invrlv))
 
         for μ in eachindex(bands)
-            p = VirtualPatch(
-                bands[μ](qimj),
-                umklapp ? map_to_bz(qimj, bz, rlv, invrlv) : qimj,
-                band_velocity(bands[μ], qimj),
-                μ
-            )
+            e, v, _ = bandstate(bands[μ], qimj)
+            p = VirtualPatch(e, qimj, v, μ)
 
             w123 = Weff_squared(grid[i], grid[m], grid[j], p; kwargs...)
             w124 = Weff_squared(grid[i], grid[m], p, grid[j]; kwargs...)
