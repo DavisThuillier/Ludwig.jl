@@ -23,9 +23,10 @@ Electron-electron collision integral `Lij` for Cartesian momenta `ki`, `kj`, wit
 `2^initial_depth + 1` seed grid per axis and refined to a total subdivision depth of `refinement_depth`
 (which must be `≥ initial_depth`).
 
-A non-lattice-periodic (continuum) `ε` is captured correctly only when its pocket is centered at Γ; a
-pocket centered elsewhere straddles the boundary of the Γ-centered marching cell and needs the box
-centered on the pocket instead.
+!!! warning "Continuum bands"
+    A non-lattice-periodic (continuum) `ε` is captured correctly only when its pocket is centered at Γ; a
+    pocket centered elsewhere straddles the boundary of the Γ-centered marching cell and needs the box
+    centered on the pocket instead.
 """
 function electron_electron(ki::SVector{D,Float64}, kj::SVector{D,Float64}, wj::Float64,
     lattice::Lattice{D}, ε::Function, v::Function, T, Weff_squared::Function;
