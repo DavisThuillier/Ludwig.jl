@@ -22,6 +22,14 @@ operations(point_group::PointGroup) = point_group.operations
 order(point_group::PointGroup) = length(operations(point_group))
 operation_index(operation::SMatrix{D,D,Float64}, point_group::PointGroup) where {D} = findfirst(isequal(operation), point_group.operations)
 
+# Index of the element of `operations` equal to `candidate` within `atol`, or `nothing`.
+find_operation(candidate::SMatrix, operations; atol) =
+    findfirst(element -> isapprox(element, candidate; atol), operations)
+
+# Mutually irrational components, so no non-identity point-group operation fixes a point built from
+# them. Shared by `generic_seed` (lattice.jl) and `projection_seeds` (representations.jl).
+const IRRATIONAL_SEED = (Float64(π) - 3, Float64(ℯ) - 2, sqrt(2.0) - 1)   # ≈ (0.142, 0.718, 0.414)
+
 max_point_group_order(::Val{2}) = 12
 max_point_group_order(::Val{3}) = 48
 
@@ -38,7 +46,7 @@ function close_group(generators::Vector{<:SMatrix{D,D,T}}; tol = 1e-10) where {D
         new_frontier = SMatrix{D,D,Float64,D*D}[]
         for g in frontier, h in generators
             candidate = g * h
-            if !any(element -> isapprox(element, candidate; atol=tol), elements)
+            if find_operation(candidate, elements; atol = tol) === nothing
                 push!(elements, candidate)
                 push!(new_frontier, candidate)
             end
@@ -58,7 +66,7 @@ function group_multiplication_table(operations::Vector{<:SMatrix{D,D,Float64}}; 
     multiplication_table = Matrix{Int}(undef, n, n)
     for left in 1:n, right in 1:n
         product = operations[left] * operations[right]
-        product_index = findfirst(element -> isapprox(element, product; atol), operations)
+        product_index = find_operation(product, operations; atol)
         product_index === nothing && throw(ArgumentError("ops[$left] * ops[$right] is not a group element; ops is not closed."))
         multiplication_table[left, right] = product_index
     end

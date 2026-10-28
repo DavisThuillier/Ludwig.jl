@@ -461,9 +461,8 @@ Base.show(io::IO, table::CharacterTable) = show(io, MIME("text/plain"), table)
 # is a faithful copy of the group. That makes the sampled inner product group invariant, hence the
 # projections orthogonal and their weights a partition of unity.
 function projection_seeds(::Val{D}, count::Int) where {D}
-    base = (Float64(π) - 3, Float64(ℯ) - 2, sqrt(2.0) - 1)
     step = (sqrt(3.0) - 1, sqrt(5.0) - 2, sqrt(7.0) - 2)
-    return [SVector{D,Float64}(ntuple(i -> base[i] + offset * step[i], Val(D)))
+    return [SVector{D,Float64}(ntuple(i -> IRRATIONAL_SEED[i] + offset * step[i], Val(D)))
             for offset in 0:(count - 1)]
 end
 
