@@ -83,7 +83,8 @@ end
 """
     irreducible_brillouin_zone(rlv, point_group) -> ConvexPolytope{D}
 
-Generate the intersection of the fundamental domain of `point_group` and the first Brillouin Zone.
+A fundamental domain of `point_group` within the first Brillouin zone. Its orientation is fixed but
+arbitrary and need not be the conventional wedge of published high-symmetry paths.
 """
 function irreducible_brillouin_zone(rlv::SMatrix{D}, point_group::PointGroup{D}) where {D}
     halfspaces = bz_halfspaces(rlv)
