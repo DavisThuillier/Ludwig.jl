@@ -1,23 +1,26 @@
 
-struct Lattice{D}
-    primitives::SMatrix{D,D,Float64}
-    reciprocal_lattice_vectors::SMatrix{D,D,Float64}
+struct Lattice{D,L}
+    primitives::SMatrix{D,D,Float64,L}
+    reciprocal_lattice_vectors::SMatrix{D,D,Float64,L}
 end
 
 primitives(lattice::Lattice) = lattice.primitives
 reciprocal_lattice_vectors(lattice::Lattice) = lattice.reciprocal_lattice_vectors
 
-function Lattice(primitives::AbstractMatrix)
-    D = LinearAlgebra.checksquare(primitives) # Throw error if not square
-
-    lattice_vectors  = SMatrix{D,D}(primitives)
-    reciprocal_lattice_vectors= 2π * transpose(inv(primitives))
-    return Lattice{D}(lattice_vectors, reciprocal_lattice_vectors)
+function Lattice(primitives::SMatrix{D,D}) where {D}
+    lattice_vectors = SMatrix{D,D,Float64}(primitives)
+    reciprocal_lattice_vectors = 2π * transpose(inv(lattice_vectors))
+    return Lattice{D,D*D}(lattice_vectors, reciprocal_lattice_vectors)
 end
 
-struct Crystal{D}
-    lattice::Lattice{D}
-    point_group::PointGroup{D}
+function Lattice(primitives::AbstractMatrix)
+    D = LinearAlgebra.checksquare(primitives) # Throw error if not square
+    return Lattice(SMatrix{D,D,Float64}(primitives))
+end
+
+struct Crystal{D,L}
+    lattice::Lattice{D,L}
+    point_group::PointGroup{D,L}
 end
 
 Crystal(primitives::SMatrix{D}, point_group::PointGroup{D}) where {D} = Crystal(Lattice(primitives), point_group)
