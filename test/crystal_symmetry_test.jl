@@ -65,6 +65,11 @@ using Ludwig: operation_symbol, operation_symbols, operation_axis, class_symbol
             bz = brillouin_zone(rlv)
             @test isapprox(polytope_volume(bz), abs(det(rlv)); rtol = 1e-9)
         end
+
+        # An oblique basis whose cell needs bisectors from beyond the ±2 index box: that box alone
+        # gives about 3× the true volume.
+        rlv = SMatrix{3,3,Float64}(1.0, 0.0, 0.0,  2.1, 0.4, 0.0,  1.7, 1.3, 0.5)
+        @test isapprox(polytope_volume(brillouin_zone(rlv)), abs(det(rlv)); rtol = 1e-9)
     end
 
     @testset "IBZ tiles the BZ: volume(IBZ) = volume(BZ) / order" begin
