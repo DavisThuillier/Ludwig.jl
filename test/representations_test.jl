@@ -13,7 +13,7 @@ using Ludwig
 using StaticArrays
 using LinearAlgebra
 
-using Ludwig: point_group, conjugacy_classes
+using Ludwig: conjugacy_classes
 using Ludwig: irrep_basis, real_irrep_count, reality, component_ranges
 
 @isdefined(cubic_crystal) || include("crystal_fixtures.jl")

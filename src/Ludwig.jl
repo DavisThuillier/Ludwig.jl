@@ -12,7 +12,7 @@ using TensorOperations
 export PointGroup, operations, order, group_multiplication_table, operation_permutation
 
 export Lattice, primitives, reciprocal_lattice_vectors
-export Crystal, brillouin_zone, irreducible_brillouin_zone
+export Crystal, lattice, point_group, brillouin_zone, irreducible_brillouin_zone
 
 export CharacterTable, character_table, characters, irrep_labels, class_symbols
 export irrep_content, which_irrep

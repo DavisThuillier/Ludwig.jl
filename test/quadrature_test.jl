@@ -13,7 +13,7 @@ using LinearAlgebra
 using Ludwig: centroids, surface_locator, locate
 using Ludwig: mesh_harmonics, surface_moments, maxvol_quadrature, isoenergy_quadrature_rule
 using Ludwig: distance_to_boundary, ibz_quadrature_rule, bz_quadrature_rule
-using Ludwig: block_operation_map, point_group
+using Ludwig: block_operation_map
 
 @isdefined(cubic_crystal) || include("crystal_fixtures.jl")
 @isdefined(graphene_band) || include("band_fixtures.jl")

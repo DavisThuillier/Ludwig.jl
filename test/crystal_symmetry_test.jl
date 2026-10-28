@@ -11,7 +11,7 @@ using Ludwig
 using StaticArrays
 using LinearAlgebra
 
-using Ludwig: point_group, conjugacy_classes, block_operation_map, component_ranges
+using Ludwig: conjugacy_classes, block_operation_map, component_ranges
 using Ludwig: operation_symbol, operation_symbols, operation_axis, class_symbol
 
 @isdefined(cubic_crystal) || include("crystal_fixtures.jl")
