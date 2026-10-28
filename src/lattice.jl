@@ -80,7 +80,7 @@ fixes it.
 """
 function generic_seed(rlv::SMatrix{D}) where {D}
     components = (Float64(π) - 3, Float64(ℯ) - 2, sqrt(2.0) - 1)   # ≈ (0.142, 0.718, 0.414)
-    return rlv * SVector{D,Float64}(ntuple(i -> components[i], D))
+    return rlv * SVector{D,Float64}(ntuple(i -> components[i], Val(D)))
 end
 
 """
