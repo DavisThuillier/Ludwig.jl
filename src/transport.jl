@@ -3,17 +3,12 @@
 ###
 ###
 ### Every coefficient here is a weighted correlator ⟨a|L⁻¹|b⟩ against the linearized collision
-### operator `L`, so `correlator` is the only place a solve and a weighted sum happen.
+### operator `L`
 ###
-### `v`, `energies`, and `weights` must be in the flat full-BZ ordering of `bz_quadrature_rule` --
-### the ordering `full_collision_matrix` unfolds the stored IBZ block into. IBZ-only arrays passed
-### against an unfolded `L` would break the tensor's symmetry while still looking plausible, so the
-### lengths are checked on entry.
+### `v`, `energies`, and `weights` must be in the flat full-BZ ordering of `bz_quadrature_rule`
 ###
 ### Units follow the rest of the package: energies and temperature in eV, momenta in 1/a, velocities
-### in a·eV (ħ = 1), and `weights` carrying the d^Dk/(2π)^D measure that `bz_quadrature_rule` applies.
-### The conductivity prefactor is therefore 2π·G0 = 2e²/ħ rather than the G0/(2π) of a convention whose
-### quadrature weights are bare d^Dk. 
+### in a·eV, and `weights` carrying the d^Dk/(2π)^D measure that `bz_quadrature_rule` applies.
 ###
 ### `L` is singular by construction: `enforce_particle_conservation!` makes the detailed-balance
 ### vector an exact left null vector, so every driving vector must be odd under the point group (as
@@ -182,7 +177,8 @@ end
 """
     thermal_conductivity(L, v, energies, weights, temperature; solve = \\)
 
-Thermal conductivity correlator `κᵢⱼ = ⟨εvᵢ|L⁻¹|εvⱼ⟩` as a `D`×`D` `SMatrix`.
+Thermal transport coefficient `κᵢⱼ = 2⟨εvᵢ|L⁻¹|εvⱼ⟩`, the heat current per unit `-∇T/T`, as a
+`D`×`D` `SMatrix` in W·a^(2-D). 
 """
 function thermal_conductivity(L, v::AbstractVector{SVector{D,Float64}}, energies, weights, temperature;
                               solve = (\)) where {D}
@@ -195,7 +191,7 @@ end
 """
     thermal_conductivity(L, v, energies, weights, temperature, i, j; solve = \\)
 
-Single component `κᵢⱼ` of the thermal conductivity correlator, for any `i, j ∈ 1:D`.
+Single component `κᵢⱼ` of the thermal transport coefficient, for any `i, j ∈ 1:D`.
 """
 function thermal_conductivity(L, v::AbstractVector{SVector{D,Float64}}, energies, weights, temperature,
                               i::Int, j::Int; solve = (\)) where {D}
@@ -208,7 +204,8 @@ end
 """
     thermoelectric_conductivity(L, v, energies, weights, temperature; solve = \\)
 
-Thermoelectric correlator `εᵢⱼ = ⟨vᵢ|L⁻¹|εvⱼ⟩` as a `D`×`D` `SMatrix`.
+Thermoelectric coefficient `εᵢⱼ = 2e⟨vᵢ|L⁻¹|εvⱼ⟩`, the charge current per unit `-∇T/T`, as a
+`D`×`D` `SMatrix` in A·a^(2-D).
 """
 function thermoelectric_conductivity(L, v::AbstractVector{SVector{D,Float64}}, energies, weights, temperature;
                                      solve = (\)) where {D}
@@ -221,7 +218,7 @@ end
 """
     thermoelectric_conductivity(L, v, energies, weights, temperature, i, j; solve = \\)
 
-Single component `εᵢⱼ` of the thermoelectric correlator, for any `i, j ∈ 1:D`.
+Single component `εᵢⱼ` of the thermoelectric coefficient, for any `i, j ∈ 1:D`.
 """
 function thermoelectric_conductivity(L, v::AbstractVector{SVector{D,Float64}}, energies, weights, temperature,
                                      i::Int, j::Int; solve = (\)) where {D}
@@ -234,7 +231,8 @@ end
 """
     peltier_tensor(L, v, energies, weights, temperature; solve = \\)
 
-Peltier correlator `τᵢⱼ = ⟨εvᵢ|L⁻¹|vⱼ⟩` as a `D`×`D` `SMatrix`.
+Peltier coefficient `τᵢⱼ = 2e⟨εvᵢ|L⁻¹|vⱼ⟩`, the heat current per unit electric field, as a
+`D`×`D` `SMatrix` in A·a^(2-D).
 """
 function peltier_tensor(L, v::AbstractVector{SVector{D, Float64}}, energies, weights, temperature;
                         solve = (\)) where {D}
@@ -247,7 +245,7 @@ end
 """
     peltier_tensor(L, v, energies, weights, temperature, i, j; solve = \\)
 
-Single component `τᵢⱼ` of the Peltier correlator, for any `i, j ∈ 1:D`.
+Single component `τᵢⱼ` of the Peltier coefficient, for any `i, j ∈ 1:D`.
 """
 function peltier_tensor(L, v::AbstractVector{SVector{D,Float64}}, energies, weights, temperature,
                         i::Int, j::Int; solve = (\)) where {D}

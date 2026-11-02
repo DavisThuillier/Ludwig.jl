@@ -10,6 +10,7 @@ using LinearAlgebra
 using Ludwig: gausslegendre
 using Ludwig: boltzmann_weight, prepare_solve, detailed_balance_factors
 using Ludwig: thermal_conductivity, thermoelectric_conductivity, peltier_tensor
+using Ludwig: thermal_prefactor, thermoelectric_prefactor
 
 @isdefined(cubic_crystal) || include("crystal_fixtures.jl")
 
@@ -139,13 +140,14 @@ using Ludwig: thermal_conductivity, thermoelectric_conductivity, peltier_tensor
                 end
             end
 
-            # The thermal correlators are the shared primitive with energy currents substituted.
+            # The thermal coefficients are the shared primitive with energy currents substituted,
+            # scaled to SI by their prefactors.
             weight = boltzmann_weight(energies, weights, T)
-            @test thermal_conductivity(L, v, energies, weights, T, 1, 2) ≈
+            @test thermal_conductivity(L, v, energies, weights, T, 1, 2) ≈ thermal_prefactor *
                   correlator(energies .* getindex.(v, 1), energies .* getindex.(v, 2), L, weight)
-            @test thermoelectric_conductivity(L, v, energies, weights, T, 1, 2) ≈
+            @test thermoelectric_conductivity(L, v, energies, weights, T, 1, 2) ≈ thermoelectric_prefactor *
                   correlator(getindex.(v, 1), energies .* getindex.(v, 2), L, weight)
-            @test peltier_tensor(L, v, energies, weights, T, 1, 2) ≈
+            @test peltier_tensor(L, v, energies, weights, T, 1, 2) ≈ thermoelectric_prefactor *
                   correlator(energies .* getindex.(v, 1), getindex.(v, 2), L, weight)
         end
     end
