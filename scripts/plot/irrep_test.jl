@@ -54,25 +54,6 @@ end
 ###
 
 """
-    assert_block_layout(nodes, point_group, N_ibz; atol)
-
-Check that `nodes` holds `N_ibz` representatives followed by their images under the remaining
-operations, positional block `g` carrying `operations(point_group)[g]`. Every index identity used to
-unfold the stored collision block assumes this, and no downstream result can reveal its failure.
-"""
-function assert_block_layout(nodes, point_group, N_ibz; atol = 1e-8)
-    length(nodes) == N_ibz * order(point_group) || throw(DimensionMismatch(
-        "$(length(nodes)) nodes is not $(order(point_group)) blocks of $N_ibz representatives"))
-    for (g, M) ∈ enumerate(operations(point_group)), r ∈ 1:N_ibz
-        norm(nodes[(g - 1) * N_ibz + r] - M * nodes[r]) ≤ atol || throw(ArgumentError(
-            "node $((g - 1) * N_ibz + r) is not `operations(point_group)[$g] · nodes[$r]`; the grid " *
-            "was built from a different ordering of the material's generators, so every block " *
-            "carries a different operation than assumed"))
-    end
-    return nothing
-end
-
-"""
     block_constancy(D, N_ibz) -> Float64
 
 Largest relative deviation of the detailed-balance factors `D` from their values on the first block.
@@ -136,12 +117,11 @@ function main()
         "$(SETTINGS.quad_file) holds $N_ibz IBZ representatives but $(SETTINGS.collision_file) was " *
         "built on $(data.provenance.N_ibz); the rule must be the one the collision file came from")
 
-    assert_block_layout(data.nodes, point_group, N_ibz)
     @info "detailed-balance factors vary over each point-group orbit by $(block_constancy(data.D, N_ibz))"
 
     enforce_particle_conservation!(data.L, data.D)
     L = symmetrize_L(data)
-    blocks = isotypic_blocks(L, N_ibz, table)
+    blocks = isotypic_blocks(L, N_ibz, table; nodes = data.nodes)
 
     if show_block_heatmaps
         for block ∈ blocks
