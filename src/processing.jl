@@ -386,7 +386,8 @@ end
     collision_eigen(L_full, balance_factors) -> (eigenvalues, eigenvectors)
 
 Eigenvalues and physical-basis eigenvectors of the full-BZ collision operator `L_full` (`N × N`),
-obtained from the symmetric part of its detailed-balance form `S = D^{1/2}·L_full·D^{-1/2}`.
+obtained from the symmetric part of its detailed-balance form `S = D^{1/2}·L_full·D^{-1/2}` with
+particle conservation re-imposed, so the constant density is an exact zero mode.
 `L_full` is not modified; unfold a stored IBZ block with `full_collision_matrix` first.
 """
 function collision_eigen(L_full::AbstractMatrix, balance_factors::AbstractVector)
@@ -404,6 +405,12 @@ function collision_eigen(L_full::AbstractMatrix, balance_factors::AbstractVector
         balanced = (sqrtD[i] / sqrtD[j]) * L_full[i, j]
         balanced_transpose = (sqrtD[j] / sqrtD[i]) * L_full[j, i]
         balanced_symmetric[i, j] = 0.5 * (balanced + balanced_transpose)
+    end
+
+    # Symmetrizing shifts the off-diagonal sums, so conservation is re-imposed afterwards. In the
+    # balanced basis it reads `S·√D = 0`; only the diagonal moves, so the symmetry is kept.
+    for i ∈ 1:N
+        balanced_symmetric[i, i] -= dot(@view(balanced_symmetric[i, :]), sqrtD) / sqrtD[i]
     end
 
     values, vectors = eigen(Symmetric(balanced_symmetric))

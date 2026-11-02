@@ -30,9 +30,9 @@ using Ludwig: full_collision_matrix, collision_eigen, detailed_balance_factors,
     balance_full = repeat(balance_ibz, order(pg))
 
     # Build a physically faithful stored block: a point-group-invariant operator obeying detailed
-    # balance Dᵢ·L_full[i,j] = Dⱼ·L_full[j,i]. Symmetrize a random S0 over the group orbit so it is
-    # both symmetric and invariant, then unbalance it: L_full = D^{-1/2}·S0·D^{1/2}. The first N_ibz
-    # columns are the stored block L.
+    # balance Dᵢ·L_full[i,j] = Dⱼ·L_full[j,i] and conserving particle number. Symmetrize a random S0
+    # over the group orbit so it is both symmetric and invariant, set its diagonal so that S0·√D = 0,
+    # then unbalance it: L_full = D^{-1/2}·S0·D^{1/2}. The first N_ibz columns are the stored block L.
     perms = [grid_permutation(group_multiplication_table(pg), a, N_ibz) for a in 1:order(pg)]
     R = randn(N, N)
     S0 = zeros(N, N)
@@ -41,6 +41,9 @@ using Ludwig: full_collision_matrix, collision_eigen, detailed_balance_factors,
     end
     S0 = (S0 + transpose(S0)) / 2
     sqrtD = sqrt.(balance_full)
+    for i in 1:N
+        S0[i, i] -= dot(S0[i, :], sqrtD) / sqrtD[i]
+    end
     L_full = (1.0 ./ sqrtD) .* S0 .* transpose(sqrtD)   # D^{-1/2}·S0·D^{1/2}
     L = L_full[:, 1:N_ibz]        # kⱼ restricted to the IBZ representatives
     L_rows = L_full[1:N_ibz, :]   # kᵢ restricted instead
@@ -67,9 +70,10 @@ using Ludwig: full_collision_matrix, collision_eigen, detailed_balance_factors,
     @test all(isreal, values)
     @test sort(values) ≈ sort(real.(eigvals(L_full)))   # balanced spectrum equals the raw L_full spectrum
 
-    # Physical-basis eigenvectors solve L_full·ψ = λ·ψ.
+    # Physical-basis eigenvectors solve L_full·ψ = λ·ψ. The conserved density is an exact zero mode,
+    # where both sides are rounding noise, so the comparison needs a floor set by the operator's scale.
     for k in 1:N
-        @test L_full * vectors[:, k] ≈ values[k] * vectors[:, k]
+        @test L_full * vectors[:, k] ≈ values[k] * vectors[:, k] atol = 1e-12 * opnorm(L_full) * norm(vectors[:, k])
     end
 
     # detailed_balance_factors composes weights with the Fermi-Dirac occupation factor.
@@ -79,6 +83,17 @@ using Ludwig: full_collision_matrix, collision_eigen, detailed_balance_factors,
     @test detailed_balance_factors(weights, energies, 0.025) ≈ weights .* n .* (1 .- n)
 
     @test_throws ArgumentError collision_eigen(L_unfolded, -balance_full)   # D must be positive
+
+    # A raw fill conserves particle number by rows but is not detailed balanced, and symmetrizing it
+    # breaks conservation unless it is re-imposed. Nonpositive off-diagonals make the balanced,
+    # conserving form a weighted graph Laplacian: a nonnegative spectrum whose single zero mode is the
+    # constant density.
+    L_raw = -rand(N, N)
+    enforce_particle_conservation!(L_raw, balance_full)
+    raw_values, raw_vectors = collision_eigen(L_raw, balance_full)
+    @test minimum(raw_values) ≥ -1e-12 * maximum(raw_values)
+    zero_mode = raw_vectors[:, argmin(abs.(raw_values))]
+    @test zero_mode ≈ fill(zero_mode[1], N)
 
     # The stored block must hold a whole number of representatives per group element.
     @test_throws DimensionMismatch full_collision_matrix(L[:, 1:N_ibz-1], pg)
