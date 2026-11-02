@@ -20,7 +20,6 @@ end
 
 operations(point_group::PointGroup) = point_group.operations
 order(point_group::PointGroup) = length(operations(point_group))
-operation_index(operation::SMatrix{D,D,Float64}, point_group::PointGroup) where {D} = findfirst(isequal(operation), point_group.operations)
 
 # Index of the element of `operations` equal to `candidate` within `atol`, or `nothing`.
 find_operation(candidate::SMatrix, operations; atol) =
@@ -93,10 +92,6 @@ function operation_permutation(i::Int, multiplication_table::Matrix{Int})
 end
 
 operation_permutation(i::Int, point_group::PointGroup) = operation_permutation(i, group_multiplication_table(point_group))
-
-generate_permutation_matrices(multiplication_table::Matrix{Int}) =
-    [operation_permutation(i, multiplication_table) for i ∈ 1:size(multiplication_table, 1)]
-generate_permutation_matrices(point_group::PointGroup) = generate_permutation_matrices(group_multiplication_table(point_group))
 
 
 function inverse_index(g::Int, multiplication_table::Matrix{Int})
