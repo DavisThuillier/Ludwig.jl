@@ -11,7 +11,7 @@ using Ludwig
 using StaticArrays
 using LinearAlgebra
 
-using Ludwig: conjugacy_classes, block_operation_map, component_ranges
+using Ludwig: conjugacy_classes, block_operation_map, component_ranges, close_group
 using Ludwig: operation_symbol, operation_symbols, operation_axis, class_symbol
 
 @isdefined(cubic_crystal) || include("crystal_fixtures.jl")
@@ -92,6 +92,19 @@ using Ludwig: operation_symbol, operation_symbols, operation_axis, class_symbol
         @test isapprox(ibz_volume, bz_volume / order(pg); rtol = 1e-8)
     end
 
+end
+
+@testset "PointGroup constructor rejects invalid generators" begin
+    eighth_turn = SMatrix{2,2,Float64}(cos(pi / 4), sin(pi / 4), -sin(pi / 4), cos(pi / 4))
+    shear = SMatrix{2,2,Float64}(1, 0, 1, 1)                  # [1 1; 0 1]: preserves the square lattice
+
+    @test_throws ArgumentError PointGroup([eighth_turn], square_primitives())   # orthogonal, off-lattice
+    @test_throws ArgumentError PointGroup([shear], square_primitives())         # on-lattice, not orthogonal
+    @test_throws ArgumentError PointGroup([fill(1.0, 1, 1)], fill(1.0, 1, 1))
+    @test_throws ArgumentError PointGroup([Matrix(1.0I, 4, 4)], Matrix(1.0I, 4, 4))
+
+    # The shear's powers [1 n; 0 1] never repeat, so closure has to stop at the order cap.
+    @test_throws ArgumentError close_group([shear])
 end
 
 @testset "Conjugacy classes" begin
