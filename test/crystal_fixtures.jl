@@ -90,6 +90,26 @@ function hexagonal_crystal(; a::Float64 = 1.0, c::Float64 = 1.6)
 end
 
 ###
+### Orthorhombic, 3D (mmm, order 8)
+###
+
+"""
+    orthorhombic_crystal(; a = 1.0, b = 1.3, c = 1.7) -> Crystal{3}
+
+A primitive orthorhombic `Crystal{3}` carrying the full mmm point group (order 8), with distinct
+lattice constants `a`, `b`, `c` along x, y, z.
+"""
+function orthorhombic_crystal(; a::Float64 = 1.0, b::Float64 = 1.3, c::Float64 = 1.7)
+    primitives = SMatrix{3,3,Float64}(a, 0, 0,  0, b, 0,  0, 0, c)
+    generators = [
+        SMatrix{3,3,Float64}(-1, 0, 0,  0, -1, 0,  0, 0, 1),     # C2 about z
+        SMatrix{3,3,Float64}(-1, 0, 0,  0, 1, 0,  0, 0, -1),     # C2 about y
+        SMatrix{3,3,Float64}(-1, 0, 0,  0, -1, 0,  0, 0, -1),    # inversion
+    ]
+    return Crystal(primitives, PointGroup(generators, primitives))
+end
+
+###
 ### Planar lattices and operations, 2D
 ###
 #

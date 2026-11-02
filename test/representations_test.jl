@@ -32,6 +32,8 @@ using Ludwig: irrep_basis, real_irrep_count, reality, component_ranges
         ("6/mmm", point_group(hexagonal_crystal()),
                   ["A1g", "A1u", "A2g", "A2u", "B1g", "B1u", "B2g", "B2u",
                    "E1g", "E1u", "E2g", "E2u"]),
+        ("mmm",   point_group(orthorhombic_crystal()),
+                  ["Ag", "Au", "B1g", "B1u", "B2g", "B2u", "B3g", "B3u"]),
     ]
 
     for (name, pg, expected_labels) in groups
@@ -98,6 +100,15 @@ using Ludwig: irrep_basis, real_irrep_count, reality, component_ranges
                 (k -> k[1]^2 - k[2]^2,           "E2g"),
                 (k -> k[1] * (k[1]^2 - 3k[2]^2), "B1u"),
                 (k -> k[1] * k[3],               "E1g")]),
+            # No principal axis: the subscripts 1, 2, 3 follow the two-fold axes z, y, x, which a
+            # label-set comparison cannot see.
+            ("mmm", point_group(orthorhombic_crystal()), [
+                (k -> k[1] * k[2],               "B1g"),
+                (k -> k[1] * k[3],               "B2g"),
+                (k -> k[2] * k[3],               "B3g"),
+                (k -> k[3],                      "B1u"),
+                (k -> k[2],                      "B2u"),
+                (k -> k[1],                      "B3u")]),
         ]
 
         for (name, pg, fields) in checks
